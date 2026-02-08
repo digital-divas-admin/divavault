@@ -22,7 +22,6 @@ import { runQualityChecks } from "@/lib/quality-checks";
 import {
   ArrowLeft,
   ArrowRight,
-  Camera,
   Upload,
   Loader2,
   CheckCircle2,
@@ -202,12 +201,16 @@ export function GuidedCapture() {
     addCapturedStep,
   ]);
 
+  const [finalizeError, setFinalizeError] = useState(false);
+
   async function handleComplete() {
     if (!captureSessionId) return;
     setUploading(true);
+    setFinalizeError(false);
+    setError(null);
 
     try {
-      await fetch("/api/capture/session", {
+      const res = await fetch("/api/capture/session", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -217,10 +220,13 @@ export function GuidedCapture() {
         }),
       });
 
+      if (!res.ok) throw new Error("Finalization failed");
+
       setCaptureCompleted(true);
       setStep(5);
     } catch {
       setError("Failed to finalize. Please try again.");
+      setFinalizeError(true);
     } finally {
       setUploading(false);
     }
@@ -416,7 +422,7 @@ export function GuidedCapture() {
         {captureComplete ? (
           <Button onClick={handleComplete} disabled={uploading}>
             {uploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Continue
+            {finalizeError ? "Retry" : "Continue"}
             <ArrowRight className="ml-2 w-4 h-4" />
           </Button>
         ) : (

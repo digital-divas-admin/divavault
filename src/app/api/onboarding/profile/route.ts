@@ -53,6 +53,10 @@ export async function POST(request: NextRequest) {
 
     if (ensureErr) {
       console.error("Ensure contributor error:", ensureErr.message);
+      return NextResponse.json(
+        { error: "Failed to initialize contributor record" },
+        { status: 500 }
+      );
     }
 
     // Upsert into contributor_attributes

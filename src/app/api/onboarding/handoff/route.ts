@@ -64,12 +64,14 @@ export async function GET(request: Request) {
 
   const [payloadStr, signature] = parts;
 
-  // Verify signature
+  // Verify signature (timing-safe comparison to prevent timing attacks)
   const hmac = crypto.createHmac("sha256", HANDOFF_SECRET);
   hmac.update(payloadStr);
   const expectedSig = hmac.digest("base64url");
 
-  if (signature !== expectedSig) {
+  const sigBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expectedSig);
+  if (sigBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 

@@ -73,8 +73,10 @@ export async function clearCompletedUploads(): Promise<void> {
 }
 
 export async function processUploadQueue(
-  uploadFn: (upload: QueuedUpload) => Promise<boolean>
+  uploadFn: (upload: QueuedUpload) => Promise<boolean>,
+  options?: { autoRetry?: boolean; maxRetryAttempts?: number }
 ): Promise<{ succeeded: number; failed: number }> {
+  const { autoRetry = false, maxRetryAttempts = 3 } = options ?? {};
   const pending = await getPendingUploads();
   let succeeded = 0;
   let failed = 0;
@@ -88,16 +90,35 @@ export async function processUploadQueue(
 
     await updateUploadStatus(upload.id, "uploading");
 
-    try {
-      const success = await uploadFn(upload);
-      if (success) {
-        await updateUploadStatus(upload.id, "completed");
-        succeeded++;
-      } else {
-        await updateUploadStatus(upload.id, "failed", upload.retryCount + 1);
-        failed++;
+    let attemptSucceeded = false;
+    const attempts = autoRetry ? maxRetryAttempts : 1;
+    let currentAttempt = 0;
+
+    while (currentAttempt < attempts && !attemptSucceeded) {
+      try {
+        const success = await uploadFn(upload);
+        if (success) {
+          await updateUploadStatus(upload.id, "completed");
+          succeeded++;
+          attemptSucceeded = true;
+        } else {
+          currentAttempt++;
+          if (currentAttempt < attempts) {
+            // Exponential backoff: 1s, 2s, 4s, ...
+            const delay = Math.min(1000 * Math.pow(2, currentAttempt - 1), 30000);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
+      } catch {
+        currentAttempt++;
+        if (currentAttempt < attempts) {
+          const delay = Math.min(1000 * Math.pow(2, currentAttempt - 1), 30000);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
       }
-    } catch {
+    }
+
+    if (!attemptSucceeded) {
       await updateUploadStatus(upload.id, "failed", upload.retryCount + 1);
       failed++;
     }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isAdmin, getAdminRole, createBountyRequest } from "@/lib/admin-queries";
 import { createRequestSchema } from "@/lib/marketplace-validators";
+import { dispatchWebhook } from "@/lib/webhooks";
 
 export async function GET() {
   const supabase = await createClient();
@@ -93,6 +94,15 @@ export async function POST(request: NextRequest) {
       setting_tags: result.data.settingTags,
       status,
     });
+
+    // Dispatch webhook (fire and forget)
+    dispatchWebhook("bounty.created", {
+      request_id: bountyRequest.id,
+      title: bountyRequest.title,
+      category: bountyRequest.category,
+      status: bountyRequest.status,
+      created_by: user.id,
+    }).catch((err) => console.error("Webhook dispatch error:", err));
 
     return NextResponse.json({ request: bountyRequest }, { status: 201 });
   } catch {

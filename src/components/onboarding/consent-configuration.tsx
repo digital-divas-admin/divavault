@@ -10,6 +10,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ArrowLeft, ArrowRight, Loader2, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GeoRestriction, ContentExclusion } from "@/types/capture";
@@ -177,6 +185,7 @@ export function ConsentConfiguration() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const canSubmit = allConsentsGiven();
 
@@ -364,6 +373,8 @@ export function ConsentConfiguration() {
                 key={geo.value}
                 type="button"
                 onClick={() => handleGeoToggle(geo.value)}
+                aria-pressed={geoRestrictions.includes(geo.value)}
+                aria-label={`${geo.label} region`}
                 className={cn(
                   "px-3 py-1.5 rounded-lg border text-sm transition-all",
                   geoRestrictions.includes(geo.value)
@@ -390,6 +401,10 @@ export function ConsentConfiguration() {
             {CONTENT_EXCLUSIONS.map((exc) => (
               <Badge
                 key={exc.value}
+                role="button"
+                tabIndex={0}
+                aria-pressed={contentExclusions.includes(exc.value)}
+                aria-label={`Exclude ${exc.label} content`}
                 variant={
                   contentExclusions.includes(exc.value)
                     ? "default"
@@ -402,6 +417,12 @@ export function ConsentConfiguration() {
                     : "hover:border-primary/30"
                 )}
                 onClick={() => toggleContentExclusion(exc.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    toggleContentExclusion(exc.value);
+                  }
+                }}
               >
                 {exc.label}
               </Badge>
@@ -416,7 +437,7 @@ export function ConsentConfiguration() {
       </div>
 
       {error && (
-        <div className="p-4 rounded-lg bg-destructive/10 text-sm mb-4">
+        <div role="alert" aria-live="assertive" className="p-4 rounded-lg bg-destructive/10 text-sm mb-4">
           <p className="font-medium text-destructive mb-1">
             We couldn&apos;t save your agreement
           </p>
@@ -433,12 +454,67 @@ export function ConsentConfiguration() {
           <ArrowLeft className="mr-2 w-4 h-4" />
           Back
         </Button>
-        <Button onClick={handleSubmit} disabled={!canSubmit || submitting}>
+        <Button onClick={() => setShowConfirm(true)} disabled={!canSubmit || submitting}>
           {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Continue
           <ArrowRight className="ml-2 w-4 h-4" />
         </Button>
       </div>
+
+      <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-[family-name:var(--font-heading)]">
+              Confirm Your Consent
+            </DialogTitle>
+            <DialogDescription>
+              Please review your selections before submitting.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div>
+              <p className="font-medium mb-1">Usage categories</p>
+              <p className="text-muted-foreground">
+                {[
+                  allowCommercial && "Commercial",
+                  allowEditorial && "Editorial",
+                  allowEntertainment && "Entertainment",
+                  allowELearning && "E-Learning",
+                ].filter(Boolean).join(", ") || "None selected"}
+              </p>
+            </div>
+            <div>
+              <p className="font-medium mb-1">Geographic availability</p>
+              <p className="text-muted-foreground">
+                {geoRestrictions.map((g) => GEO_OPTIONS.find((o) => o.value === g)?.label || g).join(", ")}
+              </p>
+            </div>
+            {contentExclusions.length > 0 && (
+              <div>
+                <p className="font-medium mb-1">Content exclusions</p>
+                <p className="text-muted-foreground">
+                  {contentExclusions.map((e) => CONTENT_EXCLUSIONS.find((o) => o.value === e)?.label || e).join(", ")}
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConfirm(false)}>
+              Go Back
+            </Button>
+            <Button
+              onClick={() => {
+                setShowConfirm(false);
+                handleSubmit();
+              }}
+              disabled={submitting}
+            >
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirm & Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </StepContainer>
   );
 }

@@ -303,7 +303,7 @@ export function ProfileBuilder() {
       </Card>
 
       {error && (
-        <div className="p-4 rounded-lg bg-destructive/10 text-sm mb-4">
+        <div role="alert" aria-live="assertive" className="p-4 rounded-lg bg-destructive/10 text-sm mb-4">
           <p className="text-destructive">{error}</p>
         </div>
       )}

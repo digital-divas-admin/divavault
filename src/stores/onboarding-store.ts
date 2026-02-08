@@ -223,11 +223,24 @@ export const useOnboardingStore = create<OnboardingState>()(
         const state = persistedState as Record<string, unknown>;
         if (version < 2) {
           // Migrate from v0/v1 (old 3-step flow) to v2 (5-step flow)
+          // Map old step progress to new 5-step flow intelligently
+          const oldStep = (state.currentStep as number) || 1;
+          const hadSumsub = state.sumsubStatus === "green";
+          const hadProfile = state.profileCompleted === true;
+          const hadConsent = state.consentAge === true && state.consentAiTraining === true;
+          const hadCapture = state.captureCompleted === true;
+
+          let newStep = 1;
+          if (hadCapture) newStep = 5;
+          else if (hadConsent) newStep = 4;
+          else if (hadProfile) newStep = 3;
+          else if (hadSumsub) newStep = 2;
+          else newStep = Math.min(oldStep, 5);
+
           return {
             ...initialState,
             ...state,
-            // Preserve existing fields
-            currentStep: (state.currentStep as number) || 1,
+            currentStep: newStep,
             sumsubStatus: state.sumsubStatus ?? null,
             consentAge: state.consentAge ?? false,
             consentAiTraining: state.consentAiTraining ?? false,

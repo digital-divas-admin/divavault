@@ -17,12 +17,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Mail } from "lucide-react";
 
 export default function SignupPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkEmail, setCheckEmail] = useState(false);
 
   const {
     register,
@@ -53,7 +54,15 @@ export default function SignupPage() {
       return;
     }
 
-    router.push("/onboarding");
+    // Check if a session was created (email verification may be off in dev)
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      router.push("/onboarding");
+    } else {
+      // Email verification is enabled — user needs to confirm their email
+      setCheckEmail(true);
+      setLoading(false);
+    }
   }
 
   return (
@@ -68,6 +77,23 @@ export default function SignupPage() {
         </Link>
 
         <Card className="border-border/50 bg-card">
+          {checkEmail ? (
+            <CardContent className="p-8 text-center">
+              <Mail className="w-12 h-12 text-primary mx-auto mb-4" />
+              <CardTitle className="font-[family-name:var(--font-heading)] text-2xl mb-2">
+                Check Your Email
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mb-4">
+                We&apos;ve sent a confirmation link to your email address. Click
+                the link to verify your account, then come back and{" "}
+                <Link href="/login" className="text-primary hover:underline font-medium">
+                  log in
+                </Link>
+                .
+              </p>
+            </CardContent>
+          ) : (
+          <>
           <CardHeader className="text-center">
             <CardTitle className="font-[family-name:var(--font-heading)] text-2xl">
               Create Your Account
@@ -157,6 +183,8 @@ export default function SignupPage() {
               </Link>
             </p>
           </CardContent>
+          </>
+          )}
         </Card>
       </div>
     </div>

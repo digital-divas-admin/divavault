@@ -17,7 +17,14 @@ interface ProgressBarProps {
 
 export function ProgressBar({ currentStep }: ProgressBarProps) {
   return (
-    <div className="w-full max-w-lg mx-auto mb-8 sm:mb-10">
+    <div
+      className="w-full max-w-lg mx-auto mb-8 sm:mb-10"
+      role="progressbar"
+      aria-valuenow={currentStep}
+      aria-valuemin={1}
+      aria-valuemax={steps.length}
+      aria-label={`Onboarding step ${currentStep} of ${steps.length}: ${steps[currentStep - 1]?.label}`}
+    >
       <div className="flex items-center justify-between">
         {steps.map((step, i) => {
           const stepNum = i + 1;

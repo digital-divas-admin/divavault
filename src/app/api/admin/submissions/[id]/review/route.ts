@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminRole, reviewSubmission } from "@/lib/admin-queries";
 import { reviewSubmissionSchema } from "@/lib/marketplace-validators";
+import { dispatchWebhook } from "@/lib/webhooks";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -71,6 +72,13 @@ export async function POST(
       user.id,
       parsed.data.awardQualityBonus
     );
+
+    // Dispatch webhook (fire and forget)
+    dispatchWebhook("bounty.submission_reviewed", {
+      submission_id: id,
+      action: parsed.data.action,
+      reviewed_by: user.id,
+    }).catch((err) => console.error("Webhook dispatch error:", err));
 
     return NextResponse.json({ submission });
   } catch (err) {

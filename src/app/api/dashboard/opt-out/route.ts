@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/dashboard-queries";
+import { dispatchWebhook } from "@/lib/webhooks";
 
 export async function POST() {
   const supabase = await createClient();
@@ -45,6 +46,14 @@ export async function POST() {
       ? "Opted out of AI training"
       : "Opted back in to AI training"
   );
+
+  // Dispatch webhook when opting out (fire and forget)
+  if (newOptedOut) {
+    dispatchWebhook("contributor.opted_out", {
+      contributor_id: user.id,
+      opted_out_at: new Date().toISOString(),
+    }).catch((err) => console.error("Webhook dispatch error:", err));
+  }
 
   return NextResponse.json({ success: true, opted_out: newOptedOut });
 }

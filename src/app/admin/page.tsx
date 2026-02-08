@@ -15,6 +15,7 @@ import {
   Upload,
   Wallet,
   UserPlus,
+  Key,
 } from "lucide-react";
 
 export default async function AdminDashboardPage() {
@@ -180,6 +181,19 @@ export default async function AdminDashboardPage() {
                   <p className="font-medium">Payouts</p>
                   <p className="text-xs text-muted-foreground">
                     Track and manage contributor earnings
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Link>
+          <Link href="/admin/api-keys">
+            <div className="p-4 rounded-lg border border-border/30 bg-card hover:bg-accent/30 transition-colors">
+              <div className="flex items-center gap-3">
+                <Key className="h-5 w-5 text-purple-500" />
+                <div>
+                  <p className="font-medium">API Keys</p>
+                  <p className="text-xs text-muted-foreground">
+                    Manage platform API keys and webhook log
                   </p>
                 </div>
               </div>

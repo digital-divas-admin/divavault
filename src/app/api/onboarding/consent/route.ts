@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { consentConfigSchema } from "@/lib/validators";
+import { dispatchWebhook } from "@/lib/webhooks";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -62,12 +63,20 @@ export async function POST(request: NextRequest) {
 
   try {
     // Ensure contributor row exists
-    await supabase
+    const { error: upsertError } = await supabase
       .from("contributors")
       .upsert(
         { id: user.id, email: user.email ?? "" },
         { onConflict: "id" }
       );
+
+    if (upsertError) {
+      console.error("Contributor upsert error:", upsertError.message);
+      return NextResponse.json(
+        { error: "Failed to initialize contributor record" },
+        { status: 500 }
+      );
+    }
 
     // Insert immutable consent record
     const { error: consentErr } = await supabase
@@ -132,6 +141,18 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Dispatch webhook (fire and forget)
+    dispatchWebhook("contributor.consent_updated", {
+      contributor_id: user.id,
+      consent_version: consentVersion,
+      categories: {
+        commercial: allowCommercial,
+        editorial: allowEditorial,
+        entertainment: allowEntertainment,
+        e_learning: allowELearning,
+      },
+    }).catch((err) => console.error("Webhook dispatch error:", err));
 
     return NextResponse.json({ success: true });
   } catch {

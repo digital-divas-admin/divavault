@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useDashboardStore } from "@/stores/dashboard-store";
+import { AppSwitcher } from "@/components/app-switcher";
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
@@ -52,7 +53,7 @@ function SidebarContent({ userName, verified }: SidebarProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-border/30">
+      <div className="px-6 py-5 border-b border-border/30 flex items-center justify-between">
         <Link
           href="/"
           className="font-[family-name:var(--font-heading)] text-2xl italic"
@@ -60,6 +61,7 @@ function SidebarContent({ userName, verified }: SidebarProps) {
           <span className="text-primary">made of </span>
           <span className="text-secondary">us</span>
         </Link>
+        <AppSwitcher />
       </div>
 
       {/* User card */}

@@ -2,6 +2,18 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  // Platform API routes use API key auth, not cookies — handle CORS and skip session refresh
+  if (pathname.startsWith("/api/platform/v1/")) {
+    return handlePlatformApiRequest(request);
+  }
+
+  // Token exchange endpoint uses client_secret auth, not cookies
+  if (pathname === "/api/auth/token") {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -29,15 +41,20 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Protect /onboarding, /dashboard, and /admin routes
+  // Protect /onboarding, /dashboard, /admin, and /auth/authorize routes
   const isProtected =
-    request.nextUrl.pathname.startsWith("/onboarding") ||
-    request.nextUrl.pathname.startsWith("/dashboard") ||
-    request.nextUrl.pathname.startsWith("/admin");
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/auth/authorize");
 
   if (isProtected && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.searchParams.set("reason", "auth");
+    if (pathname.startsWith("/auth/authorize")) {
+      url.searchParams.set("redirect", request.nextUrl.toString());
+    }
     return NextResponse.redirect(url);
   }
 
@@ -45,8 +62,8 @@ export async function updateSession(request: NextRequest) {
   // Only applies to page routes (/admin/...), not API routes (/api/admin/...)
   // which handle their own auth checks and need JSON responses.
   const isAdminPage =
-    request.nextUrl.pathname.startsWith("/admin") &&
-    !request.nextUrl.pathname.startsWith("/api/");
+    pathname.startsWith("/admin") &&
+    !pathname.startsWith("/api/");
 
   if (isAdminPage && user) {
     const { data: adminUser } = await supabase
@@ -64,8 +81,8 @@ export async function updateSession(request: NextRequest) {
 
   // Redirect logged-in users away from auth pages
   const isAuthPage =
-    request.nextUrl.pathname.startsWith("/login") ||
-    request.nextUrl.pathname.startsWith("/signup");
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/signup");
 
   if (isAuthPage && user) {
     // Check if onboarding is already complete
@@ -84,6 +101,44 @@ export async function updateSession(request: NextRequest) {
   addSecurityHeaders(supabaseResponse, request);
 
   return supabaseResponse;
+}
+
+function handlePlatformApiRequest(request: NextRequest): NextResponse {
+  const allowedOrigin = process.env.CASTMI_ORIGIN || "";
+
+  // Handle preflight OPTIONS
+  if (request.method === "OPTIONS") {
+    const response = new NextResponse(null, { status: 204 });
+    setCorsHeaders(response, request, allowedOrigin);
+    return response;
+  }
+
+  const response = NextResponse.next({ request });
+  setCorsHeaders(response, request, allowedOrigin);
+  return response;
+}
+
+function setCorsHeaders(
+  response: NextResponse,
+  request: NextRequest,
+  allowedOrigin: string
+) {
+  const origin = request.headers.get("origin") || "";
+
+  // Only allow the configured origin
+  if (allowedOrigin && origin === allowedOrigin) {
+    response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
+  }
+
+  response.headers.set(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PATCH, DELETE, OPTIONS"
+  );
+  response.headers.set(
+    "Access-Control-Allow-Headers",
+    "Authorization, Content-Type"
+  );
+  response.headers.set("Access-Control-Max-Age", "86400");
 }
 
 function addSecurityHeaders(response: NextResponse, request: NextRequest) {
@@ -106,6 +161,10 @@ function addSecurityHeaders(response: NextResponse, request: NextRequest) {
   );
 
   // CSP: allow Supabase, picsum (mock images), TF.js models, SumSub
+  // NOTE: 'unsafe-eval' is required by SumSub SDK (uses eval internally).
+  // 'unsafe-inline' is required by Next.js dev server for hot-reload and by SumSub SDK styles.
+  // TODO (production hardening): switch to nonce-based CSP when SumSub SDK supports it,
+  // and remove 'unsafe-eval' once a SumSub SDK update eliminates the requirement.
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const csp = [
     "default-src 'self'",

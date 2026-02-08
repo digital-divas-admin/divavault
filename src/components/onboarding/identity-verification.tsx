@@ -132,7 +132,7 @@ export function IdentityVerification() {
                   </div>
                 )}
                 <Button onClick={launchSumsub}>Start Verification</Button>
-                {process.env.NODE_ENV === "development" && (
+                {process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_DEV_BYPASS !== "false" && (
                   <div className="mt-4 pt-4 border-t border-dashed border-amber-300">
                     <button
                       onClick={async () => {

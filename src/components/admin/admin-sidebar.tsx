@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import type { AdminRole } from "@/types/marketplace";
+import { AppSwitcher } from "@/components/app-switcher";
 
 const navItems = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
@@ -63,7 +64,7 @@ function SidebarContent({ displayName, role }: AdminSidebarProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-border/30">
+      <div className="px-6 py-5 border-b border-border/30 flex items-center justify-between">
         <Link
           href="/"
           className="font-[family-name:var(--font-heading)] text-2xl italic"
@@ -72,6 +73,7 @@ function SidebarContent({ displayName, role }: AdminSidebarProps) {
           <span className="text-secondary">us</span>
           <span className="text-xs text-muted-foreground ml-2 not-italic">admin</span>
         </Link>
+        <AppSwitcher />
       </div>
 
       {/* Admin card */}

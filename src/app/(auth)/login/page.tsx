@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createClient } from "@/lib/supabase/client";
@@ -20,9 +20,19 @@ import {
 import { ArrowLeft, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const sessionExpired = searchParams.get("reason") === "auth";
 
   const {
     register,
@@ -51,10 +61,10 @@ export default function LoginPage() {
     // Check if onboarding is already complete
     const { data: contributor } = await supabase
       .from("contributors")
-      .select("consent_given")
+      .select("onboarding_completed")
       .single();
 
-    if (contributor?.consent_given) {
+    if (contributor?.onboarding_completed) {
       router.push("/dashboard");
     } else {
       router.push("/onboarding");
@@ -82,6 +92,13 @@ export default function LoginPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {sessionExpired && (
+              <div className="p-3 rounded-lg bg-amber-500/10 text-sm mb-4">
+                <p className="text-amber-700">
+                  Your session has expired. Please log in again to continue.
+                </p>
+              </div>
+            )}
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>

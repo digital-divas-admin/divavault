@@ -78,42 +78,42 @@ interface FaceDetectionResult {
   widthRatio: number;
 }
 
-let faceDetector: { detectForVideo: (video: HTMLVideoElement, timestamp: number) => { detections: Array<{ boundingBox: { originX: number; originY: number; width: number; height: number } }> } } | null = null;
-let faceDetectorLoading = false;
+type FaceDetectorType = { detectForVideo: (video: HTMLVideoElement, timestamp: number) => { detections: Array<{ boundingBox: { originX: number; originY: number; width: number; height: number } }> } };
+let faceDetectorPromise: Promise<FaceDetectorType | null> | null = null;
 
-async function loadFaceDetector(): Promise<typeof faceDetector> {
-  if (faceDetector) return faceDetector;
-  if (faceDetectorLoading) return null;
+async function loadFaceDetector(): Promise<FaceDetectorType | null> {
+  if (faceDetectorPromise) return faceDetectorPromise;
 
-  faceDetectorLoading = true;
-
-  try {
-    const vision = await import("@mediapipe/face_detection");
-    const FaceDetection = vision.FaceDetection;
-    const detector = new FaceDetection({
-      locateFile: (file: string) =>
-        `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`,
-    });
-
-    detector.setOptions({
-      model: "short",
-      minDetectionConfidence: 0.5,
-    });
-
-    // Wait for model to load
-    await new Promise<void>((resolve) => {
-      detector.onResults(() => {
-        resolve();
+  faceDetectorPromise = (async () => {
+    try {
+      const vision = await import("@mediapipe/face_detection");
+      const FaceDetection = vision.FaceDetection;
+      const detector = new FaceDetection({
+        locateFile: (file: string) =>
+          `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`,
       });
-    });
 
-    faceDetector = detector as unknown as typeof faceDetector;
-    return faceDetector;
-  } catch (err) {
-    console.error("Failed to load face detector:", err);
-    faceDetectorLoading = false;
-    return null;
-  }
+      detector.setOptions({
+        model: "short",
+        minDetectionConfidence: 0.5,
+      });
+
+      // Wait for model to load
+      await new Promise<void>((resolve) => {
+        detector.onResults(() => {
+          resolve();
+        });
+      });
+
+      return detector as unknown as FaceDetectorType;
+    } catch (err) {
+      console.error("Failed to load face detector:", err);
+      faceDetectorPromise = null; // Allow retry on failure
+      return null;
+    }
+  })();
+
+  return faceDetectorPromise;
 }
 
 // Simplified face detection using canvas-based approach

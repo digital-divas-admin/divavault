@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 import { ProgressBar } from "@/components/onboarding/progress-bar";
@@ -14,6 +14,7 @@ function OnboardingContent() {
   const { currentStep, setStep, setSumsubStatus } = useOnboardingStore();
   const searchParams = useSearchParams();
   const handoffProcessed = useRef(false);
+  const [handoffError, setHandoffError] = useState<string | null>(null);
 
   // Process handoff token from QR code — jump to the encoded step
   useEffect(() => {
@@ -33,9 +34,16 @@ function OnboardingContent() {
             if (data.step >= 2) setSumsubStatus("green");
             setStep(data.step);
           }
+        } else {
+          const data = await res.json().catch(() => ({}));
+          setHandoffError(
+            data.error === "Token expired"
+              ? "This handoff link has expired. Please generate a new QR code."
+              : "This handoff link is invalid. Please generate a new QR code."
+          );
         }
       } catch {
-        // Ignore — user stays on current step
+        setHandoffError("Could not validate handoff link. Please try again.");
       }
     }
 
@@ -45,6 +53,19 @@ function OnboardingContent() {
   return (
     <div>
       <ProgressBar currentStep={currentStep} />
+
+      {handoffError && (
+        <div className="mx-auto max-w-xl mb-4 p-4 rounded-lg bg-destructive/10 text-sm">
+          <p className="font-medium text-destructive mb-1">Handoff failed</p>
+          <p className="text-destructive/80">{handoffError}</p>
+          <button
+            onClick={() => setHandoffError(null)}
+            className="mt-2 text-xs text-destructive underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {currentStep === 1 && <IdentityVerification />}
       {currentStep === 2 && <ProfileBuilder />}

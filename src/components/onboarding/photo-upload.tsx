@@ -154,7 +154,7 @@ export function PhotoUpload() {
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 mt-3 text-sm text-destructive">
+          <div role="alert" aria-live="assertive" className="flex items-center gap-2 mt-3 text-sm text-destructive">
             <AlertCircle className="w-4 h-4 shrink-0" />
             {error}
           </div>

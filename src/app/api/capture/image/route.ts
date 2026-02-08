@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { CAPTURE_STEPS } from "@/lib/capture-steps";
+import { dispatchWebhook } from "@/lib/webhooks";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -36,6 +38,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Validate captureStep against known steps
+  const validStepIds = CAPTURE_STEPS.map((s) => s.id);
+  if (!validStepIds.includes(captureStep as (typeof validStepIds)[number])) {
+    return NextResponse.json(
+      { error: "Invalid captureStep" },
+      { status: 400 }
+    );
+  }
+
+  // Sanitize filePath — must match expected pattern and not contain traversal
+  if (filePath.includes("..") || filePath.startsWith("/") || !/^[a-zA-Z0-9\-_/.]+$/.test(filePath)) {
+    return NextResponse.json(
+      { error: "Invalid filePath" },
+      { status: 400 }
+    );
+  }
+
+  // Clamp score values to 0-1 range
+  const clamp = (v: number | undefined) => v != null ? Math.max(0, Math.min(1, v)) : null;
+  const clampedQualityScore = clamp(qualityScore);
+  const clampedSharpnessScore = clamp(sharpnessScore);
+  const clampedBrightnessScore = clamp(brightnessScore);
+
   try {
     const { data, error } = await supabase
       .from("contributor_images")
@@ -48,9 +73,9 @@ export async function POST(request: NextRequest) {
         file_size: fileSize || null,
         width: width || null,
         height: height || null,
-        quality_score: qualityScore || null,
-        sharpness_score: sharpnessScore || null,
-        brightness_score: brightnessScore || null,
+        quality_score: clampedQualityScore,
+        sharpness_score: clampedSharpnessScore,
+        brightness_score: clampedBrightnessScore,
       })
       .select("id")
       .single();
@@ -63,19 +88,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update session image count
-    const { data: session } = await supabase
-      .from("capture_sessions")
-      .select("images_captured")
-      .eq("id", sessionId)
-      .single();
+    // Update session image count using actual DB count for accuracy
+    const { count, error: countError } = await supabase
+      .from("contributor_images")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sessionId);
 
-    if (session) {
-      await supabase
+    if (!countError && count !== null) {
+      const { error: updateError } = await supabase
         .from("capture_sessions")
-        .update({ images_captured: session.images_captured + 1 })
+        .update({ images_captured: count })
         .eq("id", sessionId);
+
+      if (updateError) {
+        console.error("Session count update error:", updateError.message);
+      }
     }
+
+    // Dispatch webhook (fire and forget)
+    dispatchWebhook("contributor.photos_added", {
+      contributor_id: user.id,
+      session_id: sessionId,
+      image_id: data.id,
+      capture_step: captureStep,
+      total_images: count ?? 1,
+    }).catch((err) => console.error("Webhook dispatch error:", err));
 
     return NextResponse.json({ imageId: data.id });
   } catch {

@@ -11,7 +11,7 @@ A platform for influencers and creators to monetize their likeness through ethic
 - **State:** Zustand with `persist` middleware (localStorage, version 2)
 - **Identity Verification:** SumSub (`@sumsub/websdk`)
 - **Camera Capture:** `getUserMedia` API + canvas-based quality checks
-- **Deployment:** Render (via `render.yaml`)
+- **Deployment:** Render (via `render.yaml`) — not yet deployed; planned for future
 
 ## Commands
 

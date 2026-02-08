@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { dispatchWebhook } from "@/lib/webhooks";
 
 export async function POST() {
   const supabase = await createClient();
@@ -87,6 +88,12 @@ export async function POST() {
         { status: 500 }
       );
     }
+
+    // Dispatch webhook (fire and forget)
+    dispatchWebhook("contributor.onboarded", {
+      contributor_id: user.id,
+      completed_at: new Date().toISOString(),
+    }).catch((err) => console.error("Webhook dispatch error:", err));
 
     return NextResponse.json({ success: true });
   } catch {

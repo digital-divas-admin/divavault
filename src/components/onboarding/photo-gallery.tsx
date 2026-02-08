@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 import { cn } from "@/lib/utils";
 import { Check, X, ImageIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 const MIN_PHOTOS = 25;
+const PAGE_SIZE = 20;
 
 export function PhotoGallery() {
   const {
@@ -17,6 +20,7 @@ export function PhotoGallery() {
     totalPhotoCount,
   } = useOnboardingStore();
 
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const count = totalPhotoCount();
   const hasEnough = count >= MIN_PHOTOS;
 
@@ -50,15 +54,17 @@ export function PhotoGallery() {
       {instagramMedia.length > 0 && (
         <div className="mb-6">
           <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wider">
-            Instagram Photos
+            Instagram Photos ({instagramMedia.length} total)
           </p>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-            {instagramMedia.map((media) => {
+            {instagramMedia.slice(0, visibleCount).map((media) => {
               const isSelected = selectedPhotoIds.includes(media.id);
               return (
                 <button
                   key={media.id}
                   onClick={() => togglePhotoSelection(media.id)}
+                  aria-label={isSelected ? "Deselect photo" : "Select photo"}
+                  aria-pressed={isSelected}
                   className={cn(
                     "relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
                     isSelected
@@ -81,6 +87,17 @@ export function PhotoGallery() {
               );
             })}
           </div>
+          {visibleCount < instagramMedia.length && (
+            <div className="text-center mt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}
+              >
+                Show More ({instagramMedia.length - visibleCount} remaining)
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -101,6 +118,7 @@ export function PhotoGallery() {
                 </div>
                 <button
                   onClick={() => removeUploadedPhoto(path)}
+                  aria-label="Remove photo"
                   className="absolute top-1 right-1 w-6 h-6 rounded-full bg-destructive/80 flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                 >
                   <X className="w-3 h-3 text-white" />

@@ -100,9 +100,16 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
           }
         } catch (err) {
           console.error("Camera access error:", err);
-          onError?.(
-            "Camera access denied. Please allow camera access to continue."
-          );
+          const isDenied = err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError");
+          if (isDenied) {
+            onError?.(
+              "Camera access was denied. To re-enable: open your browser settings, find camera permissions for this site, and set it to Allow. Then reload this page."
+            );
+          } else {
+            onError?.(
+              "Could not access camera. Make sure no other app is using it, then try again."
+            );
+          }
         }
       }
 
