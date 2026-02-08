@@ -49,9 +49,9 @@ export function ContactForm({ userName, userEmail }: ContactFormProps) {
 
   if (sent) {
     return (
-      <Card className="border-trust/20 bg-trust/5 rounded-xl">
+      <Card className="border-secondary/20 bg-secondary/5 rounded-xl">
         <CardContent className="p-6 text-center">
-          <Check className="h-8 w-8 text-trust mx-auto mb-3" />
+          <Check className="h-8 w-8 text-secondary mx-auto mb-3" />
           <h3 className="font-semibold mb-1">Message Sent</h3>
           <p className="text-sm text-muted-foreground">
             We&apos;ll get back to you as soon as possible.
@@ -70,7 +70,7 @@ export function ContactForm({ userName, userEmail }: ContactFormProps) {
   }
 
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardHeader>
         <CardTitle className="text-base">Contact Support</CardTitle>
       </CardHeader>

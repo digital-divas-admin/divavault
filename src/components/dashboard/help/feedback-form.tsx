@@ -43,9 +43,9 @@ export function FeedbackForm() {
 
   if (sent) {
     return (
-      <Card className="border-trust/20 bg-trust/5 rounded-xl">
+      <Card className="border-secondary/20 bg-secondary/5 rounded-xl">
         <CardContent className="p-5 text-center">
-          <Check className="h-6 w-6 text-trust mx-auto mb-2" />
+          <Check className="h-6 w-6 text-secondary mx-auto mb-2" />
           <p className="text-sm font-medium">Thanks for your feedback!</p>
         </CardContent>
       </Card>
@@ -53,7 +53,7 @@ export function FeedbackForm() {
   }
 
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardHeader>
         <CardTitle className="text-base">Quick Feedback</CardTitle>
       </CardHeader>
@@ -68,7 +68,7 @@ export function FeedbackForm() {
               onClick={() => setRating(item.value)}
               className={`text-2xl p-2 rounded-lg transition-colors ${
                 rating === item.value
-                  ? "bg-neon/10 ring-1 ring-neon/30"
+                  ? "bg-primary/10 ring-1 ring-primary/30"
                   : "hover:bg-muted/50"
               }`}
               title={item.label}

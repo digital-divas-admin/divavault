@@ -62,7 +62,7 @@ export function PhotoGallery() {
                   className={cn(
                     "relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
                     isSelected
-                      ? "border-neon ring-2 ring-neon/30"
+                      ? "border-primary ring-2 ring-primary/30"
                       : "border-transparent hover:border-border"
                   )}
                 >
@@ -73,8 +73,8 @@ export function PhotoGallery() {
                     className="w-full h-full object-cover"
                   />
                   {isSelected && (
-                    <div className="absolute inset-0 bg-neon/20 flex items-center justify-center">
-                      <Check className="w-6 h-6 text-neon" />
+                    <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                      <Check className="w-6 h-6 text-primary" />
                     </div>
                   )}
                 </button>
@@ -94,7 +94,7 @@ export function PhotoGallery() {
             {uploadedPhotos.map((path) => (
               <div
                 key={path}
-                className="relative aspect-square rounded-lg overflow-hidden border-2 border-neon/30 bg-muted group"
+                className="relative aspect-square rounded-lg overflow-hidden border-2 border-primary/30 bg-muted group"
               >
                 <div className="w-full h-full flex items-center justify-center">
                   <ImageIcon className="w-6 h-6 text-muted-foreground" />

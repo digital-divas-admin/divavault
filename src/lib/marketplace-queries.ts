@@ -7,14 +7,12 @@ import type {
   SubmissionImage,
   MarketplaceStats,
   RequestCategory,
-  TrackType,
   RequestSortBy,
 } from "@/types/marketplace";
 
 export async function getPublishedRequests(filters?: {
   search?: string;
   category?: RequestCategory | "all";
-  trackType?: TrackType | "all";
   sortBy?: RequestSortBy;
 }): Promise<BountyRequest[]> {
   const supabase = await createClient();
@@ -25,13 +23,6 @@ export async function getPublishedRequests(filters?: {
 
   if (filters?.category && filters.category !== "all") {
     query = query.eq("category", filters.category);
-  }
-
-  if (filters?.trackType && filters.trackType !== "all") {
-    // "both" requests should show for sfw and nsfw filters
-    query = query.or(
-      `track_type.eq.${filters.trackType},track_type.eq.both`
-    );
   }
 
   if (filters?.search) {
@@ -60,7 +51,6 @@ export async function getPublishedRequestsWithMeta(
   filters?: {
     search?: string;
     category?: RequestCategory | "all";
-    trackType?: TrackType | "all";
     sortBy?: RequestSortBy;
   }
 ): Promise<BountyRequestWithMeta[]> {

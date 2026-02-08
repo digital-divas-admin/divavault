@@ -5,8 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 function getMockMedia() {
   return Array.from({ length: 30 }, (_, i) => ({
     id: `mock-${i + 1}`,
-    media_url: `https://picsum.photos/seed/diva${i + 1}/600/600`,
-    thumbnail_url: `https://picsum.photos/seed/diva${i + 1}/200/200`,
+    media_url: `https://picsum.photos/seed/mou${i + 1}/600/600`,
+    thumbnail_url: `https://picsum.photos/seed/mou${i + 1}/200/200`,
   }));
 }
 

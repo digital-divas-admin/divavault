@@ -1,58 +1,58 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, Shield, Heart } from "lucide-react";
+import { HandHeart, DollarSign, Shield, Eye } from "lucide-react";
 
 const props = [
+  {
+    icon: HandHeart,
+    title: "Consent-First",
+    description:
+      "Every single image on this platform was shared voluntarily, with informed consent. No scraping. No surprises.",
+  },
   {
     icon: DollarSign,
     title: "Fair Compensation",
     description:
-      "Your likeness has value and you deserve to benefit from it. When our payment system launches, you'll be compensated for every dataset your photos contribute to. Early contributors will be first in line.",
+      "Your likeness has value. When our payment system launches, you'll be compensated for every dataset your photos contribute to.",
   },
   {
     icon: Shield,
-    title: "Identity Firewall",
+    title: "Privacy Protected",
     description:
-      "Every contributor verifies their identity, so nobody can upload photos of someone else. This protects you and everyone on the platform.",
+      "Identity verification prevents impersonation. Your photos are encrypted in private storage and never shared publicly.",
   },
   {
-    icon: Heart,
-    title: "Ethical-First Training",
+    icon: Eye,
+    title: "Full Transparency",
     description:
-      "Every single image on this platform was shared voluntarily, with informed consent. No scraping. No surprises. You know exactly how your photos are used.",
+      "You know exactly how your photos are used. Review your consent in plain language and opt out anytime.",
   },
 ];
 
 export function ValueProps() {
   return (
-    <section className="py-16 px-4 sm:py-24 sm:px-6">
+    <section id="why-join" className="section-dark py-16 px-4 sm:py-24 sm:px-6">
       <div className="max-w-6xl mx-auto">
-        <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl font-bold text-center mb-4">
+        <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl text-center mb-4">
           Why Creators Trust{" "}
-          <span className="text-neon">Diva Vault</span>
+          <span className="text-secondary">Made Of Us</span>
         </h2>
         <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-10 sm:mb-16">
           We built the platform that puts creators first — real protection, real
           consent, real transparency.
         </p>
 
-        <div className="grid md:grid-cols-3 gap-6 md:gap-8">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {props.map((prop) => (
-            <Card
-              key={prop.title}
-              className="gradient-border bg-card/50 backdrop-blur-sm border-0 rounded-2xl"
-            >
-              <CardContent className="p-6 sm:p-8">
-                <div className="w-12 h-12 rounded-xl bg-neon/10 flex items-center justify-center mb-6">
-                  <prop.icon className="w-6 h-6 text-neon" />
-                </div>
-                <h3 className="font-[family-name:var(--font-heading)] text-xl font-semibold mb-3">
-                  {prop.title}
-                </h3>
-                <p className="text-muted-foreground leading-relaxed">
-                  {prop.description}
-                </p>
-              </CardContent>
-            </Card>
+            <div key={prop.title} className="text-center sm:text-left">
+              <div className="w-12 h-12 rounded-xl bg-secondary/20 flex items-center justify-center mb-4 mx-auto sm:mx-0">
+                <prop.icon className="w-6 h-6 text-secondary" />
+              </div>
+              <h3 className="font-[family-name:var(--font-heading)] text-lg mb-2">
+                {prop.title}
+              </h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {prop.description}
+              </p>
+            </div>
           ))}
         </div>
       </div>

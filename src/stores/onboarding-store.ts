@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 
 interface OnboardingState {
   currentStep: number;
-  trackType: "sfw" | "nsfw" | null;
+  trackType: "sfw";
   sumsubStatus: "pending" | "green" | "red" | null;
   instagramConnected: boolean;
   instagramMedia: Array<{
@@ -18,9 +18,7 @@ interface OnboardingState {
   consentLikeness: boolean;
   consentRevocation: boolean;
   consentPrivacy: boolean;
-  consentNsfw: boolean;
   setStep: (step: number) => void;
-  setTrackType: (track: "sfw" | "nsfw") => void;
   setSumsubStatus: (status: "pending" | "green" | "red") => void;
   setInstagramConnected: (connected: boolean) => void;
   setInstagramMedia: (
@@ -34,7 +32,6 @@ interface OnboardingState {
   setConsentLikeness: (v: boolean) => void;
   setConsentRevocation: (v: boolean) => void;
   setConsentPrivacy: (v: boolean) => void;
-  setConsentNsfw: (v: boolean) => void;
   allConsentsGiven: () => boolean;
   totalPhotoCount: () => number;
   reset: () => void;
@@ -42,7 +39,7 @@ interface OnboardingState {
 
 const initialState = {
   currentStep: 1,
-  trackType: null as "sfw" | "nsfw" | null,
+  trackType: "sfw" as const,
   sumsubStatus: null as "pending" | "green" | "red" | null,
   instagramConnected: false,
   instagramMedia: [] as Array<{
@@ -57,7 +54,6 @@ const initialState = {
   consentLikeness: false,
   consentRevocation: false,
   consentPrivacy: false,
-  consentNsfw: false,
 };
 
 export const useOnboardingStore = create<OnboardingState>()(
@@ -66,7 +62,6 @@ export const useOnboardingStore = create<OnboardingState>()(
       ...initialState,
 
       setStep: (step) => set({ currentStep: step }),
-      setTrackType: (track) => set({ trackType: track }),
       setSumsubStatus: (status) => set({ sumsubStatus: status }),
       setInstagramConnected: (connected) =>
         set({ instagramConnected: connected }),
@@ -97,20 +92,16 @@ export const useOnboardingStore = create<OnboardingState>()(
       setConsentLikeness: (v) => set({ consentLikeness: v }),
       setConsentRevocation: (v) => set({ consentRevocation: v }),
       setConsentPrivacy: (v) => set({ consentPrivacy: v }),
-      setConsentNsfw: (v) => set({ consentNsfw: v }),
 
       allConsentsGiven: () => {
         const state = get();
-        const base =
+        return (
           state.consentAge &&
           state.consentAiTraining &&
           state.consentLikeness &&
           state.consentRevocation &&
-          state.consentPrivacy;
-        if (state.trackType === "nsfw") {
-          return base && state.consentNsfw;
-        }
-        return base;
+          state.consentPrivacy
+        );
       },
 
       totalPhotoCount: () => {
@@ -121,7 +112,7 @@ export const useOnboardingStore = create<OnboardingState>()(
       reset: () => set(initialState),
     }),
     {
-      name: "diva-vault-onboarding",
+      name: "madeofus-onboarding",
     }
   )
 );

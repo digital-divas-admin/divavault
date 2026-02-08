@@ -14,7 +14,7 @@ export function ImageCaptionInput({ caption, onChange }: ImageCaptionInputProps)
       value={caption}
       onChange={(e) => onChange(e.target.value)}
       maxLength={500}
-      className="text-xs bg-card/50 border-border/30 h-8"
+      className="text-xs bg-card border-border/30 h-8"
     />
   );
 }

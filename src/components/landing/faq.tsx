@@ -29,8 +29,8 @@ const faqs = [
     a: "All data is stored securely with enterprise-grade encryption. Your photos are kept in private storage buckets with strict access controls. Identity verification is handled by Sumsub, a regulated provider — we never see or store your ID documents. We'll always tell you what we store and why.",
   },
   {
-    q: "What's the difference between SFW and NSFW tracks?",
-    a: "The Lifestyle (SFW) track is for general modeling and influencer content. The Premium (NSFW) track is for adult-oriented AI content on age-verified platforms. No judgment either way — both tracks are equally valued and receive the same identity protection and security.",
+    q: "What kind of content can I contribute?",
+    a: "Made Of Us focuses on lifestyle content — fashion, social media, editorial, and brand campaign imagery. Your photos train AI models for digital influencers, brand ambassadors, and creative visual media. All content is SFW and handled with strong identity protections.",
   },
   {
     q: "What happens to my photos after I contribute?",
@@ -40,23 +40,23 @@ const faqs = [
 
 export function FAQ() {
   return (
-    <section className="py-16 px-4 sm:py-24 sm:px-6">
+    <section id="faq" className="py-16 px-4 sm:py-24 sm:px-6">
       <div className="max-w-3xl mx-auto">
-        <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl font-bold text-center mb-4">
-          Frequently Asked <span className="text-neon">Questions</span>
+        <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl text-center mb-4">
+          Frequently Asked Questions
         </h2>
         <p className="text-muted-foreground text-center mb-8 sm:mb-12">
           Everything you need to know before getting started.
         </p>
 
-        <Accordion type="single" collapsible className="space-y-4">
+        <Accordion type="single" collapsible className="space-y-3">
           {faqs.map((faq, i) => (
             <AccordionItem
               key={i}
               value={`item-${i}`}
-              className="border border-border/50 rounded-xl px-4 sm:px-6 data-[state=open]:bg-card/50"
+              className="border border-border rounded-xl px-4 sm:px-6 bg-card data-[state=open]:border-primary/30"
             >
-              <AccordionTrigger className="text-left text-base font-medium hover:no-underline hover:text-neon py-5">
+              <AccordionTrigger className="text-left text-base font-medium hover:no-underline hover:text-primary py-5">
                 {faq.q}
               </AccordionTrigger>
               <AccordionContent className="text-muted-foreground leading-relaxed pb-5">

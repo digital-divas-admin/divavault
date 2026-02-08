@@ -25,7 +25,7 @@ interface ActivityLogProps {
 
 export function ActivityLog({ activities }: ActivityLogProps) {
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardHeader>
         <CardTitle className="text-base">Activity Log</CardTitle>
       </CardHeader>

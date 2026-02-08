@@ -42,16 +42,11 @@ const faqItems = [
     answer:
       "Email changes are not currently supported. For password changes, use the forgot password flow from the login page. Two-factor authentication is coming soon.",
   },
-  {
-    question: "Can I switch between SFW and NSFW tracks?",
-    answer:
-      "Track changes require re-verification and new consent. Please contact support if you need to switch tracks.",
-  },
 ];
 
 export function DashboardFaq() {
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardHeader>
         <CardTitle className="text-base">Frequently Asked Questions</CardTitle>
       </CardHeader>

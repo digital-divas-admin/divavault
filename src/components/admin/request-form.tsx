@@ -37,12 +37,6 @@ const categories = [
   { value: "other", label: "Other" },
 ];
 
-const trackTypes = [
-  { value: "sfw", label: "SFW (Lifestyle)" },
-  { value: "nsfw", label: "NSFW (Premium)" },
-  { value: "both", label: "Both" },
-];
-
 const payTypes = [
   { value: "per_image", label: "Per Image" },
   { value: "per_set", label: "Per Set" },
@@ -64,7 +58,7 @@ export function RequestForm({ existingRequest, mode }: RequestFormProps) {
         description: existingRequest.description,
         modelContext: existingRequest.model_context || undefined,
         category: existingRequest.category,
-        trackType: existingRequest.track_type,
+        trackType: "sfw" as const,
         payType: existingRequest.pay_type,
         payAmountCents: existingRequest.pay_amount_cents,
         setSize: existingRequest.set_size || undefined,
@@ -85,6 +79,7 @@ export function RequestForm({ existingRequest, mode }: RequestFormProps) {
         settingTags: existingRequest.setting_tags,
       }
     : {
+        trackType: "sfw" as const,
         minResolutionWidth: 1024,
         minResolutionHeight: 1024,
         speedBonusCents: 0,
@@ -184,7 +179,7 @@ export function RequestForm({ existingRequest, mode }: RequestFormProps) {
   return (
     <form className="space-y-6">
       {/* Basics */}
-      <Card className="bg-card/50 border-border/30">
+      <Card className="bg-card border-border/30">
         <CardHeader>
           <CardTitle className="text-base">Basics</CardTitle>
         </CardHeader>
@@ -206,44 +201,26 @@ export function RequestForm({ existingRequest, mode }: RequestFormProps) {
             <Textarea id="modelContext" rows={2} placeholder="Context about the AI model or use case..." {...register("modelContext")} />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select
-                defaultValue={defaults.category}
-                onValueChange={(v) => setValue("category", v as CreateRequestFormData["category"])}
-              >
-                <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.category && <p className="text-sm text-destructive">{errors.category.message}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Track Type</Label>
-              <Select
-                defaultValue={defaults.trackType}
-                onValueChange={(v) => setValue("trackType", v as CreateRequestFormData["trackType"])}
-              >
-                <SelectTrigger><SelectValue placeholder="Select track" /></SelectTrigger>
-                <SelectContent>
-                  {trackTypes.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.trackType && <p className="text-sm text-destructive">{errors.trackType.message}</p>}
-            </div>
+          <div className="space-y-2">
+            <Label>Category</Label>
+            <Select
+              defaultValue={defaults.category}
+              onValueChange={(v) => setValue("category", v as CreateRequestFormData["category"])}
+            >
+              <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+              <SelectContent>
+                {categories.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.category && <p className="text-sm text-destructive">{errors.category.message}</p>}
           </div>
         </CardContent>
       </Card>
 
       {/* Requirements */}
-      <Card className="bg-card/50 border-border/30">
+      <Card className="bg-card border-border/30">
         <CardHeader>
           <CardTitle className="text-base">Requirements</CardTitle>
         </CardHeader>
@@ -277,7 +254,7 @@ export function RequestForm({ existingRequest, mode }: RequestFormProps) {
       </Card>
 
       {/* Compensation */}
-      <Card className="bg-card/50 border-border/30">
+      <Card className="bg-card border-border/30">
         <CardHeader>
           <CardTitle className="text-base">Compensation</CardTitle>
         </CardHeader>
@@ -346,7 +323,7 @@ export function RequestForm({ existingRequest, mode }: RequestFormProps) {
       </Card>
 
       {/* Schedule & Tags */}
-      <Card className="bg-card/50 border-border/30">
+      <Card className="bg-card border-border/30">
         <CardHeader>
           <CardTitle className="text-base">Schedule & Tags</CardTitle>
         </CardHeader>
@@ -404,7 +381,6 @@ export function RequestForm({ existingRequest, mode }: RequestFormProps) {
         </Button>
         <Button
           type="button"
-          className="neon-glow"
           disabled={loading || !budgetOk}
           onClick={handleSubmit((data) => onSubmit(data, true))}
         >

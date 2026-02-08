@@ -31,12 +31,11 @@ export default async function DashboardLayout({
 
   const sidebarProps = {
     userName: c.display_name || c.full_name,
-    trackType: c.track_type,
     verified: c.sumsub_status === "green",
   };
 
   return (
-    <div className="flex min-h-screen bg-grid">
+    <div className="flex min-h-screen">
       <Sidebar {...sidebarProps} />
       <div className="flex-1 lg:ml-[280px] flex flex-col min-h-screen">
         <MobileHeader {...sidebarProps} />

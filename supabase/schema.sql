@@ -5,7 +5,7 @@ CREATE TABLE public.contributors (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT NOT NULL,
   email TEXT NOT NULL,
-  track_type TEXT NOT NULL CHECK (track_type IN ('sfw', 'nsfw')),
+  track_type TEXT NOT NULL DEFAULT 'sfw' CHECK (track_type IN ('sfw')),
   sumsub_status TEXT DEFAULT 'pending' CHECK (sumsub_status IN ('pending', 'green', 'red', 'retry')),
   sumsub_applicant_id TEXT,
   instagram_username TEXT,
@@ -142,7 +142,7 @@ CREATE TABLE public.bounty_requests (
     'portrait','full_body','lifestyle','fashion','fitness',
     'artistic','professional','casual','themed','other'
   )),
-  track_type TEXT NOT NULL CHECK (track_type IN ('sfw','nsfw','both')),
+  track_type TEXT NOT NULL DEFAULT 'sfw' CHECK (track_type IN ('sfw')),
   target_hair_colors TEXT[],
   target_eye_colors TEXT[],
   target_skin_tones TEXT[],
@@ -374,8 +374,8 @@ CREATE INDEX idx_bounty_bookmarks_contributor_id ON public.bounty_bookmarks(cont
 
 -- Storage buckets (create in Supabase dashboard):
 -- CREATE BUCKET sfw-uploads (private)
--- CREATE BUCKET nsfw-uploads (private)
 -- CREATE BUCKET bounty-submissions (private)
+-- NOTE: nsfw-uploads bucket exists as legacy but is no longer used
 
 -- Storage RLS policies (run in Supabase Dashboard SQL Editor)
 -- These must be run via the Dashboard because storage.objects is owned by supabase_storage_admin
@@ -385,18 +385,10 @@ CREATE POLICY "Users can upload to own folder (sfw)"
   ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (bucket_id = 'sfw-uploads' AND (storage.foldername(name))[1] = auth.uid()::text);
 
-CREATE POLICY "Users can upload to own folder (nsfw)"
-  ON storage.objects FOR INSERT TO authenticated
-  WITH CHECK (bucket_id = 'nsfw-uploads' AND (storage.foldername(name))[1] = auth.uid()::text);
-
 -- Allow users to read their own files
 CREATE POLICY "Users can read own files (sfw)"
   ON storage.objects FOR SELECT TO authenticated
   USING (bucket_id = 'sfw-uploads' AND (storage.foldername(name))[1] = auth.uid()::text);
-
-CREATE POLICY "Users can read own files (nsfw)"
-  ON storage.objects FOR SELECT TO authenticated
-  USING (bucket_id = 'nsfw-uploads' AND (storage.foldername(name))[1] = auth.uid()::text);
 
 -- Bounty submissions storage
 CREATE POLICY "Users can upload to own bounty folder"

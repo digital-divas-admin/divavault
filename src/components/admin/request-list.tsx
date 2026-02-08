@@ -32,7 +32,7 @@ export function RequestList({ requests }: RequestListProps) {
   return (
     <div className="space-y-4">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-card/50">
+        <TabsList className="bg-card">
           {tabs.map((tab) => {
             const count =
               tab.value === "all"
@@ -55,7 +55,7 @@ export function RequestList({ requests }: RequestListProps) {
         <div className="space-y-2">
           {filtered.map((request) => (
             <Link key={request.id} href={`/admin/requests/${request.id}`}>
-              <div className="p-4 rounded-lg border border-border/30 bg-card/50 hover:bg-card/80 transition-colors">
+              <div className="p-4 rounded-lg border border-border/30 bg-card hover:bg-muted/50 transition-colors">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">

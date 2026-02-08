@@ -45,14 +45,13 @@ export function DataContribution() {
       </div>
 
       <div className="flex justify-between">
-        <Button variant="outline" onClick={() => setStep(2)}>
+        <Button variant="outline" onClick={() => setStep(1)}>
           <ArrowLeft className="mr-2 w-4 h-4" />
           Back
         </Button>
         <Button
-          onClick={() => setStep(4)}
+          onClick={() => setStep(3)}
           disabled={!hasEnough}
-          className="neon-glow"
         >
           Continue
           <ArrowRight className="ml-2 w-4 h-4" />

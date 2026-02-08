@@ -31,7 +31,7 @@ export function PhotoCard({ upload, onRemove }: PhotoCardProps) {
 
   return (
     <>
-      <Card className="border-border/50 bg-card/50 rounded-lg overflow-hidden group relative">
+      <Card className="border-border/50 bg-card rounded-lg overflow-hidden group relative">
         {/* Image */}
         <div className="aspect-square bg-muted/30 relative">
           {upload.signed_url ? (

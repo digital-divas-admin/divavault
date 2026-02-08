@@ -19,7 +19,7 @@ export function DataExportCard() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `diva-vault-data-export-${new Date().toISOString().split("T")[0]}.json`;
+        a.download = `madeofus-data-export-${new Date().toISOString().split("T")[0]}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -31,7 +31,7 @@ export function DataExportCard() {
   };
 
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardHeader>
         <CardTitle className="text-base">Download Your Data</CardTitle>
       </CardHeader>

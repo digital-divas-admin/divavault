@@ -28,7 +28,7 @@ export default async function AdminLayout({
   };
 
   return (
-    <div className="flex min-h-screen bg-grid">
+    <div className="flex min-h-screen">
       <AdminSidebar {...sidebarProps} />
       <div className="flex-1 lg:ml-[280px] flex flex-col min-h-screen">
         <AdminMobileHeader {...sidebarProps} />

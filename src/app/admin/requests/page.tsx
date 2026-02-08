@@ -19,7 +19,7 @@ export default async function AdminRequestsPage() {
           </p>
         </div>
         <Link href="/admin/requests/new">
-          <Button className="neon-glow">
+          <Button>
             <Plus className="h-4 w-4 mr-2" />
             New Request
           </Button>

@@ -37,7 +37,6 @@ export default async function AccountPage() {
           fullName={contributor.full_name}
           email={contributor.email}
           displayName={contributor.display_name}
-          trackType={contributor.track_type}
           memberSince={contributor.created_at}
         />
 

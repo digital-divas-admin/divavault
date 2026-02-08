@@ -12,7 +12,6 @@ interface ProfileFormProps {
   fullName: string;
   email: string;
   displayName: string | null;
-  trackType: "sfw" | "nsfw";
   memberSince: string;
 }
 
@@ -20,7 +19,6 @@ export function ProfileForm({
   fullName,
   email,
   displayName: initialDisplayName,
-  trackType,
   memberSince,
 }: ProfileFormProps) {
   const [displayName, setDisplayName] = useState(initialDisplayName || "");
@@ -42,7 +40,7 @@ export function ProfileForm({
   };
 
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardHeader>
         <CardTitle className="text-base">Profile</CardTitle>
       </CardHeader>
@@ -69,7 +67,7 @@ export function ProfileForm({
             <Label className="text-xs">Track</Label>
             <div className="mt-1">
               <Badge variant="secondary">
-                {trackType === "nsfw" ? "Premium (NSFW)" : "Lifestyle (SFW)"}
+                Lifestyle (SFW)
               </Badge>
             </div>
           </div>

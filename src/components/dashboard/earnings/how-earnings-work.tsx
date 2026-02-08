@@ -24,7 +24,7 @@ export function HowEarningsWork() {
   ];
 
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardHeader>
         <CardTitle className="text-base">How Earnings Work</CardTitle>
       </CardHeader>
@@ -34,7 +34,7 @@ export function HowEarningsWork() {
             <div key={step.title} className="relative">
               <div className="flex flex-col items-center text-center p-4">
                 <div className="rounded-full bg-muted/50 p-3 mb-3">
-                  <step.icon className="h-5 w-5 text-neon" />
+                  <step.icon className="h-5 w-5 text-primary" />
                 </div>
                 <h4 className="text-sm font-medium mb-1">{step.title}</h4>
                 <p className="text-xs text-muted-foreground">

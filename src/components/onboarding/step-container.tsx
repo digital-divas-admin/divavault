@@ -16,7 +16,7 @@ export function StepContainer({
           {title}
         </h2>
         <p className="text-muted-foreground">{description}</p>
-        <p className="text-xs text-trust-muted mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           Your progress is saved automatically. You can leave and come back
           anytime.
         </p>

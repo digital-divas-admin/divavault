@@ -57,7 +57,7 @@ export interface DashboardContributor {
   id: string;
   full_name: string;
   email: string;
-  track_type: "sfw" | "nsfw";
+  track_type: "sfw";
   sumsub_status: "pending" | "green" | "red" | "retry";
   sumsub_applicant_id: string | null;
   instagram_username: string | null;

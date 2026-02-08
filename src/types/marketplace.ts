@@ -31,7 +31,7 @@ export type RequestCategory =
   | "themed"
   | "other";
 
-export type TrackType = "sfw" | "nsfw" | "both";
+export type TrackType = "sfw";
 export type PayType = "per_image" | "per_set";
 export type Visibility = "open" | "targeted" | "invite_only";
 
@@ -209,7 +209,6 @@ export type RequestSortBy = "newest" | "deadline" | "highest_pay";
 export interface RequestFilters {
   search: string;
   category: RequestCategory | "all";
-  trackType: TrackType | "all";
   sortBy: RequestSortBy;
 }
 

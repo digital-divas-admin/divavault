@@ -49,7 +49,7 @@ export function DataInventory({
   ];
 
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardHeader>
         <CardTitle className="text-base">Your Data Inventory</CardTitle>
       </CardHeader>
@@ -66,7 +66,7 @@ export function DataInventory({
           </div>
         ))}
         <div className="pt-2 border-t border-border/30">
-          <p className="text-xs text-trust">
+          <p className="text-xs text-secondary">
             Your ID documents are processed by Sumsub and never stored by us.
           </p>
         </div>

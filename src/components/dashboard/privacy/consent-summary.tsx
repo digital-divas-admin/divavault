@@ -14,7 +14,6 @@ const consentLabels: Record<string, string> = {
   consentLikeness: "I authorize use of my likeness in AI-generated content",
   consentRevocation: "I understand I can revoke consent at any time",
   consentPrivacy: "I have read and agree to the Privacy Policy",
-  consentNsfw: "I consent to NSFW/adult content generation",
 };
 
 export function ConsentSummary({
@@ -23,7 +22,7 @@ export function ConsentSummary({
   consentVersion,
 }: ConsentSummaryProps) {
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-base">Consent Record</CardTitle>
         {consentVersion && (

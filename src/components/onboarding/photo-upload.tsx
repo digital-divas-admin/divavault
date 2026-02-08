@@ -11,13 +11,13 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 const ACCEPTED_TYPES = ["image/jpeg", "image/png"];
 
 export function PhotoUpload() {
-  const { trackType, addUploadedPhotos } = useOnboardingStore();
+  const { addUploadedPhotos } = useOnboardingStore();
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const bucket = trackType === "nsfw" ? "nsfw-uploads" : "sfw-uploads";
+  const bucket = "sfw-uploads";
 
   const uploadFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -102,7 +102,7 @@ export function PhotoUpload() {
   }
 
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardContent className="p-6">
         <div
           onDragOver={(e) => {
@@ -114,7 +114,7 @@ export function PhotoUpload() {
           className={`border-2 border-dashed rounded-xl p-5 sm:p-8 text-center transition-colors cursor-pointer
             ${
               dragOver
-                ? "border-neon bg-neon/5"
+                ? "border-primary bg-primary/5"
                 : "border-border/50 hover:border-border"
             }`}
           onClick={() => document.getElementById("file-input")?.click()}
@@ -130,7 +130,7 @@ export function PhotoUpload() {
 
           {uploading ? (
             <>
-              <Upload className="w-8 h-8 text-neon mx-auto mb-3 animate-pulse" />
+              <Upload className="w-8 h-8 text-primary mx-auto mb-3 animate-pulse" />
               <p className="text-sm font-medium mb-2">Uploading...</p>
               <Progress value={progress} className="max-w-xs mx-auto" />
               <p className="text-xs text-muted-foreground mt-2">

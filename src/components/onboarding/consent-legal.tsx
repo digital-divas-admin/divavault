@@ -23,15 +23,13 @@ interface ConsentSection {
     | "consentAiTraining"
     | "consentLikeness"
     | "consentRevocation"
-    | "consentPrivacy"
-    | "consentNsfw";
+    | "consentPrivacy";
   setter:
     | "setConsentAge"
     | "setConsentAiTraining"
     | "setConsentLikeness"
     | "setConsentRevocation"
-    | "setConsentPrivacy"
-    | "setConsentNsfw";
+    | "setConsentPrivacy";
 }
 
 const BASE_SECTIONS: ConsentSection[] = [
@@ -55,7 +53,7 @@ const BASE_SECTIONS: ConsentSection[] = [
     plainIntro:
       "This is the core agreement. You're giving us permission to use your photos to train AI models that generate synthetic images.",
     items: [
-      "I grant Diva Vault and its affiliates a non-exclusive, worldwide, royalty-bearing license to use my contributed photos for the purpose of AI model training.",
+      "I grant Made Of Us and its affiliates a non-exclusive, worldwide, royalty-bearing license to use my contributed photos for the purpose of AI model training.",
       "My photos may be used to train generative AI models that produce synthetic images.",
     ],
     checkboxLabel: "I agree to let my photos be used for AI model training",
@@ -99,7 +97,7 @@ const BASE_SECTIONS: ConsentSection[] = [
     plainIntro:
       "Your photos live in encrypted cloud storage that only our systems can access.",
     items: [
-      "I acknowledge that my photos will be stored in encrypted cloud storage operated by Diva Vault.",
+      "I acknowledge that my photos will be stored in encrypted cloud storage operated by Made Of Us.",
       "I acknowledge the data retention practices described in the Privacy Policy.",
     ],
     checkboxLabel: "I acknowledge the privacy and data retention practices",
@@ -108,28 +106,11 @@ const BASE_SECTIONS: ConsentSection[] = [
   },
 ];
 
-const NSFW_SECTION: ConsentSection = {
-  id: "nsfw",
-  title: "About Adult Content — Please Read Carefully",
-  plainIntro:
-    "Because you chose the Premium track, there are a few additional things to confirm.",
-  items: [
-    "I acknowledge that the content I am contributing may include nudity or sexually explicit material.",
-    "I understand that AI models trained on my content may generate adult or NSFW synthetic images using my likeness.",
-    "I confirm that I am uploading this content voluntarily and without coercion.",
-  ],
-  checkboxLabel:
-    "I understand and voluntarily consent to adult content AI training",
-  storeKey: "consentNsfw",
-  setter: "setConsentNsfw",
-};
-
 export function ConsentLegal() {
   const router = useRouter();
   const store = useOnboardingStore();
   const {
     setStep,
-    trackType,
     selectedPhotoIds,
     uploadedPhotos,
     instagramMedia,
@@ -140,8 +121,7 @@ export function ConsentLegal() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const sections =
-    trackType === "nsfw" ? [...BASE_SECTIONS, NSFW_SECTION] : BASE_SECTIONS;
+  const sections = BASE_SECTIONS;
 
   const canSubmit = allConsentsGiven();
 
@@ -171,9 +151,6 @@ export function ConsentLegal() {
         consentRevocation: store.consentRevocation,
         consentPrivacy: store.consentPrivacy,
       };
-      if (trackType === "nsfw") {
-        consentDetails.consentNsfw = store.consentNsfw;
-      }
 
       // Create/update contributor record
       const { error: upsertError } = await supabase
@@ -182,7 +159,7 @@ export function ConsentLegal() {
           id: user.id,
           full_name: user.user_metadata?.full_name || "",
           email: user.email || "",
-          track_type: trackType,
+          track_type: "sfw" as const,
           photo_count: photoCount,
           consent_given: true,
           consent_timestamp: new Date().toISOString(),
@@ -199,8 +176,7 @@ export function ConsentLegal() {
 
       // Insert upload records for manually uploaded photos
       if (uploadedPhotos.length > 0) {
-        const bucket =
-          trackType === "nsfw" ? "nsfw-uploads" : "sfw-uploads";
+        const bucket = "sfw-uploads";
         const uploadRecords = uploadedPhotos.map((path) => ({
           contributor_id: user.id,
           source: "manual" as const,
@@ -220,8 +196,7 @@ export function ConsentLegal() {
 
       // Insert upload records for Instagram-selected photos
       if (selectedPhotoIds.length > 0) {
-        const bucket =
-          trackType === "nsfw" ? "nsfw-uploads" : "sfw-uploads";
+        const bucket = "sfw-uploads";
         const igRecords = selectedPhotoIds.map((id) => {
           const media = instagramMedia.find((m) => m.id === id);
           return {
@@ -257,9 +232,9 @@ export function ConsentLegal() {
       description="This is the important part. Read through each section at your own pace — there's no timer. Every checkbox is something you're actively choosing."
     >
       {/* Emotional intro card */}
-      <Card className="border-trust/20 bg-trust/5 rounded-2xl mb-6">
+      <Card className="border-secondary/20 bg-secondary/5 rounded-2xl mb-6">
         <CardContent className="p-5">
-          <p className="text-sm text-trust-muted leading-relaxed">
+          <p className="text-sm text-muted-foreground leading-relaxed">
             Sharing your photos for AI training is a meaningful decision, and we
             want you to feel confident about it. Below, we&apos;ve broken down
             exactly what you&apos;re agreeing to. If anything feels unclear,
@@ -272,12 +247,12 @@ export function ConsentLegal() {
         {sections.map((section) => (
           <Card
             key={section.id}
-            className="border-border/50 bg-card/50 rounded-2xl"
+            className="border-border/50 bg-card rounded-2xl"
           >
             <CardContent className="p-6">
               <h3 className="font-semibold text-sm mb-3">{section.title}</h3>
               {section.plainIntro && (
-                <p className="text-sm text-trust-muted mb-3 leading-relaxed">
+                <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
                   {section.plainIntro}
                 </p>
               )}
@@ -311,16 +286,8 @@ export function ConsentLegal() {
         ))}
       </div>
 
-      {/* 2257 Compliance Statement & Version */}
+      {/* Version */}
       <div className="text-xs text-muted-foreground/60 mb-6 space-y-2 px-1">
-        <p>
-          18 U.S.C. &sect; 2257 Record-Keeping Requirements Compliance
-          Statement: All persons who appear in any visual depiction contained on
-          this platform were at least 18 years of age at the time of the
-          creation of such depictions. Records required pursuant to 18 U.S.C.
-          &sect; 2257 are kept by the custodian of records: Diva Vault
-          Compliance Department, [Address to be designated].
-        </p>
         <p>Consent Agreement v{CONSENT_VERSION}</p>
       </div>
 
@@ -338,14 +305,13 @@ export function ConsentLegal() {
       )}
 
       <div className="flex justify-between">
-        <Button variant="outline" onClick={() => setStep(3)}>
+        <Button variant="outline" onClick={() => setStep(2)}>
           <ArrowLeft className="mr-2 w-4 h-4" />
           Back
         </Button>
         <Button
           onClick={handleComplete}
           disabled={!canSubmit || submitting}
-          className="neon-glow"
         >
           {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Submit & Complete

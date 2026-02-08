@@ -48,7 +48,7 @@ export function BookmarkButton({ requestId, initialBookmarked }: BookmarkButtonP
     >
       <Bookmark
         className={`h-4 w-4 transition-colors ${
-          bookmarked ? "fill-neon text-neon" : "text-muted-foreground"
+          bookmarked ? "fill-primary text-primary" : "text-muted-foreground"
         }`}
       />
     </Button>

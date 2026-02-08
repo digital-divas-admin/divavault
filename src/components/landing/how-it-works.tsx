@@ -1,69 +1,58 @@
-import { Instagram, UserCheck, Upload, CheckCircle2 } from "lucide-react";
+import { UserPlus, UserCheck, Upload } from "lucide-react";
 
 const steps = [
   {
-    icon: Instagram,
-    step: "01",
-    title: "Sign Up",
+    icon: UserPlus,
+    number: "01",
+    title: "Sign Up & Verify",
     description:
-      "Create an account with just your name and email. No credit card, no hidden commitments.",
-  },
-  {
-    icon: UserCheck,
-    step: "02",
-    title: "Verify",
-    description:
-      "A quick ID check confirms you're a real person. This protects everyone from impersonation — including you.",
+      "Create an account and complete a quick identity check. This confirms you're a real person and protects everyone from impersonation.",
   },
   {
     icon: Upload,
-    step: "03",
-    title: "Contribute",
+    number: "02",
+    title: "Upload Your Content",
     description:
-      "Upload or import photos from Instagram. You pick exactly which ones to share — nothing is selected for you.",
+      "Import from Instagram or drag-and-drop your photos. You pick exactly which ones to share — nothing is selected for you.",
   },
   {
-    icon: CheckCircle2,
-    step: "04",
-    title: "Review",
+    icon: UserCheck,
+    number: "03",
+    title: "Earn From AI Training",
     description:
-      "Review exactly what you're agreeing to, in plain language. Then you're done — and you can change your mind anytime.",
+      "Review your consent in plain language, then you're done. When our payment system launches, early contributors are first in line.",
   },
 ];
 
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="py-16 px-4 sm:py-24 sm:px-6 bg-card/30">
+    <section id="how-it-works" className="py-16 px-4 sm:py-24 sm:px-6">
       <div className="max-w-6xl mx-auto">
-        <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl font-bold text-center mb-4">
-          How It <span className="text-neon">Works</span>
+        <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl text-center mb-4">
+          How It Works
         </h2>
-        <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-10 sm:mb-16">
-          Four steps, fully transparent. Take your time — there&apos;s no rush.
+        <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+          Three steps, fully transparent. Take your time — there&apos;s no rush.
         </p>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
-          {steps.map((s, i) => (
-            <div key={s.step} className="relative">
-              {/* Connector line */}
-              {i < steps.length - 1 && (
-                <div className="hidden lg:block absolute top-8 left-[calc(50%+40px)] w-[calc(100%-80px)] h-px bg-gradient-to-r from-neon/40 to-neon/10" />
-              )}
-
-              <div className="text-center">
-                <div className="w-16 h-16 rounded-2xl bg-neon/10 border border-neon/20 flex items-center justify-center mx-auto mb-6">
-                  <s.icon className="w-7 h-7 text-neon" />
+        <div className="grid md:grid-cols-3 gap-6 md:gap-8">
+          {steps.map((step) => (
+            <div
+              key={step.number}
+              className="bg-card border border-border rounded-2xl p-6 sm:p-8 card-hover border-t-2 border-t-transparent"
+            >
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-semibold">
+                  {step.number}
                 </div>
-                <span className="text-xs font-mono text-neon/60 uppercase tracking-widest">
-                  Step {s.step}
-                </span>
-                <h3 className="font-[family-name:var(--font-heading)] text-xl font-semibold mt-2 mb-3">
-                  {s.title}
-                </h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">
-                  {s.description}
-                </p>
+                <step.icon className="w-5 h-5 text-primary" />
               </div>
+              <h3 className="font-[family-name:var(--font-heading)] text-xl mb-3">
+                {step.title}
+              </h3>
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                {step.description}
+              </p>
             </div>
           ))}
         </div>

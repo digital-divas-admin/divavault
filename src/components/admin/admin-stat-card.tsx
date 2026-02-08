@@ -13,11 +13,11 @@ export function AdminStatCard({
   icon: Icon,
   value,
   label,
-  iconClassName = "text-neon",
-  iconBgClassName = "bg-neon/10",
+  iconClassName = "text-primary",
+  iconBgClassName = "bg-primary/10",
 }: AdminStatCardProps) {
   return (
-    <Card className="bg-card/50 border-border/30">
+    <Card className="bg-card border-border/30">
       <CardContent className="p-4 flex items-center gap-3">
         <div className={`rounded-full p-2 ${iconBgClassName}`}>
           <Icon className={`h-4 w-4 ${iconClassName}`} />

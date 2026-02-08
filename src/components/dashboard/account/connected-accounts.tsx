@@ -10,7 +10,7 @@ export function ConnectedAccounts({
   instagramUsername,
 }: ConnectedAccountsProps) {
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardHeader>
         <CardTitle className="text-base">Connected Accounts</CardTitle>
       </CardHeader>

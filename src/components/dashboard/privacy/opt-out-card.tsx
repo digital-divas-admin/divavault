@@ -33,7 +33,7 @@ export function OptOutCard({ optedOut: initialOptedOut }: OptOutCardProps) {
 
   return (
     <>
-      <Card className="border-border/50 bg-card/50 rounded-xl">
+      <Card className="border-border/50 bg-card rounded-xl">
         <CardHeader>
           <CardTitle className="text-base">AI Training Participation</CardTitle>
         </CardHeader>
@@ -55,7 +55,7 @@ export function OptOutCard({ optedOut: initialOptedOut }: OptOutCardProps) {
             />
           </div>
           {optedOut && (
-            <p className="text-xs text-trust mt-3 pt-3 border-t border-border/30">
+            <p className="text-xs text-secondary mt-3 pt-3 border-t border-border/30">
               You can opt back in anytime. Previously trained models cannot be
               un-trained, but your photos will be included in future batches.
             </p>

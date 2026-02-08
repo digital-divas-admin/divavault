@@ -10,15 +10,15 @@ export function EarlyContributorBadge({
   joinDate,
 }: EarlyContributorBadgeProps) {
   return (
-    <Card className="border-neon/20 bg-neon/5 rounded-xl">
+    <Card className="border-primary/20 bg-primary/5 rounded-xl">
       <CardContent className="p-5 flex items-center gap-4">
-        <div className="rounded-full bg-neon/10 p-3 shrink-0">
-          <Award className="h-6 w-6 text-neon" />
+        <div className="rounded-full bg-primary/10 p-3 shrink-0">
+          <Award className="h-6 w-6 text-primary" />
         </div>
         <div>
           <div className="flex items-center gap-2 mb-1">
             <h3 className="text-sm font-semibold">Founding Contributor</h3>
-            <Badge className="bg-neon/10 text-neon border-neon/20 text-[10px] px-1.5 py-0 h-4">
+            <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 py-0 h-4">
               Early Access
             </Badge>
           </div>

@@ -12,7 +12,7 @@ interface RequestGridProps {
 }
 
 export function RequestGrid({ requests }: RequestGridProps) {
-  const { search, category, trackType, sortBy } = useMarketplaceStore();
+  const { search, category, sortBy } = useMarketplaceStore();
 
   const filtered = useMemo(() => {
     let result = [...requests];
@@ -29,12 +29,6 @@ export function RequestGrid({ requests }: RequestGridProps) {
 
     if (category !== "all") {
       result = result.filter((r) => r.category === category);
-    }
-
-    if (trackType !== "all") {
-      result = result.filter(
-        (r) => r.track_type === trackType || r.track_type === "both"
-      );
     }
 
     // Sort
@@ -58,7 +52,7 @@ export function RequestGrid({ requests }: RequestGridProps) {
     }
 
     return result;
-  }, [requests, search, category, trackType, sortBy]);
+  }, [requests, search, category, sortBy]);
 
   if (requests.length === 0) {
     return (

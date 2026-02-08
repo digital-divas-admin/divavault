@@ -74,7 +74,7 @@ export function MySubmissionsList({ submissions }: MySubmissionsListProps) {
                 key={submission.id}
                 href={`/dashboard/marketplace/${submission.request_id}/submit`}
               >
-                <Card className="bg-card/50 border-border/30 hover:border-neon/30 transition-all cursor-pointer">
+                <Card className="bg-card border-border/30 hover:border-primary/30 transition-all cursor-pointer">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">

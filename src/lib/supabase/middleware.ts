@@ -47,8 +47,15 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/signup");
 
   if (isAuthPage && user) {
+    // Check if onboarding is already complete
+    const { data: contributor } = await supabase
+      .from("contributors")
+      .select("consent_given")
+      .eq("id", user.id)
+      .single();
+
     const url = request.nextUrl.clone();
-    url.pathname = "/onboarding";
+    url.pathname = contributor?.consent_given ? "/dashboard" : "/onboarding";
     return NextResponse.redirect(url);
   }
 

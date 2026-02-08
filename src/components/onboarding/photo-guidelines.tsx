@@ -15,11 +15,11 @@ import {
 
 export function PhotoGuidelines() {
   return (
-    <Card className="border-neon/20 bg-neon/5 rounded-xl">
+    <Card className="border-primary/20 bg-primary/5 rounded-xl">
       <CardContent className="p-5">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-lg bg-neon/10 flex items-center justify-center shrink-0">
-            <Camera className="w-4 h-4 text-neon" />
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+            <Camera className="w-4 h-4 text-primary" />
           </div>
           <div>
             <h3 className="font-semibold text-sm">Photo Guidelines for AI Training</h3>

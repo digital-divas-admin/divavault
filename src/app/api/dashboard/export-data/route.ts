@@ -55,7 +55,7 @@ export async function POST() {
   return new NextResponse(JSON.stringify(exportData, null, 2), {
     headers: {
       "Content-Type": "application/json",
-      "Content-Disposition": `attachment; filename="diva-vault-data-export-${new Date().toISOString().split("T")[0]}.json"`,
+      "Content-Disposition": `attachment; filename="madeofus-data-export-${new Date().toISOString().split("T")[0]}.json"`,
     },
   });
 }

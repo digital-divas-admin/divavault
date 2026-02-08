@@ -172,7 +172,7 @@ export function SubmissionFlow({
       </Link>
 
       {/* Request summary */}
-      <Card className="bg-card/50 border-border/30">
+      <Card className="bg-card border-border/30">
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -239,7 +239,7 @@ export function SubmissionFlow({
           <Button
             onClick={handleSubmit}
             disabled={submitting || images.length === 0}
-            className="bg-neon hover:bg-neon/90 text-neon-foreground"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             {submitting ? "Submitting..." : "Submit for Review"}
           </Button>

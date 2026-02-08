@@ -1,4 +1,4 @@
-# Diva Vault
+# Made Of Us
 
 A platform for influencers and creators to monetize their likeness through ethical AI training. Contributors upload photos (via Instagram or manual upload), complete identity verification, and earn from their data. Powered by [vixxxen.ai](https://vixxxen.ai).
 
@@ -25,9 +25,9 @@ npm run lint     # Run ESLint
 ```
 src/
 ├── app/
-│   ├── page.tsx                    # Landing page (assembles 7 sections)
-│   ├── layout.tsx                  # Root layout (dark theme, Inter + Space Grotesk fonts)
-│   ├── globals.css                 # Tailwind v4 theme + neon glow effects
+│   ├── page.tsx                    # Landing page (assembles 9 sections)
+│   ├── layout.tsx                  # Root layout (light theme, DM Sans + DM Serif Display fonts)
+│   ├── globals.css                 # Tailwind v4 theme (cream/teal/coral palette)
 │   ├── (auth)/login/page.tsx       # Login form (client component)
 │   ├── (auth)/signup/page.tsx      # Signup form (client component)
 │   ├── onboarding/
@@ -43,14 +43,14 @@ src/
 ├── components/
 │   ├── ui/                         # Shadcn/UI components (11 total)
 │   ├── landing/                    # Landing page sections (hero, value-props, etc.)
-│   └── onboarding/                 # Step components (track-selection, identity-verification, etc.)
+│   └── onboarding/                 # Step components (identity-verification, data-contribution, etc.)
 ├── lib/
 │   ├── supabase/client.ts          # Browser Supabase client
 │   ├── supabase/server.ts          # Server Supabase client + service role client
 │   ├── supabase/middleware.ts      # Auth session refresh middleware
 │   ├── instagram.ts                # Instagram API helpers
 │   ├── sumsub.ts                   # Sumsub webhook verification + status mapping
-│   ├── validators.ts               # Zod v4 schemas (signup, login, track, consent)
+│   ├── validators.ts               # Zod v4 schemas (signup, login, consent)
 │   └── utils.ts                    # Shadcn cn() utility
 ├── stores/onboarding-store.ts      # Zustand store (persisted to localStorage)
 └── types/index.ts                  # Contributor + Upload TypeScript interfaces
@@ -58,8 +58,16 @@ src/
 
 ## Important Patterns
 
-### Always-Dark Theme
-The app is permanently dark-mode. `<html>` has `className="dark"`. There is no light mode toggle. The color scheme uses oklch neon pink/purple (`oklch(0.75 0.18 330)`) as the primary/accent color.
+### Light Cream Theme
+The app uses a warm light-mode design. No dark mode toggle. The color palette is:
+- **Primary:** Teal (#0D7377) — buttons, links, interactive elements
+- **Secondary:** Coral (#E8845C) — accent highlights, icons in dark sections
+- **Accent:** Amber (#F0A050) — tertiary highlights
+- **Background:** Cream (#F7F5F0)
+- **Foreground:** Navy (#1C2333) — text
+- **Fonts:** DM Serif Display (headings), DM Sans (body)
+
+CSS utilities: `.card-hover` (shadow + teal top-border on hover), `.section-dark` (navy background for contrast sections).
 
 ### Supabase SSR Auth
 Three Supabase client factories:
@@ -75,18 +83,17 @@ This project uses Zod v4 which has a different API from v3:
 - Use `{ message: "..." }` instead of `{ errorMap: () => ... }`
 
 ### Onboarding Flow
-4-step multi-step form managed by Zustand store:
-1. **Track Selection** — SFW (Lifestyle) or NSFW (Premium)
-2. **Identity Verification** — Sumsub KYC (currently mocked for dev)
-3. **Data Contribution** — Instagram OAuth import OR manual drag-and-drop upload (min 25 photos)
-4. **Consent & Legal** — Explicit agreement for AI training + likeness rights
+3-step multi-step form managed by Zustand store:
+1. **Identity Verification** — Sumsub KYC (currently mocked for dev)
+2. **Data Contribution** — Instagram OAuth import OR manual drag-and-drop upload (min 25 photos)
+3. **Consent & Legal** — Explicit agreement for AI training + likeness rights
 
 State persists to localStorage so users can resume. On completion, contributor + upload records are saved to Supabase and user is redirected to `/dashboard`.
 
 ### Supabase Storage Buckets
-Two private buckets needed (create manually in Supabase dashboard):
+One private bucket needed (create manually in Supabase dashboard):
 - `sfw-uploads` — Lifestyle track photos
-- `nsfw-uploads` — Premium track photos
+- `nsfw-uploads` — Legacy bucket, no longer used
 
 Files stored under `{bucket}/{user_id}/` paths.
 
@@ -153,9 +160,8 @@ Returns a JSON array of result rows, or `[]` for DDL statements.
 
 ### Storage Buckets
 
-Two private buckets exist:
-- `sfw-uploads` — Lifestyle track photos
-- `nsfw-uploads` — Premium track photos
+- `sfw-uploads` — Lifestyle track photos (active)
+- `nsfw-uploads` — Legacy bucket, no longer used
 
 ## Known MVP Limitations
 

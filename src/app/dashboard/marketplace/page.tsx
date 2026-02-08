@@ -36,10 +36,10 @@ export default async function MarketplacePage() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="bg-card/50 border-border/30">
+        <Card className="bg-card border-border/30">
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-full bg-neon/10 p-2">
-              <ShoppingBag className="h-4 w-4 text-neon" />
+            <div className="rounded-full bg-primary/10 p-2">
+              <ShoppingBag className="h-4 w-4 text-primary" />
             </div>
             <div>
               <p className="text-2xl font-bold">{stats.openRequests}</p>
@@ -47,7 +47,7 @@ export default async function MarketplacePage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-card/50 border-border/30">
+        <Card className="bg-card border-border/30">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="rounded-full bg-blue-500/10 p-2">
               <Send className="h-4 w-4 text-blue-400" />
@@ -60,7 +60,7 @@ export default async function MarketplacePage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-card/50 border-border/30">
+        <Card className="bg-card border-border/30">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="rounded-full bg-green-500/10 p-2">
               <DollarSign className="h-4 w-4 text-green-400" />

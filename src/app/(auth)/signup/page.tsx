@@ -57,7 +57,7 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-grid">
+    <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <Link
           href="/"
@@ -67,7 +67,7 @@ export default function SignupPage() {
           Back to home
         </Link>
 
-        <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+        <Card className="border-border/50 bg-card">
           <CardHeader className="text-center">
             <CardTitle className="font-[family-name:var(--font-heading)] text-2xl">
               Create Your Account
@@ -134,7 +134,7 @@ export default function SignupPage() {
 
               <Button
                 type="submit"
-                className="w-full neon-glow"
+                className="w-full"
                 disabled={loading}
               >
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -142,7 +142,7 @@ export default function SignupPage() {
               </Button>
             </form>
 
-            <p className="mt-4 text-center text-xs text-trust-muted">
+            <p className="mt-4 text-center text-xs text-muted-foreground">
               Creating an account doesn&apos;t share any photos. That comes
               later, and you&apos;re in control the whole time.
             </p>
@@ -151,7 +151,7 @@ export default function SignupPage() {
               Already have an account?{" "}
               <Link
                 href="/login"
-                className="text-neon hover:underline font-medium"
+                className="text-primary hover:underline font-medium"
               >
                 Log in
               </Link>

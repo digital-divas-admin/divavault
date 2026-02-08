@@ -42,7 +42,7 @@ export function ProgressIndicator({
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
-          className="text-neon transition-all duration-300"
+          className="text-primary transition-all duration-300"
         />
       </svg>
       <span className={`text-muted-foreground ${size === "sm" ? "text-xs" : "text-sm"}`}>

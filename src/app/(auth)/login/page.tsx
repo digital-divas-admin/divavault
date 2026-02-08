@@ -48,11 +48,21 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/onboarding");
+    // Check if onboarding is already complete
+    const { data: contributor } = await supabase
+      .from("contributors")
+      .select("consent_given")
+      .single();
+
+    if (contributor?.consent_given) {
+      router.push("/dashboard");
+    } else {
+      router.push("/onboarding");
+    }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-grid">
+    <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <Link
           href="/"
@@ -62,7 +72,7 @@ export default function LoginPage() {
           Back to home
         </Link>
 
-        <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+        <Card className="border-border/50 bg-card">
           <CardHeader className="text-center">
             <CardTitle className="font-[family-name:var(--font-heading)] text-2xl">
               Welcome Back
@@ -118,7 +128,7 @@ export default function LoginPage() {
 
               <Button
                 type="submit"
-                className="w-full neon-glow"
+                className="w-full"
                 disabled={loading}
               >
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -130,7 +140,7 @@ export default function LoginPage() {
               Don&apos;t have an account?{" "}
               <Link
                 href="/signup"
-                className="text-neon hover:underline font-medium"
+                className="text-primary hover:underline font-medium"
               >
                 Sign up
               </Link>

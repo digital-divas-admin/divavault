@@ -20,7 +20,7 @@ export function SubmissionReviewCard({
     submission.status === "submitted" || submission.status === "in_review";
 
   return (
-    <Card className="bg-card/50 border-border/30">
+    <Card className="bg-card border-border/30">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div>

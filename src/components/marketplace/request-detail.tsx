@@ -79,24 +79,11 @@ export function RequestDetail({
         <Badge variant="secondary" className="text-xs">
           {categoryLabels[request.category] || request.category}
         </Badge>
-        <Badge
-          className={`text-xs ${
-            request.track_type === "nsfw"
-              ? "bg-neon/15 text-neon border-neon/30"
-              : request.track_type === "both"
-                ? "bg-purple-500/15 text-purple-400 border-purple-500/30"
-                : "bg-blue-500/15 text-blue-400 border-blue-500/30"
-          }`}
-        >
-          {request.track_type === "both"
-            ? "SFW + NSFW"
-            : request.track_type.toUpperCase()}
-        </Badge>
       </div>
 
       {/* Model context card */}
       {request.model_context && (
-        <Card className="bg-card/50 border-border/30">
+        <Card className="bg-card border-border/30">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Why we need this</CardTitle>
           </CardHeader>
@@ -107,7 +94,7 @@ export function RequestDetail({
       )}
 
       {/* What we're looking for */}
-      <Card className="bg-card/50 border-border/30">
+      <Card className="bg-card border-border/30">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium">
             What we&apos;re looking for
@@ -158,7 +145,7 @@ export function RequestDetail({
 
       {/* Estimated effort */}
       {(request.estimated_effort || request.set_size) && (
-        <Card className="bg-card/50 border-border/30">
+        <Card className="bg-card border-border/30">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Estimated effort</CardTitle>
           </CardHeader>
@@ -172,7 +159,7 @@ export function RequestDetail({
       )}
 
       {/* Compensation */}
-      <Card className="bg-card/50 border-border/30">
+      <Card className="bg-card border-border/30">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium">Compensation</CardTitle>
         </CardHeader>
@@ -219,7 +206,7 @@ export function RequestDetail({
           </div>
         ) : (
           <Link href={`/dashboard/marketplace/${request.id}/submit`}>
-            <Button className="bg-neon hover:bg-neon/90 text-neon-foreground">
+            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
               Start Submission
             </Button>
           </Link>

@@ -28,7 +28,7 @@ export default async function AdminDashboardPage() {
           </p>
         </div>
         <Link href="/admin/requests/new">
-          <Button className="neon-glow">
+          <Button>
             <Plus className="h-4 w-4 mr-2" />
             New Request
           </Button>
@@ -93,9 +93,9 @@ export default async function AdminDashboardPage() {
       {/* Quick links */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Link href="/admin/requests">
-          <div className="p-4 rounded-lg border border-border/30 bg-card/50 hover:bg-card/80 transition-colors">
+          <div className="p-4 rounded-lg border border-border/30 bg-card hover:bg-card transition-colors">
             <div className="flex items-center gap-3">
-              <FileText className="h-5 w-5 text-neon" />
+              <FileText className="h-5 w-5 text-primary" />
               <div>
                 <p className="font-medium">Manage Requests</p>
                 <p className="text-xs text-muted-foreground">
@@ -106,7 +106,7 @@ export default async function AdminDashboardPage() {
           </div>
         </Link>
         <Link href="/admin/review-queue">
-          <div className="p-4 rounded-lg border border-border/30 bg-card/50 hover:bg-card/80 transition-colors">
+          <div className="p-4 rounded-lg border border-border/30 bg-card hover:bg-card transition-colors">
             <div className="flex items-center gap-3">
               <ClipboardCheck className="h-5 w-5 text-yellow-400" />
               <div>

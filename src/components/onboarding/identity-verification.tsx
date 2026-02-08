@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  ArrowLeft,
   ArrowRight,
   Shield,
   CheckCircle2,
@@ -31,12 +30,12 @@ export function IdentityVerification() {
       title="Verify Your Identity"
       description="This step makes sure nobody can upload photos of someone else. It protects you — and every other contributor."
     >
-      <Card className="border-border/50 bg-card/50 rounded-2xl mb-8">
+      <Card className="border-border/50 bg-card rounded-2xl mb-8">
         <CardContent className="p-5 sm:p-8 text-center">
           {!sumsubStatus && (
             <>
-              <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-neon/10 flex items-center justify-center mx-auto mb-6">
-                <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-neon" />
+              <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+                <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-primary" />
               </div>
               <h3 className="font-[family-name:var(--font-heading)] text-lg font-semibold mb-2">
                 Let&apos;s Verify It&apos;s Really You
@@ -47,7 +46,7 @@ export function IdentityVerification() {
                 government-issued ID. Sumsub handles your ID data directly — we
                 never see or store your ID document.
               </p>
-              <Button onClick={handleStartVerification} className="neon-glow">
+              <Button onClick={handleStartVerification}>
                 Start Verification
               </Button>
             </>
@@ -55,7 +54,7 @@ export function IdentityVerification() {
 
           {sumsubStatus === "pending" && (
             <>
-              <Loader2 className="w-12 h-12 text-neon animate-spin mx-auto mb-6" />
+              <Loader2 className="w-12 h-12 text-primary animate-spin mx-auto mb-6" />
               <h3 className="font-[family-name:var(--font-heading)] text-lg font-semibold mb-2">
                 Checking Your Identity...
               </h3>
@@ -77,7 +76,7 @@ export function IdentityVerification() {
               </Badge>
               <p className="text-sm text-muted-foreground mt-3 max-w-md mx-auto">
                 Your identity is confirmed. Your ID document was processed by
-                Sumsub and is not stored by Diva Vault.
+                Sumsub and is not stored by Made Of Us.
               </p>
             </>
           )}
@@ -104,15 +103,10 @@ export function IdentityVerification() {
         </CardContent>
       </Card>
 
-      <div className="flex justify-between">
-        <Button variant="outline" onClick={() => setStep(1)}>
-          <ArrowLeft className="mr-2 w-4 h-4" />
-          Back
-        </Button>
+      <div className="flex justify-end">
         <Button
-          onClick={() => setStep(3)}
+          onClick={() => setStep(2)}
           disabled={sumsubStatus !== "green"}
-          className="neon-glow"
         >
           Continue
           <ArrowRight className="ml-2 w-4 h-4" />

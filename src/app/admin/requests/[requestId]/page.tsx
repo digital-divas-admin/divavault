@@ -82,7 +82,7 @@ export default async function AdminRequestDetailPage({
             />
           </div>
 
-          <Card className="bg-card/50 border-border/30">
+          <Card className="bg-card border-border/30">
             <CardHeader>
               <CardTitle className="text-base">Description</CardTitle>
             </CardHeader>
@@ -103,7 +103,7 @@ export default async function AdminRequestDetailPage({
             </CardContent>
           </Card>
 
-          <Card className="bg-card/50 border-border/30">
+          <Card className="bg-card border-border/30">
             <CardHeader>
               <CardTitle className="text-base">Details</CardTitle>
             </CardHeader>
@@ -145,10 +145,10 @@ export default async function AdminRequestDetailPage({
 
           {/* Submissions link */}
           <Link href={`/admin/requests/${requestId}/submissions`}>
-            <Card className="bg-card/50 border-border/30 hover:bg-card/80 transition-colors">
+            <Card className="bg-card border-border/30 hover:bg-card transition-colors">
               <CardContent className="p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Users className="h-5 w-5 text-neon" />
+                  <Users className="h-5 w-5 text-primary" />
                   <div>
                     <p className="font-medium text-sm">
                       View Submissions ({submissions.length})

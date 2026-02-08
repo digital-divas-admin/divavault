@@ -27,7 +27,7 @@ interface RequestCardProps {
 export function RequestCard({ request }: RequestCardProps) {
   return (
     <Link href={`/dashboard/marketplace/${request.id}`}>
-      <Card className="bg-card/50 border-border/30 hover:border-neon/30 transition-all hover:shadow-[0_0_15px_rgba(var(--neon-rgb),0.1)] cursor-pointer">
+      <Card className="bg-card border-border/30 hover:border-primary/30 transition-all cursor-pointer">
         <CardContent className="p-5">
           {/* Header row */}
           <div className="flex items-start justify-between gap-2 mb-3">
@@ -50,19 +50,6 @@ export function RequestCard({ request }: RequestCardProps) {
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
               {categoryLabels[request.category] || request.category}
             </Badge>
-            <Badge
-              className={`text-[10px] px-1.5 py-0 h-4 ${
-                request.track_type === "nsfw"
-                  ? "bg-neon/15 text-neon border-neon/30"
-                  : request.track_type === "both"
-                    ? "bg-purple-500/15 text-purple-400 border-purple-500/30"
-                    : "bg-blue-500/15 text-blue-400 border-blue-500/30"
-              }`}
-            >
-              {request.track_type === "both"
-                ? "SFW + NSFW"
-                : request.track_type.toUpperCase()}
-            </Badge>
             <BountyBadge
               payAmountCents={request.pay_amount_cents}
               payType={request.pay_type}
@@ -83,7 +70,7 @@ export function RequestCard({ request }: RequestCardProps) {
             <div className="mt-2 pt-2 border-t border-border/20">
               <span className="text-[10px] text-muted-foreground">
                 Your submission:{" "}
-                <span className="text-neon capitalize">
+                <span className="text-primary capitalize">
                   {request.existing_submission_status.replaceAll("_", " ")}
                 </span>
               </span>

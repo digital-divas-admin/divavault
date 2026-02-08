@@ -32,7 +32,7 @@ const roleLabels: Record<AdminRole, string> = {
 
 const roleBadgeStyles: Record<AdminRole, string> = {
   reviewer: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  admin: "bg-neon/10 text-neon border-neon/20",
+  admin: "bg-primary/10 text-primary border-primary/20",
   super_admin: "bg-purple-500/10 text-purple-400 border-purple-500/20",
 };
 
@@ -62,18 +62,19 @@ function SidebarContent({ displayName, role }: AdminSidebarProps) {
       <div className="px-6 py-5 border-b border-border/30">
         <Link
           href="/"
-          className="font-[family-name:var(--font-heading)] text-lg font-bold"
+          className="font-[family-name:var(--font-heading)] text-2xl italic"
         >
-          <span className="text-neon">diva</span>vault
-          <span className="text-xs text-muted-foreground ml-2">admin</span>
+          <span className="text-primary">made of </span>
+          <span className="text-secondary">us</span>
+          <span className="text-xs text-muted-foreground ml-2 not-italic">admin</span>
         </Link>
       </div>
 
       {/* Admin card */}
       <div className="px-4 py-4 border-b border-border/30">
         <div className="flex items-center gap-3">
-          <Avatar className="h-10 w-10 border border-neon/30">
-            <AvatarFallback className="bg-neon/10 text-neon text-sm font-medium">
+          <Avatar className="h-10 w-10 border border-primary/30">
+            <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
               {initials}
             </AvatarFallback>
           </Avatar>
@@ -101,7 +102,7 @@ function SidebarContent({ displayName, role }: AdminSidebarProps) {
               href={item.href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
                 active
-                  ? "bg-neon/10 text-neon border-l-2 border-neon -ml-[2px] pl-[14px]"
+                  ? "bg-primary/10 text-primary border-l-2 border-primary -ml-[2px] pl-[14px]"
                   : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
               }`}
             >
@@ -142,7 +143,7 @@ function SidebarContent({ displayName, role }: AdminSidebarProps) {
 
 export function AdminSidebar(props: AdminSidebarProps) {
   return (
-    <aside className="hidden lg:flex lg:flex-col lg:fixed lg:inset-y-0 lg:left-0 lg:w-[280px] bg-card/80 backdrop-blur-sm border-r border-border/30 z-30">
+    <aside className="hidden lg:flex lg:flex-col lg:fixed lg:inset-y-0 lg:left-0 lg:w-[280px] bg-card backdrop-blur-sm border-r border-border/30 z-30">
       <SidebarContent {...props} />
     </aside>
   );
@@ -155,10 +156,11 @@ export function AdminMobileHeader(props: AdminSidebarProps) {
     <header className="lg:hidden sticky top-0 z-20 flex items-center justify-between px-4 py-3 border-b border-border/30 bg-background/80 backdrop-blur-sm">
       <Link
         href="/"
-        className="font-[family-name:var(--font-heading)] text-lg font-bold"
+        className="font-[family-name:var(--font-heading)] text-2xl italic"
       >
-        <span className="text-neon">diva</span>vault
-        <span className="text-xs text-muted-foreground ml-2">admin</span>
+        <span className="text-primary">made of </span>
+        <span className="text-secondary">us</span>
+        <span className="text-xs text-muted-foreground ml-2 not-italic">admin</span>
       </Link>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>

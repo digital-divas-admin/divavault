@@ -31,14 +31,8 @@ const sortOptions = [
   { value: "highest_pay", label: "Highest Pay" },
 ];
 
-const trackOptions = [
-  { value: "all", label: "All Tracks" },
-  { value: "sfw", label: "SFW" },
-  { value: "nsfw", label: "NSFW" },
-];
-
 export function RequestFilters() {
-  const { search, category, sortBy, trackType, setSearch, setCategory, setSortBy, setTrackType } =
+  const { search, category, sortBy, setSearch, setCategory, setSortBy } =
     useMarketplaceStore();
 
   return (
@@ -50,13 +44,13 @@ export function RequestFilters() {
           placeholder="Search requests..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="pl-9 bg-card/50 border-border/30"
+          className="pl-9 bg-card border-border/30"
         />
       </div>
 
       {/* Category */}
       <Select value={category} onValueChange={(v) => setCategory(v as typeof category)}>
-        <SelectTrigger className="w-full sm:w-[160px] bg-card/50 border-border/30">
+        <SelectTrigger className="w-full sm:w-[160px] bg-card border-border/30">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -68,23 +62,9 @@ export function RequestFilters() {
         </SelectContent>
       </Select>
 
-      {/* Track */}
-      <Select value={trackType} onValueChange={(v) => setTrackType(v as typeof trackType)}>
-        <SelectTrigger className="w-full sm:w-[130px] bg-card/50 border-border/30">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {trackOptions.map((t) => (
-            <SelectItem key={t.value} value={t.value}>
-              {t.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
       {/* Sort */}
       <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
-        <SelectTrigger className="w-full sm:w-[140px] bg-card/50 border-border/30">
+        <SelectTrigger className="w-full sm:w-[140px] bg-card border-border/30">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

@@ -71,9 +71,9 @@ export function InstagramConnect() {
 
   if (loading) {
     return (
-      <Card className="border-border/50 bg-card/50 rounded-xl">
+      <Card className="border-border/50 bg-card rounded-xl">
         <CardContent className="p-6 text-center">
-          <Loader2 className="w-8 h-8 text-neon mx-auto mb-3 animate-spin" />
+          <Loader2 className="w-8 h-8 text-primary mx-auto mb-3 animate-spin" />
           <p className="text-sm font-medium mb-1">Loading Instagram photos...</p>
           <p className="text-xs text-muted-foreground">
             This may take a moment if you have many photos
@@ -103,7 +103,7 @@ export function InstagramConnect() {
   }
 
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardContent className="p-6 text-center">
         <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mx-auto mb-4">
           <Instagram className="w-6 h-6 text-white" />

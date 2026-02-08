@@ -69,7 +69,7 @@ export function AccountDeletionCard({
 
   return (
     <>
-      <Card className="border-destructive/20 bg-card/50 rounded-xl">
+      <Card className="border-destructive/20 bg-card rounded-xl">
         <CardHeader>
           <CardTitle className="text-base">Delete Account</CardTitle>
         </CardHeader>

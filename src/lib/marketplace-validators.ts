@@ -18,7 +18,6 @@ export const requestFiltersSchema = z.object({
     ])
     .optional()
     .default("all"),
-  trackType: z.enum(["all", "sfw", "nsfw", "both"]).optional().default("all"),
   sortBy: z
     .enum(["newest", "deadline", "highest_pay"])
     .optional()
@@ -82,7 +81,7 @@ export const createRequestSchema = z.object({
     ],
     { message: "Please select a category" }
   ),
-  trackType: z.enum(["sfw", "nsfw", "both"], {
+  trackType: z.enum(["sfw"], {
     message: "Please select a track type",
   }),
   payType: z.enum(["per_image", "per_set"], {

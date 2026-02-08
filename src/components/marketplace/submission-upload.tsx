@@ -138,7 +138,7 @@ export function SubmissionUpload({
   }
 
   return (
-    <Card className="border-border/50 bg-card/50 rounded-xl">
+    <Card className="border-border/50 bg-card rounded-xl">
       <CardContent className="p-6">
         <div
           onDragOver={(e) => {
@@ -150,7 +150,7 @@ export function SubmissionUpload({
           className={`border-2 border-dashed rounded-xl p-5 sm:p-8 text-center transition-colors cursor-pointer
             ${
               dragOver
-                ? "border-neon bg-neon/5"
+                ? "border-primary bg-primary/5"
                 : "border-border/50 hover:border-border"
             }`}
           onClick={() =>
@@ -168,7 +168,7 @@ export function SubmissionUpload({
 
           {uploading ? (
             <>
-              <Upload className="w-8 h-8 text-neon mx-auto mb-3 animate-pulse" />
+              <Upload className="w-8 h-8 text-primary mx-auto mb-3 animate-pulse" />
               <p className="text-sm font-medium mb-2">Uploading...</p>
               <Progress value={progress} className="max-w-xs mx-auto" />
               <p className="text-xs text-muted-foreground mt-2">
