@@ -40,6 +40,8 @@ export default async function DashboardPage({
     .eq("id", user.id)
     .single();
 
+  if (!contributor) redirect("/onboarding");
+
   const c = contributor as DashboardContributor;
   const params = await searchParams;
   const isWelcome = params.welcome === "true";

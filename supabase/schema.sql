@@ -285,7 +285,7 @@ ALTER TABLE public.bounty_reports ENABLE ROW LEVEL SECURITY;
 -- Admin users RLS
 CREATE POLICY "Admins can view all admins"
   ON public.admin_users FOR SELECT TO authenticated
-  USING (EXISTS (SELECT 1 FROM public.admin_users WHERE id = auth.uid()));
+  USING (auth.uid() = id);
 CREATE POLICY "Super admins can insert admins"
   ON public.admin_users FOR INSERT TO authenticated
   WITH CHECK (EXISTS (SELECT 1 FROM public.admin_users WHERE id = auth.uid() AND role = 'super_admin'));

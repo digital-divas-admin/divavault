@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { OnboardingErrorBoundary } from "@/components/onboarding/error-boundary";
 
 export default function OnboardingLayout({
   children,
@@ -16,7 +17,9 @@ export default function OnboardingLayout({
           <span className="text-secondary">us</span>
         </Link>
       </header>
-      <main className="px-4 py-10">{children}</main>
+      <main className="px-4 py-10">
+        <OnboardingErrorBoundary>{children}</OnboardingErrorBoundary>
+      </main>
     </div>
   );
 }

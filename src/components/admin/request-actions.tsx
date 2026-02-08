@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Loader2, Pause, Play, XCircle } from "lucide-react";
+import { Loader2, Pause, Play, Send, XCircle } from "lucide-react";
 
 interface RequestActionsProps {
   request: BountyRequest;
@@ -48,12 +48,14 @@ export function RequestActions({ request }: RequestActionsProps) {
     }
   }
 
+  const canPublish =
+    request.status === "draft" || request.status === "pending_review";
   const canPause = request.status === "published";
   const canUnpause = request.status === "paused";
   const canClose =
     request.status === "published" || request.status === "paused";
 
-  if (!canPause && !canUnpause && !canClose) return null;
+  if (!canPublish && !canPause && !canUnpause && !canClose) return null;
 
   return (
     <div className="space-y-3">
@@ -63,6 +65,44 @@ export function RequestActions({ request }: RequestActionsProps) {
         </Alert>
       )}
       <div className="flex items-center gap-3">
+      {canPublish && (
+        <Dialog
+          open={confirmAction === "publish"}
+          onOpenChange={(open) => setConfirmAction(open ? "publish" : null)}
+        >
+          <DialogTrigger asChild>
+            <Button>
+              <Send className="h-4 w-4 mr-2" />
+              Publish
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Publish this request?</DialogTitle>
+              <DialogDescription>
+                This will make the request visible on the marketplace. Contributors
+                will be able to view and submit to it.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setConfirmAction(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => performAction("publish")}
+                disabled={loading}
+              >
+                {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Publish
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {canPause && (
         <Button
           variant="outline"

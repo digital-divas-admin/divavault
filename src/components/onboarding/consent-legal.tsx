@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useOnboardingStore } from "@/stores/onboarding-store";
-import { createClient } from "@/lib/supabase/client";
 import { StepContainer } from "./step-container";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -131,91 +130,31 @@ export function ConsentLegal() {
     setError(null);
 
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const res = await fetch("/api/onboarding/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consentAge: store.consentAge,
+          consentAiTraining: store.consentAiTraining,
+          consentLikeness: store.consentLikeness,
+          consentRevocation: store.consentRevocation,
+          consentPrivacy: store.consentPrivacy,
+          consentVersion: CONSENT_VERSION,
+          uploadedPhotos,
+          selectedPhotoIds,
+          instagramMedia: instagramMedia.map((m) => ({
+            id: m.id,
+            media_url: m.media_url,
+          })),
+        }),
+      });
 
-      if (!user) {
-        setError("Session expired. Please log in again.");
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Something went wrong. Please try again.");
         setSubmitting(false);
         return;
-      }
-
-      const photoCount = selectedPhotoIds.length + uploadedPhotos.length;
-
-      const consentDetails: Record<string, boolean> = {
-        consentAge: store.consentAge,
-        consentAiTraining: store.consentAiTraining,
-        consentLikeness: store.consentLikeness,
-        consentRevocation: store.consentRevocation,
-        consentPrivacy: store.consentPrivacy,
-      };
-
-      // Create/update contributor record
-      const { error: upsertError } = await supabase
-        .from("contributors")
-        .upsert({
-          id: user.id,
-          full_name: user.user_metadata?.full_name || "",
-          email: user.email || "",
-          track_type: "sfw" as const,
-          photo_count: photoCount,
-          consent_given: true,
-          consent_timestamp: new Date().toISOString(),
-          consent_version: CONSENT_VERSION,
-          consent_details: consentDetails,
-          onboarding_completed: true,
-        });
-
-      if (upsertError) {
-        setError(upsertError.message);
-        setSubmitting(false);
-        return;
-      }
-
-      // Insert upload records for manually uploaded photos
-      if (uploadedPhotos.length > 0) {
-        const bucket = "sfw-uploads";
-        const uploadRecords = uploadedPhotos.map((path) => ({
-          contributor_id: user.id,
-          source: "manual" as const,
-          file_path: path,
-          bucket,
-        }));
-
-        const { error: manualInsertError } = await supabase
-          .from("uploads")
-          .insert(uploadRecords);
-        if (manualInsertError) {
-          setError(`Failed to save upload records: ${manualInsertError.message}`);
-          setSubmitting(false);
-          return;
-        }
-      }
-
-      // Insert upload records for Instagram-selected photos
-      if (selectedPhotoIds.length > 0) {
-        const bucket = "sfw-uploads";
-        const igRecords = selectedPhotoIds.map((id) => {
-          const media = instagramMedia.find((m) => m.id === id);
-          return {
-            contributor_id: user.id,
-            source: "instagram" as const,
-            file_path: `${user.id}/ig-${id}`,
-            original_url: media?.media_url || null,
-            bucket,
-          };
-        });
-
-        const { error: igInsertError } = await supabase
-          .from("uploads")
-          .insert(igRecords);
-        if (igInsertError) {
-          setError(`Failed to save Instagram records: ${igInsertError.message}`);
-          setSubmitting(false);
-          return;
-        }
       }
 
       reset();

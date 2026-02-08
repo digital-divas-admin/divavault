@@ -14,6 +14,8 @@ export function getInstagramAuthUrl(state: string) {
   return `${INSTAGRAM_AUTH_URL}?${params.toString()}`;
 }
 
+const FETCH_TIMEOUT_MS = 10_000;
+
 export async function exchangeCodeForToken(code: string) {
   const body = new URLSearchParams({
     client_id: process.env.INSTAGRAM_CLIENT_ID!,
@@ -23,10 +25,14 @@ export async function exchangeCodeForToken(code: string) {
     code,
   });
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
   const res = await fetch(INSTAGRAM_TOKEN_URL, {
     method: "POST",
     body,
-  });
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeoutId));
 
   if (!res.ok) {
     throw new Error("Failed to exchange Instagram code for token");
@@ -55,7 +61,11 @@ export async function fetchUserMedia(
   let nextUrl: string | null = firstUrl;
 
   while (nextUrl && allMedia.length < maxItems) {
-    const res: Response = await fetch(nextUrl);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const res: Response = await fetch(nextUrl, {
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeoutId));
 
     if (!res.ok) {
       throw new Error("Failed to fetch Instagram media");

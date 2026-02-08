@@ -21,7 +21,8 @@ export async function GET() {
   const { data: requests, error } = await supabase
     .from("bounty_requests")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(200);
 
   if (error) {
     return NextResponse.json(

@@ -50,6 +50,7 @@ export default async function AdminRequestDetailPage({
             <RequestStatusBadge status={request.status} />
           </div>
           <RequestForm existingRequest={request} mode="edit" />
+          <RequestActions request={request} />
         </>
       ) : (
         <>

@@ -37,7 +37,12 @@ export async function POST(request: NextRequest, { params }: Props) {
     );
   }
 
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const result = addImageSchema.safeParse(body);
 
   if (!result.success) {
@@ -64,7 +69,8 @@ export async function POST(request: NextRequest, { params }: Props) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Insert submission image error:", error.message);
+    return NextResponse.json({ error: "Failed to save image record" }, { status: 500 });
   }
 
   return NextResponse.json({ image }, { status: 201 });
@@ -101,16 +107,41 @@ export async function DELETE(request: NextRequest, { params }: Props) {
     );
   }
 
-  const body = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
   const filePath = body.filePath;
 
   if (!filePath || typeof filePath !== "string") {
     return NextResponse.json({ error: "filePath is required" }, { status: 400 });
   }
 
+  // Validate file path belongs to this user (prevent path traversal)
+  const pathPattern = /^[a-f0-9-]+\/[^/]+$/;
+  if (!filePath.startsWith(`${user.id}/`) || !pathPattern.test(filePath)) {
+    return NextResponse.json({ error: "Invalid file path" }, { status: 400 });
+  }
+
   const serviceClient = await createServiceClient();
 
-  // Delete image record
+  // Delete from storage first — if this fails, DB record stays intact
+  const { error: storageErr } = await serviceClient.storage
+    .from("bounty-submissions")
+    .remove([filePath]);
+
+  if (storageErr) {
+    console.error("Storage delete failed:", storageErr.message);
+    return NextResponse.json(
+      { error: "Failed to delete file from storage" },
+      { status: 500 }
+    );
+  }
+
+  // Then delete DB record
   const { error } = await serviceClient
     .from("submission_images")
     .delete()
@@ -119,13 +150,12 @@ export async function DELETE(request: NextRequest, { params }: Props) {
     .eq("file_path", filePath);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("DB delete failed after storage delete:", error.message);
+    return NextResponse.json(
+      { error: "Failed to delete image record" },
+      { status: 500 }
+    );
   }
-
-  // Also delete from storage
-  await serviceClient.storage
-    .from("bounty-submissions")
-    .remove([filePath]);
 
   return NextResponse.json({ success: true });
 }

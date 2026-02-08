@@ -42,7 +42,7 @@ export async function getPublishedRequests(filters?: {
       query = query.order("published_at", { ascending: false });
   }
 
-  const { data } = await query;
+  const { data } = await query.limit(100);
   return (data as BountyRequest[]) || [];
 }
 
@@ -167,8 +167,8 @@ export async function getSubmissionImages(
 
   if (!images || images.length === 0) return [];
 
-  // Generate signed URLs
-  const withUrls = await Promise.all(
+  // Generate signed URLs — use allSettled so one broken file doesn't crash the list
+  const results = await Promise.allSettled(
     (images as SubmissionImage[]).map(async (img) => {
       const { data } = await supabase.storage
         .from(img.bucket)
@@ -177,7 +177,11 @@ export async function getSubmissionImages(
     })
   );
 
-  return withUrls;
+  return results.map((result, i) =>
+    result.status === "fulfilled"
+      ? result.value
+      : { ...(images as SubmissionImage[])[i], signed_url: undefined }
+  );
 }
 
 export async function getMarketplaceStats(

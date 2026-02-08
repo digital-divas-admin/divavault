@@ -28,7 +28,8 @@ export async function getUploadsWithSignedUrls(
     .from("uploads")
     .select("*")
     .eq("contributor_id", userId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(200);
 
   if (statusFilter && statusFilter !== "all") {
     query = query.eq("status", statusFilter);
@@ -37,7 +38,7 @@ export async function getUploadsWithSignedUrls(
   const { data: uploads } = await query;
   if (!uploads || uploads.length === 0) return [];
 
-  const withUrls = await Promise.all(
+  const results = await Promise.allSettled(
     (uploads as DashboardUpload[]).map(async (upload) => {
       if (upload.source === "instagram" && upload.original_url) {
         return { ...upload, signed_url: upload.original_url };
@@ -49,7 +50,11 @@ export async function getUploadsWithSignedUrls(
     })
   );
 
-  return withUrls;
+  return results.map((result, i) =>
+    result.status === "fulfilled"
+      ? result.value
+      : { ...(uploads as DashboardUpload[])[i], signed_url: undefined }
+  );
 }
 
 export async function getActivityLog(

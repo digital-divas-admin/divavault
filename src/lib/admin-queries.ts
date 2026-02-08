@@ -35,6 +35,26 @@ export async function getAdminRole(
   return admin?.role || null;
 }
 
+const ROLE_HIERARCHY: Record<AdminRole, number> = {
+  reviewer: 1,
+  admin: 2,
+  super_admin: 3,
+};
+
+/**
+ * Require the user to have at minimum the given admin role.
+ * Returns the role if authorized, or null if not.
+ */
+export async function requireAdmin(
+  userId: string,
+  minRole: AdminRole = "reviewer"
+): Promise<AdminRole | null> {
+  const role = await getAdminRole(userId);
+  if (!role) return null;
+  if (ROLE_HIERARCHY[role] < ROLE_HIERARCHY[minRole]) return null;
+  return role;
+}
+
 export async function getAllRequests(
   statusFilter?: string
 ): Promise<BountyRequest[]> {
@@ -42,7 +62,8 @@ export async function getAllRequests(
   let query = supabase
     .from("bounty_requests")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(200);
 
   if (statusFilter && statusFilter !== "all") {
     query = query.eq("status", statusFilter);
@@ -265,9 +286,10 @@ export async function getSubmissionsForRequest(
   const supabase = await createServiceClient();
   let query = supabase
     .from("bounty_submissions")
-    .select("*, contributors(full_name, display_name)")
+    .select("*, contributors(full_name, display_name), submission_images(id)")
     .eq("request_id", requestId)
-    .order("submitted_at", { ascending: false });
+    .order("submitted_at", { ascending: false })
+    .limit(100);
 
   if (status && status !== "all") {
     query = query.eq("status", status);
@@ -276,29 +298,19 @@ export async function getSubmissionsForRequest(
   const { data } = await query;
   if (!data) return [];
 
-  // Get image counts in parallel
   const submissions = data as (BountySubmission & {
     contributors: { full_name: string; display_name: string | null } | null;
+    submission_images: { id: string }[] | null;
   })[];
 
-  const withCounts = await Promise.all(
-    submissions.map(async (s) => {
-      const { count } = await supabase
-        .from("submission_images")
-        .select("*", { count: "exact", head: true })
-        .eq("submission_id", s.id);
-
-      return {
-        ...s,
-        contributor_name:
-          s.contributors?.display_name || s.contributors?.full_name || "Unknown",
-        image_count: count || 0,
-        contributors: undefined,
-      } as SubmissionWithContributor;
-    })
-  );
-
-  return withCounts;
+  return submissions.map((s) => ({
+    ...s,
+    contributor_name:
+      s.contributors?.display_name || s.contributors?.full_name || "Unknown",
+    image_count: s.submission_images?.length || 0,
+    contributors: undefined,
+    submission_images: undefined,
+  })) as SubmissionWithContributor[];
 }
 
 export async function getAllPendingSubmissions(): Promise<
@@ -308,38 +320,30 @@ export async function getAllPendingSubmissions(): Promise<
   const { data } = await supabase
     .from("bounty_submissions")
     .select(
-      "*, contributors(full_name, display_name), bounty_requests(title)"
+      "*, contributors(full_name, display_name), bounty_requests(title), submission_images(id)"
     )
     .eq("status", "submitted")
-    .order("submitted_at", { ascending: true });
+    .order("submitted_at", { ascending: true })
+    .limit(100);
 
   if (!data) return [];
 
   const submissions = data as (BountySubmission & {
     contributors: { full_name: string; display_name: string | null } | null;
     bounty_requests: { title: string } | null;
+    submission_images: { id: string }[] | null;
   })[];
 
-  const withCounts = await Promise.all(
-    submissions.map(async (s) => {
-      const { count } = await supabase
-        .from("submission_images")
-        .select("*", { count: "exact", head: true })
-        .eq("submission_id", s.id);
-
-      return {
-        ...s,
-        contributor_name:
-          s.contributors?.display_name || s.contributors?.full_name || "Unknown",
-        image_count: count || 0,
-        request_title: s.bounty_requests?.title || "Unknown Request",
-        contributors: undefined,
-        bounty_requests: undefined,
-      } as SubmissionWithContributor & { request_title: string };
-    })
-  );
-
-  return withCounts;
+  return submissions.map((s) => ({
+    ...s,
+    contributor_name:
+      s.contributors?.display_name || s.contributors?.full_name || "Unknown",
+    image_count: s.submission_images?.length || 0,
+    request_title: s.bounty_requests?.title || "Unknown Request",
+    contributors: undefined,
+    bounty_requests: undefined,
+    submission_images: undefined,
+  })) as (SubmissionWithContributor & { request_title: string })[];
 }
 
 export interface SubmissionDetail extends BountySubmission {
@@ -380,13 +384,19 @@ export async function getSubmissionWithImages(
     .eq("submission_id", submissionId)
     .order("created_at", { ascending: true });
 
-  const signedImages = await Promise.all(
+  const signedResults = await Promise.allSettled(
     ((images as SubmissionImage[]) || []).map(async (img) => {
       const { data } = await supabase.storage
         .from(img.bucket)
         .createSignedUrl(img.file_path, 3600);
       return { ...img, signed_url: data?.signedUrl || undefined };
     })
+  );
+
+  const signedImages = signedResults.map((result, i) =>
+    result.status === "fulfilled"
+      ? result.value
+      : { ...((images as SubmissionImage[]) || [])[i], signed_url: undefined }
   );
 
   return {
@@ -472,15 +482,7 @@ export async function reviewSubmission(
     const bonusAmountCents = speedBonus + qualityBonus;
     const totalPayout = earnedAmountCents + bonusAmountCents;
 
-    // Budget overflow check — use current budget_spent_cents from the request row
-    const newBudgetSpent = req.budget_spent_cents + totalPayout;
-    if (newBudgetSpent > req.budget_total_cents) {
-      throw new Error(
-        `Accepting would exceed budget ($${(newBudgetSpent / 100).toFixed(2)} > $${(req.budget_total_cents / 100).toFixed(2)})`
-      );
-    }
-
-    // Create earnings record
+    // Create earnings record first (can be cleaned up if budget update fails)
     const todayDate = now.split("T")[0]; // DATE column expects YYYY-MM-DD
     const { data: earning, error: earningErr } = await supabase
       .from("earnings")
@@ -497,6 +499,50 @@ export async function reviewSubmission(
       .single();
 
     if (earningErr) throw new Error(earningErr.message);
+
+    // Optimistic locking: the WHERE clause includes the exact budget_spent_cents
+    // and quantity_fulfilled values we read earlier. If another admin accepted
+    // between our read and this write, the values will have changed and the
+    // UPDATE will match 0 rows → .single() fails → we roll back.
+    // The budget overflow check is also in the WHERE clause for defense in depth.
+    const newBudgetSpent = req.budget_spent_cents + totalPayout;
+    const newFulfilled = req.quantity_fulfilled + 1;
+
+    if (newBudgetSpent > req.budget_total_cents) {
+      await supabase.from("earnings").delete().eq("id", earning.id);
+      throw new Error(
+        `Accepting would exceed budget ($${(newBudgetSpent / 100).toFixed(2)} > $${(req.budget_total_cents / 100).toFixed(2)})`
+      );
+    }
+
+    const requestUpdate: Record<string, unknown> = {
+      budget_spent_cents: newBudgetSpent,
+      quantity_fulfilled: newFulfilled,
+      updated_at: now,
+    };
+
+    // Auto-fulfill if we've hit the target
+    if (newFulfilled >= req.quantity_needed) {
+      requestUpdate.status = "fulfilled";
+    }
+
+    const { data: updatedRequest, error: budgetErr } = await supabase
+      .from("bounty_requests")
+      .update(requestUpdate)
+      .eq("id", s.request_id)
+      .eq("budget_spent_cents", req.budget_spent_cents)
+      .eq("quantity_fulfilled", req.quantity_fulfilled)
+      .select("budget_spent_cents, quantity_fulfilled, quantity_needed")
+      .single();
+
+    if (budgetErr || !updatedRequest) {
+      // Optimistic lock failed — another admin modified this request concurrently.
+      // Roll back the earnings record.
+      await supabase.from("earnings").delete().eq("id", earning.id);
+      throw new Error(
+        "This request was modified by another admin. Please refresh and try again."
+      );
+    }
 
     // Update submission
     const { data: updated, error: updateErr } = await supabase
@@ -516,25 +562,6 @@ export async function reviewSubmission(
       .single();
 
     if (updateErr) throw new Error(updateErr.message);
-
-    // Increment quantity_fulfilled + budget_spent on the request
-    // Use current values from the fetched row (not a re-query) to avoid double-counting
-    const newFulfilled = req.quantity_fulfilled + 1;
-    const requestUpdate: Record<string, unknown> = {
-      quantity_fulfilled: newFulfilled,
-      budget_spent_cents: newBudgetSpent,
-      updated_at: now,
-    };
-
-    // Auto-fulfill if we've hit the target
-    if (newFulfilled >= req.quantity_needed) {
-      requestUpdate.status = "fulfilled";
-    }
-
-    await supabase
-      .from("bounty_requests")
-      .update(requestUpdate)
-      .eq("id", s.request_id);
 
     // Log activity for contributor
     await logActivity(

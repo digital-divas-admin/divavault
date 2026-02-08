@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans, DM_Serif_Display } from "next/font/google";
+import { Suspense } from "react";
+import { SignoutCleanup } from "@/components/auth/signout-cleanup";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -35,6 +37,9 @@ export default function RootLayout({
       <body
         className={`${dmSans.variable} ${dmSerifDisplay.variable} font-sans antialiased`}
       >
+        <Suspense fallback={null}>
+          <SignoutCleanup />
+        </Suspense>
         {children}
       </body>
     </html>

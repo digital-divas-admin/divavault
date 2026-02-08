@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { fetchUserMedia } from "@/lib/instagram";
 import { createClient } from "@/lib/supabase/server";
 
@@ -10,7 +10,7 @@ function getMockMedia() {
   }));
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -20,10 +20,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Mock mode: return sample photos when Instagram credentials aren't configured
-  const isMock =
-    request.nextUrl.searchParams.get("ig_mock") === "true" ||
-    !process.env.INSTAGRAM_CLIENT_ID;
+  // Mock mode: only when Instagram credentials aren't configured
+  const isMock = !process.env.INSTAGRAM_CLIENT_ID;
 
   if (isMock) {
     return NextResponse.json({ media: getMockMedia() });
