@@ -17,6 +17,9 @@ export interface Earning {
   status: "pending" | "processing" | "paid" | "held";
   description: string | null;
   paid_at: string | null;
+  payout_batch_id: string | null;
+  payout_item_id: string | null;
+  payout_failure_reason: string | null;
   created_at: string;
 }
 
@@ -66,6 +69,7 @@ export interface DashboardContributor {
   consent_given: boolean;
   consent_timestamp: string | null;
   consent_version: string | null;
+  paypal_email: string | null;
   consent_details: Record<string, boolean> | null;
   onboarding_completed: boolean;
   opted_out: boolean;
@@ -74,6 +78,10 @@ export interface DashboardContributor {
   deletion_requested_at: string | null;
   deletion_scheduled_for: string | null;
   last_login_at: string | null;
+  suspended: boolean;
+  suspended_at: string | null;
+  flagged: boolean;
+  flag_reason: string | null;
   created_at: string;
   updated_at: string;
 }

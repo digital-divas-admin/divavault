@@ -618,10 +618,20 @@ export interface AdminStats {
   pendingReviews: number;
   budgetTotal: number;
   budgetSpent: number;
+  totalUsers: number;
+  newSignupsToday: number;
+  newSignupsThisWeek: number;
+  newSignupsThisMonth: number;
+  totalSubmissions: number;
 }
 
 export async function getAdminStats(): Promise<AdminStats> {
   const supabase = await createServiceClient();
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).toISOString();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
   const [
     { count: totalRequests },
@@ -631,6 +641,11 @@ export async function getAdminStats(): Promise<AdminStats> {
     { count: fulfilledRequests },
     { count: pendingReviews },
     { data: budgetData },
+    { count: totalUsers },
+    { count: newSignupsToday },
+    { count: newSignupsThisWeek },
+    { count: newSignupsThisMonth },
+    { count: totalSubmissions },
   ] = await Promise.all([
     supabase.from("bounty_requests").select("*", { count: "exact", head: true }),
     supabase.from("bounty_requests").select("*", { count: "exact", head: true }).eq("status", "draft"),
@@ -639,6 +654,11 @@ export async function getAdminStats(): Promise<AdminStats> {
     supabase.from("bounty_requests").select("*", { count: "exact", head: true }).eq("status", "fulfilled"),
     supabase.from("bounty_submissions").select("*", { count: "exact", head: true }).eq("status", "submitted"),
     supabase.from("bounty_requests").select("budget_total_cents, budget_spent_cents"),
+    supabase.from("contributors").select("*", { count: "exact", head: true }),
+    supabase.from("contributors").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
+    supabase.from("contributors").select("*", { count: "exact", head: true }).gte("created_at", weekStart),
+    supabase.from("contributors").select("*", { count: "exact", head: true }).gte("created_at", monthStart),
+    supabase.from("bounty_submissions").select("*", { count: "exact", head: true }),
   ]);
 
   const budgetTotal = (budgetData || []).reduce((s, r) => s + (r.budget_total_cents || 0), 0);
@@ -653,5 +673,476 @@ export async function getAdminStats(): Promise<AdminStats> {
     pendingReviews: pendingReviews || 0,
     budgetTotal,
     budgetSpent,
+    totalUsers: totalUsers || 0,
+    newSignupsToday: newSignupsToday || 0,
+    newSignupsThisWeek: newSignupsThisWeek || 0,
+    newSignupsThisMonth: newSignupsThisMonth || 0,
+    totalSubmissions: totalSubmissions || 0,
   };
+}
+
+// Recent admin activity feed
+export interface AdminActivityItem {
+  type: "signup" | "submission" | "published";
+  title: string;
+  description: string;
+  timestamp: string;
+}
+
+export async function getRecentAdminActivity(
+  limit = 10
+): Promise<AdminActivityItem[]> {
+  const supabase = await createServiceClient();
+
+  const [
+    { data: recentSignups },
+    { data: recentSubmissions },
+    { data: recentPublished },
+  ] = await Promise.all([
+    supabase
+      .from("contributors")
+      .select("full_name, display_name, created_at")
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    supabase
+      .from("bounty_submissions")
+      .select("id, submitted_at, contributors(full_name, display_name), bounty_requests(title)")
+      .eq("status", "submitted")
+      .order("submitted_at", { ascending: false })
+      .limit(limit),
+    supabase
+      .from("bounty_requests")
+      .select("title, published_at")
+      .eq("status", "published")
+      .not("published_at", "is", null)
+      .order("published_at", { ascending: false })
+      .limit(limit),
+  ]);
+
+  const items: AdminActivityItem[] = [];
+
+  for (const s of recentSignups || []) {
+    items.push({
+      type: "signup",
+      title: "New signup",
+      description: (s as { display_name: string | null; full_name: string }).display_name || (s as { full_name: string }).full_name,
+      timestamp: (s as { created_at: string }).created_at,
+    });
+  }
+
+  for (const sub of recentSubmissions || []) {
+    const s = sub as unknown as {
+      submitted_at: string | null;
+      contributors: { full_name: string; display_name: string | null } | null;
+      bounty_requests: { title: string } | null;
+    };
+    if (s.submitted_at) {
+      items.push({
+        type: "submission",
+        title: "New submission",
+        description: `${s.contributors?.display_name || s.contributors?.full_name || "Unknown"} submitted to "${s.bounty_requests?.title || "Unknown"}"`,
+        timestamp: s.submitted_at,
+      });
+    }
+  }
+
+  for (const r of recentPublished || []) {
+    const req = r as unknown as { title: string; published_at: string };
+    items.push({
+      type: "published",
+      title: "Request published",
+      description: req.title,
+      timestamp: req.published_at,
+    });
+  }
+
+  items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return items.slice(0, limit);
+}
+
+// User management queries
+export interface ContributorListItem {
+  id: string;
+  full_name: string;
+  email: string;
+  display_name: string | null;
+  sumsub_status: string;
+  photo_count: number;
+  onboarding_completed: boolean;
+  suspended: boolean;
+  flagged: boolean;
+  created_at: string;
+  submission_count: number;
+  total_earned_cents: number;
+}
+
+export async function getAllContributors({
+  search,
+  verificationStatus,
+  page = 1,
+  pageSize = 20,
+}: {
+  search?: string;
+  verificationStatus?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<{ contributors: ContributorListItem[]; total: number }> {
+  const supabase = await createServiceClient();
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
+    .from("contributors")
+    .select("id, full_name, email, display_name, sumsub_status, photo_count, onboarding_completed, suspended, flagged, created_at", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (search) {
+    query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,display_name.ilike.%${search}%`);
+  }
+  if (verificationStatus && verificationStatus !== "all") {
+    query = query.eq("sumsub_status", verificationStatus);
+  }
+
+  const { data, count } = await query;
+
+  if (!data) return { contributors: [], total: 0 };
+
+  // Fetch submission counts and earnings for these users
+  const userIds = data.map((c) => (c as { id: string }).id);
+
+  const [{ data: submissionCounts }, { data: earningsSums }] = await Promise.all([
+    supabase
+      .from("bounty_submissions")
+      .select("contributor_id")
+      .in("contributor_id", userIds),
+    supabase
+      .from("earnings")
+      .select("contributor_id, amount_cents")
+      .in("contributor_id", userIds),
+  ]);
+
+  const subCountMap = new Map<string, number>();
+  for (const s of submissionCounts || []) {
+    const cid = (s as { contributor_id: string }).contributor_id;
+    subCountMap.set(cid, (subCountMap.get(cid) || 0) + 1);
+  }
+
+  const earningsMap = new Map<string, number>();
+  for (const e of earningsSums || []) {
+    const rec = e as { contributor_id: string; amount_cents: number };
+    earningsMap.set(rec.contributor_id, (earningsMap.get(rec.contributor_id) || 0) + rec.amount_cents);
+  }
+
+  const contributors: ContributorListItem[] = data.map((c) => {
+    const row = c as {
+      id: string;
+      full_name: string;
+      email: string;
+      display_name: string | null;
+      sumsub_status: string;
+      photo_count: number;
+      onboarding_completed: boolean;
+      suspended: boolean;
+      flagged: boolean;
+      created_at: string;
+    };
+    return {
+      ...row,
+      submission_count: subCountMap.get(row.id) || 0,
+      total_earned_cents: earningsMap.get(row.id) || 0,
+    };
+  });
+
+  return { contributors, total: count || 0 };
+}
+
+export interface ContributorDetail {
+  id: string;
+  full_name: string;
+  email: string;
+  display_name: string | null;
+  sumsub_status: string;
+  instagram_username: string | null;
+  photo_count: number;
+  consent_given: boolean;
+  consent_timestamp: string | null;
+  onboarding_completed: boolean;
+  opted_out: boolean;
+  opted_out_at: string | null;
+  last_login_at: string | null;
+  suspended: boolean;
+  suspended_at: string | null;
+  flagged: boolean;
+  flag_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  submission_count: number;
+  total_earned_cents: number;
+  pending_earned_cents: number;
+  paid_earned_cents: number;
+}
+
+export async function getContributorAdmin(
+  userId: string
+): Promise<ContributorDetail | null> {
+  const supabase = await createServiceClient();
+  const { data } = await supabase
+    .from("contributors")
+    .select("*")
+    .eq("id", userId)
+    .single();
+
+  if (!data) return null;
+
+  const [{ count: submissionCount }, { data: earningsData }] = await Promise.all([
+    supabase
+      .from("bounty_submissions")
+      .select("*", { count: "exact", head: true })
+      .eq("contributor_id", userId),
+    supabase
+      .from("earnings")
+      .select("amount_cents, status")
+      .eq("contributor_id", userId),
+  ]);
+
+  let totalEarned = 0;
+  let pendingEarned = 0;
+  let paidEarned = 0;
+  for (const e of earningsData || []) {
+    const rec = e as { amount_cents: number; status: string };
+    totalEarned += rec.amount_cents;
+    if (rec.status === "pending" || rec.status === "processing") pendingEarned += rec.amount_cents;
+    if (rec.status === "paid") paidEarned += rec.amount_cents;
+  }
+
+  const row = data as Record<string, unknown>;
+  return {
+    id: row.id as string,
+    full_name: row.full_name as string,
+    email: row.email as string,
+    display_name: row.display_name as string | null,
+    sumsub_status: row.sumsub_status as string,
+    instagram_username: row.instagram_username as string | null,
+    photo_count: row.photo_count as number,
+    consent_given: row.consent_given as boolean,
+    consent_timestamp: row.consent_timestamp as string | null,
+    onboarding_completed: row.onboarding_completed as boolean,
+    opted_out: row.opted_out as boolean,
+    opted_out_at: row.opted_out_at as string | null,
+    last_login_at: row.last_login_at as string | null,
+    suspended: (row.suspended as boolean) || false,
+    suspended_at: row.suspended_at as string | null,
+    flagged: (row.flagged as boolean) || false,
+    flag_reason: row.flag_reason as string | null,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+    submission_count: submissionCount || 0,
+    total_earned_cents: totalEarned,
+    pending_earned_cents: pendingEarned,
+    paid_earned_cents: paidEarned,
+  };
+}
+
+export interface ContributorSubmissionItem {
+  id: string;
+  request_id: string;
+  request_title: string;
+  status: string;
+  submitted_at: string | null;
+  earned_amount_cents: number;
+  bonus_amount_cents: number;
+  created_at: string;
+}
+
+export async function getSubmissionsForContributor(
+  contributorId: string
+): Promise<ContributorSubmissionItem[]> {
+  const supabase = await createServiceClient();
+  const { data } = await supabase
+    .from("bounty_submissions")
+    .select("id, request_id, status, submitted_at, earned_amount_cents, bonus_amount_cents, created_at, bounty_requests(title)")
+    .eq("contributor_id", contributorId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (!data) return [];
+
+  return data.map((s) => {
+    const row = s as unknown as {
+      id: string;
+      request_id: string;
+      status: string;
+      submitted_at: string | null;
+      earned_amount_cents: number;
+      bonus_amount_cents: number;
+      created_at: string;
+      bounty_requests: { title: string } | null;
+    };
+    return {
+      ...row,
+      request_title: row.bounty_requests?.title || "Unknown Request",
+      bounty_requests: undefined,
+    };
+  }) as ContributorSubmissionItem[];
+}
+
+export async function suspendContributor(
+  userId: string,
+  suspend: boolean
+): Promise<void> {
+  const supabase = await createServiceClient();
+  const { error } = await supabase
+    .from("contributors")
+    .update({
+      suspended: suspend,
+      suspended_at: suspend ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", userId);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function flagContributor(
+  userId: string,
+  flagged: boolean,
+  reason?: string
+): Promise<void> {
+  const supabase = await createServiceClient();
+  const { error } = await supabase
+    .from("contributors")
+    .update({
+      flagged,
+      flag_reason: flagged ? (reason || null) : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", userId);
+
+  if (error) throw new Error(error.message);
+}
+
+// Payout queries
+export interface PayoutStats {
+  pendingCents: number;
+  pendingCount: number;
+  processingCents: number;
+  paidCents: number;
+  heldCents: number;
+}
+
+export async function getPayoutStats(): Promise<PayoutStats> {
+  const supabase = await createServiceClient();
+  const { data } = await supabase
+    .from("earnings")
+    .select("amount_cents, status");
+
+  const stats: PayoutStats = {
+    pendingCents: 0,
+    pendingCount: 0,
+    processingCents: 0,
+    paidCents: 0,
+    heldCents: 0,
+  };
+
+  for (const e of data || []) {
+    const rec = e as { amount_cents: number; status: string };
+    switch (rec.status) {
+      case "pending":
+        stats.pendingCents += rec.amount_cents;
+        stats.pendingCount++;
+        break;
+      case "processing": stats.processingCents += rec.amount_cents; break;
+      case "paid": stats.paidCents += rec.amount_cents; break;
+      case "held": stats.heldCents += rec.amount_cents; break;
+    }
+  }
+
+  return stats;
+}
+
+export interface EarningListItem {
+  id: string;
+  contributor_id: string;
+  contributor_name: string;
+  contributor_email: string;
+  amount_cents: number;
+  status: string;
+  description: string | null;
+  paid_at: string | null;
+  created_at: string;
+}
+
+export async function getAllEarnings({
+  statusFilter,
+  page = 1,
+  pageSize = 20,
+}: {
+  statusFilter?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<{ earnings: EarningListItem[]; total: number }> {
+  const supabase = await createServiceClient();
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
+    .from("earnings")
+    .select("id, contributor_id, amount_cents, status, description, paid_at, created_at, contributors(full_name, display_name, email)", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (statusFilter && statusFilter !== "all") {
+    query = query.eq("status", statusFilter);
+  }
+
+  const { data, count } = await query;
+
+  if (!data) return { earnings: [], total: 0 };
+
+  const earnings: EarningListItem[] = data.map((e) => {
+    const row = e as unknown as {
+      id: string;
+      contributor_id: string;
+      amount_cents: number;
+      status: string;
+      description: string | null;
+      paid_at: string | null;
+      created_at: string;
+      contributors: { full_name: string; display_name: string | null; email: string } | null;
+    };
+    return {
+      id: row.id,
+      contributor_id: row.contributor_id,
+      contributor_name: row.contributors?.display_name || row.contributors?.full_name || "Unknown",
+      contributor_email: row.contributors?.email || "",
+      amount_cents: row.amount_cents,
+      status: row.status,
+      description: row.description,
+      paid_at: row.paid_at,
+      created_at: row.created_at,
+    };
+  });
+
+  return { earnings, total: count || 0 };
+}
+
+export async function updateEarningStatus(
+  earningId: string,
+  newStatus: "pending" | "processing" | "paid" | "held"
+): Promise<void> {
+  const supabase = await createServiceClient();
+  const updates: Record<string, unknown> = {
+    status: newStatus,
+  };
+  if (newStatus === "paid") {
+    updates.paid_at = new Date().toISOString();
+  }
+
+  const { error } = await supabase
+    .from("earnings")
+    .update(updates)
+    .eq("id", earningId);
+
+  if (error) throw new Error(error.message);
 }

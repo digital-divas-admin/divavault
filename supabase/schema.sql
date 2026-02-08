@@ -3,13 +3,14 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Contributors table
 CREATE TABLE public.contributors (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  full_name TEXT NOT NULL,
+  full_name TEXT,
   email TEXT NOT NULL,
   track_type TEXT NOT NULL DEFAULT 'sfw' CHECK (track_type IN ('sfw')),
   sumsub_status TEXT DEFAULT 'pending' CHECK (sumsub_status IN ('pending', 'green', 'red', 'retry')),
   sumsub_applicant_id TEXT,
   instagram_username TEXT,
   instagram_token TEXT,
+  paypal_email TEXT,
   photo_count INTEGER DEFAULT 0,
   consent_given BOOLEAN DEFAULT FALSE,
   consent_timestamp TIMESTAMPTZ,
@@ -53,7 +54,7 @@ CREATE TABLE public.activity_log (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Earnings (placeholder-ready)
+-- Earnings
 CREATE TABLE public.earnings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   contributor_id UUID REFERENCES public.contributors(id) ON DELETE CASCADE,
@@ -64,7 +65,28 @@ CREATE TABLE public.earnings (
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'paid', 'held')),
   description TEXT,
   paid_at TIMESTAMPTZ,
+  payout_batch_id TEXT,
+  payout_item_id TEXT,
+  payout_failure_reason TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Payout batches (PayPal batch payout tracking)
+CREATE TABLE public.payout_batches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sender_batch_id TEXT NOT NULL UNIQUE,
+  paypal_batch_id TEXT,
+  status TEXT NOT NULL DEFAULT 'created'
+    CHECK (status IN ('created','processing','success','partial_success','failed','cancelled')),
+  total_items INTEGER NOT NULL DEFAULT 0,
+  total_amount_cents INTEGER NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  succeeded_count INTEGER DEFAULT 0,
+  failed_count INTEGER DEFAULT 0,
+  initiated_by UUID NOT NULL REFERENCES public.admin_users(id),
+  error_message TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ
 );
 
 -- Notification preferences
@@ -82,6 +104,7 @@ ALTER TABLE public.contributors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uploads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.earnings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payout_batches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can view own profile"
@@ -105,6 +128,10 @@ CREATE POLICY "Users can insert own activity"
 
 CREATE POLICY "Users can view own earnings"
   ON public.earnings FOR SELECT USING (auth.uid() = contributor_id);
+
+CREATE POLICY "Admins can view payout batches"
+  ON public.payout_batches FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.admin_users WHERE id = auth.uid()));
 
 CREATE POLICY "Users can view own preferences"
   ON public.notification_preferences FOR SELECT USING (auth.uid() = contributor_id);
@@ -371,10 +398,128 @@ CREATE INDEX idx_bounty_submissions_request_id ON public.bounty_submissions(requ
 CREATE INDEX idx_bounty_submissions_contributor_id ON public.bounty_submissions(contributor_id);
 CREATE INDEX idx_submission_images_submission_id ON public.submission_images(submission_id);
 CREATE INDEX idx_bounty_bookmarks_contributor_id ON public.bounty_bookmarks(contributor_id);
+CREATE INDEX idx_payout_batches_status ON public.payout_batches(status);
+CREATE INDEX idx_earnings_payout_batch_id ON public.earnings(payout_batch_id);
+
+-- =============================================
+-- Guided Capture System tables
+-- =============================================
+
+-- ALTER contributors for capture system
+ALTER TABLE public.contributors
+  ADD COLUMN IF NOT EXISTS face_embedding_anchor JSONB,
+  ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS capture_completed BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS current_onboarding_step INTEGER DEFAULT 1;
+
+-- Capture sessions (tracks guided capture sessions)
+CREATE TABLE public.capture_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contributor_id UUID NOT NULL REFERENCES public.contributors(id) ON DELETE CASCADE,
+  session_type TEXT NOT NULL DEFAULT 'onboarding' CHECK (session_type IN ('onboarding', 'supplemental')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'completed', 'abandoned')),
+  device_info JSONB,
+  images_captured INTEGER DEFAULT 0,
+  images_required INTEGER DEFAULT 9,
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Contributor images (richly-labeled capture photos)
+CREATE TABLE public.contributor_images (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contributor_id UUID NOT NULL REFERENCES public.contributors(id) ON DELETE CASCADE,
+  session_id UUID NOT NULL REFERENCES public.capture_sessions(id) ON DELETE CASCADE,
+  capture_step TEXT NOT NULL CHECK (capture_step IN (
+    'face_front', 'face_left', 'face_right', 'face_up', 'face_down',
+    'expression_smile', 'expression_neutral', 'expression_serious',
+    'upper_body', 'full_body'
+  )),
+  pose TEXT,
+  angle TEXT,
+  expression TEXT,
+  file_path TEXT NOT NULL,
+  bucket TEXT NOT NULL,
+  file_size BIGINT,
+  width INTEGER,
+  height INTEGER,
+  quality_score NUMERIC(4,2),
+  sharpness_score NUMERIC(4,2),
+  brightness_score NUMERIC(4,2),
+  identity_match_score NUMERIC(4,2),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Contributor consents (immutable granular consent records)
+CREATE TABLE public.contributor_consents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contributor_id UUID NOT NULL REFERENCES public.contributors(id) ON DELETE CASCADE,
+  consent_version TEXT NOT NULL,
+  -- Core consents
+  consent_age BOOLEAN NOT NULL,
+  consent_ai_training BOOLEAN NOT NULL,
+  consent_likeness BOOLEAN NOT NULL,
+  consent_revocation BOOLEAN NOT NULL,
+  consent_privacy BOOLEAN NOT NULL,
+  -- Granular usage categories
+  allow_commercial BOOLEAN DEFAULT TRUE,
+  allow_editorial BOOLEAN DEFAULT TRUE,
+  allow_entertainment BOOLEAN DEFAULT TRUE,
+  allow_e_learning BOOLEAN DEFAULT TRUE,
+  -- Restrictions
+  geo_restrictions TEXT[] DEFAULT ARRAY['global'],
+  content_exclusions TEXT[] DEFAULT '{}',
+  -- Audit
+  consent_hash TEXT NOT NULL,
+  ip_address TEXT,
+  user_agent TEXT,
+  signed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RLS for capture tables
+ALTER TABLE public.capture_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.contributor_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.contributor_consents ENABLE ROW LEVEL SECURITY;
+
+-- Capture sessions RLS
+CREATE POLICY "Users can view own sessions"
+  ON public.capture_sessions FOR SELECT TO authenticated
+  USING (contributor_id = auth.uid());
+CREATE POLICY "Users can insert own sessions"
+  ON public.capture_sessions FOR INSERT TO authenticated
+  WITH CHECK (contributor_id = auth.uid());
+CREATE POLICY "Users can update own sessions"
+  ON public.capture_sessions FOR UPDATE TO authenticated
+  USING (contributor_id = auth.uid());
+
+-- Contributor images RLS
+CREATE POLICY "Users can view own images"
+  ON public.contributor_images FOR SELECT TO authenticated
+  USING (contributor_id = auth.uid());
+CREATE POLICY "Users can insert own images"
+  ON public.contributor_images FOR INSERT TO authenticated
+  WITH CHECK (contributor_id = auth.uid());
+
+-- Contributor consents RLS
+CREATE POLICY "Users can view own consents"
+  ON public.contributor_consents FOR SELECT TO authenticated
+  USING (contributor_id = auth.uid());
+CREATE POLICY "Users can insert own consents"
+  ON public.contributor_consents FOR INSERT TO authenticated
+  WITH CHECK (contributor_id = auth.uid());
+
+-- Performance indexes for capture tables
+CREATE INDEX idx_capture_sessions_contributor ON public.capture_sessions(contributor_id);
+CREATE INDEX idx_contributor_images_session ON public.contributor_images(session_id);
+CREATE INDEX idx_contributor_images_contributor ON public.contributor_images(contributor_id);
+CREATE INDEX idx_contributor_consents_contributor ON public.contributor_consents(contributor_id);
 
 -- Storage buckets (create in Supabase dashboard):
 -- CREATE BUCKET sfw-uploads (private)
 -- CREATE BUCKET bounty-submissions (private)
+-- CREATE BUCKET capture-uploads (private) — for guided capture photos
 -- NOTE: nsfw-uploads bucket exists as legacy but is no longer used
 
 -- Storage RLS policies (run in Supabase Dashboard SQL Editor)
@@ -398,3 +543,12 @@ CREATE POLICY "Users can upload to own bounty folder"
 CREATE POLICY "Users can read own bounty files"
   ON storage.objects FOR SELECT TO authenticated
   USING (bucket_id = 'bounty-submissions' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Capture uploads storage
+CREATE POLICY "Users can upload to own capture folder"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'capture-uploads' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+CREATE POLICY "Users can read own capture files"
+  ON storage.objects FOR SELECT TO authenticated
+  USING (bucket_id = 'capture-uploads' AND (storage.foldername(name))[1] = auth.uid()::text);

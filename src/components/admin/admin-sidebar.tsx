@@ -10,6 +10,8 @@ import {
   LogOut,
   Menu,
   Shield,
+  Users,
+  Wallet,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +24,8 @@ const navItems = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/admin/requests", label: "Requests", icon: FileText },
   { href: "/admin/review-queue", label: "Review Queue", icon: ClipboardCheck },
+  { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/payouts", label: "Payouts", icon: Wallet },
 ];
 
 const roleLabels: Record<AdminRole, string> = {

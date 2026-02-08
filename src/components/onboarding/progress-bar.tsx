@@ -5,8 +5,10 @@ import { Check } from "lucide-react";
 
 const steps = [
   { label: "Verify ID" },
-  { label: "Add Photos" },
-  { label: "Review & Agree" },
+  { label: "Your Profile" },
+  { label: "Consent" },
+  { label: "Photo Capture" },
+  { label: "Complete" },
 ];
 
 interface ProgressBarProps {

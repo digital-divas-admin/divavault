@@ -128,6 +128,19 @@ export const reviewSubmissionSchema = z.object({
   awardQualityBonus: z.boolean().optional().default(false),
 });
 
+export const userActionSchema = z.object({
+  action: z.enum(["suspend", "unsuspend", "flag", "unflag"], {
+    message: "Invalid action",
+  }),
+  reason: z.string().max(1000).optional(),
+});
+
+export const earningStatusSchema = z.object({
+  status: z.enum(["pending", "processing", "paid", "held"], {
+    message: "Invalid earning status",
+  }),
+});
+
 export type RequestFiltersData = z.infer<typeof requestFiltersSchema>;
 export type CreateSubmissionData = z.infer<typeof createSubmissionSchema>;
 export type SubmitSubmissionData = z.infer<typeof submitSubmissionSchema>;
@@ -136,3 +149,5 @@ export type BookmarkData = z.infer<typeof bookmarkSchema>;
 export type ReportData = z.infer<typeof reportSchema>;
 export type CreateRequestData = z.infer<typeof createRequestSchema>;
 export type ReviewSubmissionData = z.infer<typeof reviewSubmissionSchema>;
+export type UserActionData = z.infer<typeof userActionSchema>;
+export type EarningStatusData = z.infer<typeof earningStatusSchema>;
