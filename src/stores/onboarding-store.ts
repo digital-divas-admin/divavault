@@ -8,7 +8,6 @@ import type {
 
 interface OnboardingState {
   currentStep: number;
-  trackType: "sfw";
   // Step 1: Identity verification
   sumsubStatus: "pending" | "green" | "red" | null;
   // Step 2: Profile builder
@@ -90,7 +89,6 @@ interface OnboardingState {
 
 const initialState = {
   currentStep: 1,
-  trackType: "sfw" as const,
   sumsubStatus: null as "pending" | "green" | "red" | null,
   // Profile
   profileData: {
@@ -218,12 +216,11 @@ export const useOnboardingStore = create<OnboardingState>()(
     }),
     {
       name: "madeofus-onboarding",
-      version: 2,
+      version: 3,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, unknown>;
         if (version < 2) {
           // Migrate from v0/v1 (old 3-step flow) to v2 (5-step flow)
-          // Map old step progress to new 5-step flow intelligently
           const oldStep = (state.currentStep as number) || 1;
           const hadSumsub = state.sumsubStatus === "green";
           const hadProfile = state.profileCompleted === true;
@@ -247,8 +244,13 @@ export const useOnboardingStore = create<OnboardingState>()(
             consentLikeness: state.consentLikeness ?? false,
             consentRevocation: state.consentRevocation ?? false,
             consentPrivacy: state.consentPrivacy ?? false,
-            // New fields get defaults from initialState
           };
+        }
+        if (version < 3) {
+          // v2→v3: strip removed trackType field
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { trackType: _, ...rest } = state as Record<string, unknown> & { trackType?: unknown };
+          return { ...initialState, ...rest };
         }
         return state;
       },

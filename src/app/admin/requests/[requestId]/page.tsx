@@ -68,8 +68,6 @@ export default async function AdminRequestDetailPage({
                   {request.category.replaceAll("_", " ")}
                 </span>
                 <span>·</span>
-                <span className="uppercase">{request.track_type}</span>
-                <span>·</span>
                 <BountyBadge
                   payAmountCents={request.pay_amount_cents}
                   payType={request.pay_type}

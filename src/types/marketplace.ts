@@ -31,7 +31,6 @@ export type RequestCategory =
   | "themed"
   | "other";
 
-export type TrackType = "sfw";
 export type PayType = "per_image" | "per_set";
 export type Visibility = "open" | "targeted" | "invite_only";
 
@@ -45,7 +44,6 @@ export interface BountyRequest {
   scenario_tags: string[];
   setting_tags: string[];
   category: RequestCategory;
-  track_type: TrackType;
   target_hair_colors: string[] | null;
   target_eye_colors: string[] | null;
   target_skin_tones: string[] | null;
@@ -117,7 +115,7 @@ export interface BountySubmission {
 export interface SubmissionWithRequest extends BountySubmission {
   bounty_requests: Pick<
     BountyRequest,
-    "title" | "category" | "track_type" | "pay_type" | "pay_amount_cents" | "deadline"
+    "title" | "category" | "pay_type" | "pay_amount_cents" | "deadline"
   >;
 }
 

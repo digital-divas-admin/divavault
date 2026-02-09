@@ -75,7 +75,6 @@ export async function POST(request: NextRequest) {
       description: result.data.description,
       model_context: result.data.modelContext,
       category: result.data.category,
-      track_type: result.data.trackType,
       pay_type: result.data.payType,
       pay_amount_cents: result.data.payAmountCents,
       set_size: result.data.setSize,

@@ -58,7 +58,6 @@ export function RequestForm({ existingRequest, mode }: RequestFormProps) {
         description: existingRequest.description,
         modelContext: existingRequest.model_context || undefined,
         category: existingRequest.category,
-        trackType: "sfw" as const,
         payType: existingRequest.pay_type,
         payAmountCents: existingRequest.pay_amount_cents,
         setSize: existingRequest.set_size || undefined,
@@ -79,7 +78,6 @@ export function RequestForm({ existingRequest, mode }: RequestFormProps) {
         settingTags: existingRequest.setting_tags,
       }
     : {
-        trackType: "sfw" as const,
         minResolutionWidth: 1024,
         minResolutionHeight: 1024,
         speedBonusCents: 0,

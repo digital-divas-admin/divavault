@@ -80,7 +80,6 @@ export async function createBountyRequest(
     description: string;
     model_context?: string;
     category: string;
-    track_type: string;
     pay_type: string;
     pay_amount_cents: number;
     set_size?: number;
@@ -109,7 +108,6 @@ export async function createBountyRequest(
       description: request.description,
       model_context: request.model_context || null,
       category: request.category,
-      track_type: request.track_type,
       pay_type: request.pay_type,
       pay_amount_cents: request.pay_amount_cents,
       set_size: request.set_size || null,
@@ -145,7 +143,6 @@ export async function updateBountyRequest(
     description: string;
     model_context: string | null;
     category: string;
-    track_type: string;
     pay_type: string;
     pay_amount_cents: number;
     set_size: number | null;
@@ -606,6 +603,33 @@ export async function reviewSubmission(
   });
 
   return updated as BountySubmission;
+}
+
+// Sidebar badge counts
+export interface SidebarCounts {
+  pendingReviews: number;
+  pendingPayouts: number;
+}
+
+export async function getSidebarCounts(): Promise<SidebarCounts> {
+  const supabase = await createServiceClient();
+
+  const [{ count: pendingReviews }, { count: pendingPayouts }] =
+    await Promise.all([
+      supabase
+        .from("bounty_submissions")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "submitted"),
+      supabase
+        .from("earnings")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending"),
+    ]);
+
+  return {
+    pendingReviews: pendingReviews || 0,
+    pendingPayouts: pendingPayouts || 0,
+  };
 }
 
 // Admin dashboard stats

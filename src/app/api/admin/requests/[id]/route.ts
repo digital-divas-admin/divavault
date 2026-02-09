@@ -73,7 +73,6 @@ export async function PATCH(
           description: parsed.data.description,
           model_context: parsed.data.modelContext || null,
           category: parsed.data.category,
-          track_type: parsed.data.trackType,
           pay_type: parsed.data.payType,
           pay_amount_cents: parsed.data.payAmountCents,
           set_size: parsed.data.setSize || null,

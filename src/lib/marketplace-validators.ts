@@ -81,9 +81,6 @@ export const createRequestSchema = z.object({
     ],
     { message: "Please select a category" }
   ),
-  trackType: z.enum(["sfw"], {
-    message: "Please select a track type",
-  }),
   payType: z.enum(["per_image", "per_set"], {
     message: "Please select a pay type",
   }),

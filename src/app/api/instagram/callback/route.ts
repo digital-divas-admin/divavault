@@ -49,7 +49,6 @@ export async function GET(request: NextRequest) {
         id: user.id,
         full_name: user.user_metadata?.full_name || "",
         email: user.email || "",
-        track_type: "sfw", // default, user already selected
         instagram_token: access_token,
       });
 

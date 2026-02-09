@@ -5,7 +5,6 @@ CREATE TABLE public.contributors (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT,
   email TEXT NOT NULL,
-  track_type TEXT NOT NULL DEFAULT 'sfw' CHECK (track_type IN ('sfw')),
   sumsub_status TEXT DEFAULT 'pending' CHECK (sumsub_status IN ('pending', 'green', 'red', 'retry')),
   sumsub_applicant_id TEXT,
   instagram_username TEXT,
@@ -169,7 +168,6 @@ CREATE TABLE public.bounty_requests (
     'portrait','full_body','lifestyle','fashion','fitness',
     'artistic','professional','casual','themed','other'
   )),
-  track_type TEXT NOT NULL DEFAULT 'sfw' CHECK (track_type IN ('sfw')),
   target_hair_colors TEXT[],
   target_eye_colors TEXT[],
   target_skin_tones TEXT[],

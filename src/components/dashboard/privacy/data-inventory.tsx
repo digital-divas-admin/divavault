@@ -24,7 +24,7 @@ export function DataInventory({
     {
       icon: User,
       label: "Profile Information",
-      detail: "Name, email, display name, track type",
+      detail: "Name, email, display name",
     },
     {
       icon: ImageIcon,

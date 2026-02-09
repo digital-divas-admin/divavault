@@ -108,7 +108,7 @@ export async function getMySubmissions(
   let query = supabase
     .from("bounty_submissions")
     .select(
-      "*, bounty_requests(title, category, track_type, pay_type, pay_amount_cents, deadline)"
+      "*, bounty_requests(title, category, pay_type, pay_amount_cents, deadline)"
     )
     .eq("contributor_id", userId)
     .order("updated_at", { ascending: false });

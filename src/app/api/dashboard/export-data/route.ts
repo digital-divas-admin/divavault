@@ -32,7 +32,6 @@ export async function POST() {
       ? {
           full_name: contributor.data.full_name,
           email: contributor.data.email,
-          track_type: contributor.data.track_type,
           display_name: contributor.data.display_name,
           sumsub_status: contributor.data.sumsub_status,
           instagram_username: contributor.data.instagram_username,

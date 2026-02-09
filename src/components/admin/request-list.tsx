@@ -69,8 +69,6 @@ export function RequestList({ requests }: RequestListProps) {
                         {request.category.replaceAll("_", " ")}
                       </span>
                       <span>·</span>
-                      <span className="uppercase">{request.track_type}</span>
-                      <span>·</span>
                       <span>
                         {new Date(request.created_at).toLocaleDateString()}
                       </span>
