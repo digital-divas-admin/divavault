@@ -4,6 +4,8 @@ import { Sidebar, MobileHeader } from "@/components/dashboard/sidebar";
 import type { DashboardContributor } from "@/types/dashboard";
 import type { SubscriptionTier } from "@/types/protection";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({
   children,
 }: {

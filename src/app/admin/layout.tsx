@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminUser } from "@/lib/admin-queries";
 import { AdminSidebar, AdminMobileHeader } from "@/components/admin/admin-sidebar";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminLayout({
   children,
 }: {
