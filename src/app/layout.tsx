@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, DM_Serif_Display } from "next/font/google";
 import { Suspense } from "react";
 import { SignoutCleanup } from "@/components/auth/signout-cleanup";
+import "@/lib/env";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -33,7 +34,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body
         className={`${dmSans.variable} ${dmSerifDisplay.variable} font-sans antialiased`}
       >

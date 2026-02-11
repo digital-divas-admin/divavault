@@ -10,7 +10,7 @@ import { TakedownStatusBadge } from "@/components/admin/scanner/takedown-status-
 import {
   ArrowLeft,
   User,
-  Image,
+  ImageIcon,
   Target,
   Bot,
   FileText,
@@ -85,7 +85,7 @@ export default async function MatchDetailPage({ params }: PageProps) {
         <Card className="bg-card border-border/30">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Image className="h-4 w-4 text-blue-500" />
+              <ImageIcon className="h-4 w-4 text-blue-500" />
               Discovered Image
             </CardTitle>
           </CardHeader>

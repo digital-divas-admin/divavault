@@ -46,7 +46,7 @@ export function QRHandoff({ onContinueOnDesktop, variant = "verification", step 
     }
 
     generateHandoff();
-  }, []);
+  }, [step]);
 
   if (loading) {
     return (

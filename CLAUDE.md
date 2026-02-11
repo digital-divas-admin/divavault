@@ -28,8 +28,8 @@ npm run lint     # Run ESLint
 src/
 ├── app/
 │   ├── page.tsx                    # Landing page (assembles 9 sections)
-│   ├── layout.tsx                  # Root layout (light theme, DM Sans + DM Serif Display fonts)
-│   ├── globals.css                 # Tailwind v4 theme (cream/teal/coral palette)
+│   ├── layout.tsx                  # Root layout (dark theme, DM Sans + DM Serif Display fonts)
+│   ├── globals.css                 # Tailwind v4 theme (dark purple-black palette)
 │   ├── (auth)/login/page.tsx       # Login form (client component)
 │   ├── (auth)/signup/page.tsx      # Signup form (client component)
 │   ├── onboarding/

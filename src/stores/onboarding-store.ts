@@ -218,6 +218,7 @@ export const useOnboardingStore = create<OnboardingState>()(
       name: "madeofus-onboarding",
       version: 3,
       migrate: (persistedState: unknown, version: number) => {
+        if (!persistedState || typeof persistedState !== "object") return initialState;
         const state = persistedState as Record<string, unknown>;
         if (version < 2) {
           // Migrate from v0/v1 (old 3-step flow) to v2 (5-step flow)

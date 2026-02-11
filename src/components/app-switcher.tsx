@@ -17,7 +17,7 @@ const apps = [
     id: "castmi",
     name: "castmi.ai",
     description: "AI generation",
-    href: process.env.NEXT_PUBLIC_CASTMI_URL || "https://castmi.ai",
+    href: process.env.NEXT_PUBLIC_CASTMI_URL || "#",
     current: false,
     color: "bg-secondary",
     initials: "CA",

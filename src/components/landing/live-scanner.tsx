@@ -68,10 +68,13 @@ const INITIAL_ROWS: DisplayRow[] = PLATFORMS.slice(0, VISIBLE_COUNT).map((p, i) 
 }));
 
 function useReducedMotion() {
-  const [reduced, setReduced] = useState(false);
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      : false
+  );
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
     const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
@@ -85,12 +88,15 @@ export function LiveScanner() {
   const nextIndexRef = useRef(VISIBLE_COUNT);
 
   const [rows, setRows] = useState<DisplayRow[]>(INITIAL_ROWS);
-  const [mounted, setMounted] = useState(false);
+  const mountedRef = useRef(false);
 
   // Randomize rows after mount to avoid hydration mismatch
   useEffect(() => {
-    setRows(PLATFORMS.slice(0, VISIBLE_COUNT).map((p) => generateRow(p, false)));
-    setMounted(true);
+    const id = requestAnimationFrame(() => {
+      mountedRef.current = true;
+      setRows(PLATFORMS.slice(0, VISIBLE_COUNT).map((p) => generateRow(p, false)));
+    });
+    return () => cancelAnimationFrame(id);
   }, []);
 
   // Set --scanner-height via ResizeObserver
@@ -115,10 +121,10 @@ export function LiveScanner() {
   }, []);
 
   useEffect(() => {
-    if (reducedMotion || !mounted) return;
+    if (reducedMotion || !mountedRef.current) return;
     const id = setInterval(cycleRow, 3000);
     return () => clearInterval(id);
-  }, [reducedMotion, mounted, cycleRow]);
+  }, [reducedMotion, cycleRow]);
 
   return (
     <section className="py-10 px-4 sm:px-6">
@@ -159,7 +165,7 @@ export function LiveScanner() {
             {/* Scan line */}
             {!reducedMotion && (
               <div
-                className="scanner-line absolute left-0 right-0 h-[2px] z-10 pointer-events-none"
+                className="scanner-line absolute top-0 left-0 right-0 h-[2px] z-10 pointer-events-none"
                 aria-hidden="true"
               />
             )}

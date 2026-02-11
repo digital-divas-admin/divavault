@@ -24,7 +24,7 @@ export default async function YourDataPage() {
 
   if (!user) redirect("/login");
 
-  const [contributor, activities, uploads] = await Promise.all([
+  const [contributor, , uploads] = await Promise.all([
     getContributor(user.id),
     getActivityLog(user.id),
     getUploadsWithSignedUrls(user.id),

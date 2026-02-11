@@ -35,6 +35,7 @@ export function PhotoCard({ upload, onRemove }: PhotoCardProps) {
         {/* Image */}
         <div className="aspect-square bg-muted/30 relative">
           {upload.signed_url ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={upload.signed_url}
               alt={upload.display_name || "Contributed photo"}

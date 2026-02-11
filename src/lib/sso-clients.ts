@@ -17,7 +17,7 @@ async function hashSecret(secret: string): Promise<string> {
 
 function getClients(): SsoClient[] {
   const castmiSecret = process.env.CASTMI_CLIENT_SECRET;
-  const castmiUrl = process.env.NEXT_PUBLIC_CASTMI_URL || "https://castmi.ai";
+  const castmiUrl = process.env.NEXT_PUBLIC_CASTMI_URL || "";
 
   if (!castmiSecret) return [];
 

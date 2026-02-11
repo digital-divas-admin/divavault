@@ -1,41 +1,80 @@
 services:
+  # --- Next.js frontend ---
   - type: web
-    name: diva-vault
+    name: madeofus
     runtime: node
+    region: oregon
+    plan: starter
     buildCommand: npm run build
     startCommand: npm run start
+    healthCheckPath: /api/health
+    autoDeploy: true
     envVars:
+      # Supabase
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      # SumSub
       - key: SUMSUB_APP_TOKEN
         sync: false
       - key: SUMSUB_SECRET_KEY
         sync: false
       - key: SUMSUB_WEBHOOK_SECRET
         sync: false
+      # Instagram
       - key: INSTAGRAM_CLIENT_ID
         sync: false
       - key: INSTAGRAM_CLIENT_SECRET
         sync: false
       - key: INSTAGRAM_REDIRECT_URI
         sync: false
+      # Site URL (used for QR handoff, OG tags, etc.)
+      - key: NEXT_PUBLIC_SITE_URL
+        sync: false
+      # castmi.ai cross-app SSO
+      - key: CASTMI_ORIGIN
+        sync: false
+      - key: NEXT_PUBLIC_CASTMI_URL
+        sync: false
+      - key: CASTMI_CLIENT_ID
+        sync: false
+      - key: CASTMI_CLIENT_SECRET
+        sync: false
+      # PayPal
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_MODE
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
 
+  # --- Python scanner service ---
   - type: web
     name: scanner
     runtime: docker
+    region: oregon
+    plan: standard
     dockerfilePath: apps/scanner/Dockerfile
     dockerContext: apps/scanner
+    healthCheckPath: /health
+    autoDeploy: true
     envVars:
+      # Database
       - key: DATABASE_URL
         sync: false
+      - key: DATABASE_SSL
+        sync: false
+      # Supabase
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      # Evidence storage
       - key: S3_ENDPOINT_URL
         sync: false
       - key: S3_ACCESS_KEY_ID
@@ -44,17 +83,34 @@ services:
         sync: false
       - key: S3_BUCKET_NAME
         sync: false
+      # External APIs
       - key: TINEYE_API_KEY
         sync: false
       - key: HIVE_API_KEY
         sync: false
+      - key: DEVIANTART_CLIENT_ID
+        sync: false
+      - key: DEVIANTART_CLIENT_SECRET
+        sync: false
+      # Thresholds
       - key: MATCH_THRESHOLD_LOW
         sync: false
       - key: MATCH_THRESHOLD_MEDIUM
         sync: false
       - key: MATCH_THRESHOLD_HIGH
         sync: false
+      # InsightFace
       - key: INSIGHTFACE_MODEL
         sync: false
+      # Scan tuning
+      - key: SCAN_BATCH_SIZE
+        sync: false
+      - key: SCHEDULER_TICK_SECONDS
+        sync: false
+      - key: INGEST_POLL_SECONDS
+        sync: false
+      # Runtime
       - key: LOG_LEVEL
+        sync: false
+      - key: TEMP_DIR
         sync: false

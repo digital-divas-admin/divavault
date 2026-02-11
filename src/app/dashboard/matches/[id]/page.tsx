@@ -14,7 +14,6 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { TierGate } from "@/components/dashboard/matches/tier-gate";
 import { getContributorMatchDetail } from "@/lib/protection-queries";
 import { getTierCapabilities } from "@/lib/tier-capabilities";
-import type { DashboardContributor } from "@/types/dashboard";
 
 const statusVariant: Record<string, "success" | "warning" | "purple" | "secondary"> = {
   new: "purple",

@@ -21,7 +21,7 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   return (
-    <Suspense>
+    <Suspense fallback={null}>
       <LoginContent />
     </Suspense>
   );

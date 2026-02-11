@@ -41,9 +41,15 @@ export async function POST(request: Request) {
   // derive from request. In dev, prefer the network IP so phones can reach it.
   const requestOrigin = request.headers.get("origin")
     || request.headers.get("referer")?.replace(/\/[^/]*$/, "");
-  const origin = process.env.NEXT_PUBLIC_SITE_URL
-    || requestOrigin
-    || "https://www.madeofus.ai";
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || requestOrigin;
+
+  if (!origin) {
+    return NextResponse.json(
+      { error: "Cannot determine site origin. Set NEXT_PUBLIC_SITE_URL." },
+      { status: 500 }
+    );
+  }
+
   const url = `${origin}/onboarding?handoff=${token}`;
 
   return NextResponse.json({ url, expiresIn: 900 });

@@ -5,8 +5,8 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres"
-    database_ssl: bool = False
+    database_url: str = ""
+    database_ssl: bool = True
 
     # Supabase (for downloading contributor images from storage)
     supabase_url: str = ""

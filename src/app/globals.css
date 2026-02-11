@@ -45,6 +45,7 @@
 }
 
 :root {
+  color-scheme: dark;
   --radius: 0.625rem;
   --font-sans: "DM Sans", system-ui, sans-serif;
   --font-heading: "DM Serif Display", Georgia, serif;
