@@ -9,6 +9,7 @@ import { CaptureButton } from "./capture/capture-button";
 import { QualityFeedback } from "./capture/quality-feedback";
 import { StepIndicator } from "./capture/step-indicator";
 import { PoseGuide } from "./capture/pose-guide";
+import { CoverageTracker } from "./capture/coverage-tracker";
 import { QRHandoff } from "./qr-handoff";
 import { PhotoGuidelines } from "./photo-guidelines";
 import { InstagramConnect } from "./instagram-connect";
@@ -364,6 +365,13 @@ export function GuidedCapture() {
         </Card>
       ) : (
         <>
+          {currentStep && (
+            <CoverageTracker
+              capturedSteps={capturedSteps}
+              currentStepId={currentStep.id}
+            />
+          )}
+
           {currentStep && (
             <StepIndicator
               currentIndex={currentStepIndex}

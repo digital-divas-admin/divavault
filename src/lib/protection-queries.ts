@@ -1,10 +1,11 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type {
   ProtectionStats,
   ContributorMatch,
   ContributorMatchDetail,
   ProtectionActivity,
 } from "@/types/protection";
+import type { ProtectionScore } from "@/types/protection-score";
 
 export async function getProtectionStats(
   userId: string
@@ -314,4 +315,215 @@ export async function getUnreadNotificationCount(
     .eq("contributor_id", userId)
     .eq("read", false);
   return count || 0;
+}
+
+export async function getProtectionScore(
+  userId: string
+): Promise<ProtectionScore> {
+  const supabase = await createClient();
+  const serviceClient = await createServiceClient();
+
+  // Look up the contributor row for this auth user
+  const { data: contributor } = await supabase
+    .from("contributors")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const contributorId = contributor?.id || userId;
+
+  // Query three data sources in parallel
+  const [imagesRes, uploadsRes, embeddingsRes] = await Promise.all([
+    // contributor_images: capture_step + quality_score
+    supabase
+      .from("contributor_images")
+      .select("capture_step, quality_score")
+      .eq("contributor_id", contributorId),
+    // uploads: count + embedding_status
+    supabase
+      .from("uploads")
+      .select("id, embedding_status")
+      .eq("contributor_id", contributorId),
+    // contributor_embeddings: count by embedding_type (use service client for RLS)
+    serviceClient
+      .from("contributor_embeddings")
+      .select("id, embedding_type")
+      .eq("contributor_id", contributorId),
+  ]);
+
+  const images = imagesRes.data || [];
+  const uploads = uploadsRes.data || [];
+  const embeddings = embeddingsRes.data || [];
+
+  // --- Angle coverage (30 pts, 6 per angle) ---
+  const angleSteps = [
+    "face_front",
+    "face_left",
+    "face_right",
+    "face_up",
+    "face_down",
+  ] as const;
+  const angleLabelMap: Record<string, string> = {
+    face_front: "front",
+    face_left: "left profile",
+    face_right: "right profile",
+    face_up: "upward tilt",
+    face_down: "downward tilt",
+  };
+  const capturedSteps = new Set(images.map((img) => img.capture_step));
+  const coveredAngles = angleSteps.filter((s) => capturedSteps.has(s));
+  const missingAngles = angleSteps.filter((s) => !capturedSteps.has(s));
+  const angleCoverageScore = coveredAngles.length * 6;
+
+  // --- Expression coverage (15 pts, 5 per expression) ---
+  const expressionSteps = [
+    "expression_smile",
+    "expression_neutral",
+    "expression_serious",
+  ] as const;
+  const expressionLabelMap: Record<string, string> = {
+    expression_smile: "smiling",
+    expression_neutral: "neutral",
+    expression_serious: "serious",
+  };
+  const coveredExpressions = expressionSteps.filter((s) =>
+    capturedSteps.has(s)
+  );
+  const missingExpressions = expressionSteps.filter(
+    (s) => !capturedSteps.has(s)
+  );
+  const expressionCoverageScore = coveredExpressions.length * 5;
+
+  // --- Photo count (20 pts, 1 per photo, cap 20) ---
+  const totalPhotoCount = images.length + uploads.length;
+  const photoCountScore = Math.min(totalPhotoCount, 20);
+
+  // --- Average quality (15 pts) ---
+  const qualityScores = images
+    .map((img) => img.quality_score)
+    .filter((q): q is number => q !== null && q !== undefined);
+  const avgQuality =
+    qualityScores.length > 0
+      ? qualityScores.reduce((sum, q) => sum + q, 0) / qualityScores.length
+      : 0;
+  const averageQualityScore = Math.round(avgQuality * 15 * 100) / 100;
+
+  // --- Centroid computed (10 pts) ---
+  const hasCentroid = embeddings.some(
+    (e) => e.embedding_type === "centroid"
+  );
+  const centroidScore = hasCentroid ? 10 : 0;
+
+  // --- Embedding success rate (10 pts) ---
+  const totalItems = totalPhotoCount;
+  const successfulEmbeddings = embeddings.filter(
+    (e) => e.embedding_type !== "centroid"
+  ).length;
+  const embeddingRate =
+    totalItems > 0 ? successfulEmbeddings / totalItems : 0;
+  const embeddingSuccessScore =
+    Math.round(Math.min(embeddingRate, 1) * 10 * 100) / 100;
+
+  // --- Total score ---
+  const totalScore = Math.round(
+    angleCoverageScore +
+      expressionCoverageScore +
+      photoCountScore +
+      averageQualityScore +
+      centroidScore +
+      embeddingSuccessScore
+  );
+
+  // --- Tier mapping ---
+  let tier: ProtectionScore["tier"];
+  if (totalScore >= 85) tier = "excellent";
+  else if (totalScore >= 70) tier = "strong";
+  else if (totalScore >= 50) tier = "good";
+  else if (totalScore >= 25) tier = "basic";
+  else tier = "minimal";
+
+  // --- Suggestions ---
+  const suggestions: string[] = [];
+
+  for (const step of missingAngles) {
+    const label = angleLabelMap[step] || step;
+    suggestions.push(
+      `Add a ${label} photo to improve angle coverage`
+    );
+  }
+
+  for (const step of missingExpressions) {
+    const label = expressionLabelMap[step] || step;
+    suggestions.push(
+      `Add a ${label} photo to improve expression diversity`
+    );
+  }
+
+  if (totalPhotoCount < 10) {
+    suggestions.push(
+      "Upload more photos to strengthen your facial signature"
+    );
+  }
+
+  if (!hasCentroid) {
+    suggestions.push(
+      "Your photos will generate a centroid embedding once 3+ are processed"
+    );
+  }
+
+  if (qualityScores.length > 0 && avgQuality < 0.7) {
+    suggestions.push(
+      "Retake some photos in better lighting to improve quality scores"
+    );
+  }
+
+  if (totalItems > 0 && embeddingRate < 0.8) {
+    suggestions.push(
+      "Some photos failed embedding processing — consider replacing low-quality images"
+    );
+  }
+
+  return {
+    score: totalScore,
+    breakdown: {
+      angleCoverage: {
+        score: angleCoverageScore,
+        max: 30,
+        covered: coveredAngles.map((s) => angleLabelMap[s] || s),
+        missing: missingAngles.map((s) => angleLabelMap[s] || s),
+      },
+      expressionCoverage: {
+        score: expressionCoverageScore,
+        max: 15,
+        covered: coveredExpressions.map(
+          (s) => expressionLabelMap[s] || s
+        ),
+        missing: missingExpressions.map(
+          (s) => expressionLabelMap[s] || s
+        ),
+      },
+      photoCount: {
+        score: photoCountScore,
+        max: 20,
+        count: totalPhotoCount,
+      },
+      averageQuality: {
+        score: averageQualityScore,
+        max: 15,
+        avgQuality: Math.round(avgQuality * 100) / 100,
+      },
+      centroidComputed: {
+        score: centroidScore,
+        max: 10,
+        exists: hasCentroid,
+      },
+      embeddingSuccessRate: {
+        score: embeddingSuccessScore,
+        max: 10,
+        rate: Math.round(embeddingRate * 100) / 100,
+      },
+    },
+    suggestions,
+    tier,
+  };
 }

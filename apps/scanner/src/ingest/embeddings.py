@@ -27,6 +27,7 @@ from src.db.queries import (
     update_image_embedding_status,
     update_primary_embedding,
 )
+from src.ingest.centroid import compute_centroid_embedding
 from src.utils.image_download import download_from_supabase, load_and_resize
 from src.utils.logging import get_logger
 
@@ -135,6 +136,7 @@ async def _process_image(session, img: ContributorImage) -> None:
             source_image_id=img.id,
         )
         await update_primary_embedding(session, img.contributor_id)
+        await compute_centroid_embedding(session, img.contributor_id)
         await update_image_embedding_status(session, img.id, "processed")
 
         # Initialize scan schedule if this is the contributor's first embedding
@@ -187,6 +189,7 @@ async def _process_upload(session, upload: Upload) -> None:
             source_upload_id=upload.id,
         )
         await update_primary_embedding(session, upload.contributor_id)
+        await compute_centroid_embedding(session, upload.contributor_id)
         await update_image_embedding_status(
             session, upload.id, "processed", is_upload=True
         )
@@ -267,11 +270,14 @@ async def _run_backfill_for_contributor(session, contributor_id: UUID) -> None:
     from src.matching.confidence import get_confidence_tier
     from sqlalchemy import select
 
-    # Get the contributor's best embedding (highest detection score)
+    # Get the contributor's best embedding (prefer centroid, then highest detection score)
     result = await session.execute(
         select(ContributorEmbedding)
         .where(ContributorEmbedding.contributor_id == contributor_id)
-        .order_by(ContributorEmbedding.detection_score.desc().nulls_last())
+        .order_by(
+            (ContributorEmbedding.embedding_type == "centroid").desc(),
+            ContributorEmbedding.detection_score.desc().nulls_last(),
+        )
         .limit(1)
     )
     best_embedding = result.scalar_one_or_none()

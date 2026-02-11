@@ -135,6 +135,8 @@ class ContributorEmbedding(Base):
     embedding = Column(Vector(512), nullable=False)
     detection_score: Mapped[float | None] = mapped_column(Float)
     is_primary: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    embedding_type: Mapped[str] = mapped_column(Text, server_default=text("'single'"), nullable=False)
+    centroid_metadata: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 

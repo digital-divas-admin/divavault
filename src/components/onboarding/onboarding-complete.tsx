@@ -7,6 +7,7 @@ import { StepContainer } from "./step-container";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CheckCircle2, Loader2, PartyPopper } from "lucide-react";
+import { ProtectionScorePreview } from "./protection-score-preview";
 
 export function OnboardingComplete() {
   const router = useRouter();
@@ -104,6 +105,10 @@ export function OnboardingComplete() {
                 {photoCount} Photo{photoCount !== 1 ? "s" : ""}
               </p>
             </div>
+          </div>
+
+          <div className="mb-6">
+            <ProtectionScorePreview />
           </div>
 
           <p className="text-sm text-muted-foreground mb-2">

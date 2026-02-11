@@ -20,7 +20,8 @@ import { ActivityFeed } from "@/components/dashboard/protection/activity-feed";
 import { RecentMatchesCard } from "@/components/dashboard/protection/recent-matches-card";
 import { NoMatchesCard } from "@/components/dashboard/protection/no-matches-card";
 import { TierUpsellBanner } from "@/components/dashboard/protection/tier-upsell-banner";
-import { getProtectionStats, getContributorMatches, getProtectionActivityFeed } from "@/lib/protection-queries";
+import { getProtectionStats, getContributorMatches, getProtectionActivityFeed, getProtectionScore } from "@/lib/protection-queries";
+import { ProtectionScoreCard } from "@/components/dashboard/protection/protection-score-card";
 import type { DashboardContributor } from "@/types/dashboard";
 
 export default async function DashboardPage() {
@@ -41,7 +42,7 @@ export default async function DashboardPage() {
 
   const c = contributor as DashboardContributor;
 
-  const [stats, recentMatchesResult, activities, embeddingCounts] = await Promise.all([
+  const [stats, recentMatchesResult, activities, embeddingCounts, protectionScore] = await Promise.all([
     getProtectionStats(user.id),
     getContributorMatches(user.id, { pageSize: 5 }),
     getProtectionActivityFeed(user.id, 8),
@@ -49,6 +50,7 @@ export default async function DashboardPage() {
       .from("uploads")
       .select("embedding_status")
       .eq("contributor_id", user.id),
+    getProtectionScore(user.id),
   ]);
 
   // Determine embedding state for the no-matches card
@@ -58,7 +60,7 @@ export default async function DashboardPage() {
     const pending = uploads.some(
       (u) => u.embedding_status === "pending" || u.embedding_status === "processing"
     );
-    const anyReady = uploads.some((u) => u.embedding_status === "completed");
+    const anyReady = uploads.some((u) => u.embedding_status === "completed" || u.embedding_status === "processed");
     const allFailed = uploads.every((u) => u.embedding_status === "failed");
     if (allFailed) {
       embeddingState = "failed";
@@ -94,6 +96,9 @@ export default async function DashboardPage() {
           valueClassName="text-accent"
         />
       </div>
+
+      {/* Protection Score */}
+      <ProtectionScoreCard score={protectionScore} />
 
       {/* Recent Matches */}
       <Card className="border-border/50 bg-card rounded-2xl mb-6">
