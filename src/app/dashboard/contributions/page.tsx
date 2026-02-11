@@ -60,7 +60,7 @@ export default async function ContributionsPage() {
               or completing the guided capture.
             </p>
             <Button asChild>
-              <Link href="/onboarding">Start Contributing</Link>
+              <Link href="/onboarding?step=4">Upload Photos</Link>
             </Button>
           </CardContent>
         </Card>

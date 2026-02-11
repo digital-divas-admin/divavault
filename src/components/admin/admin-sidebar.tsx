@@ -12,6 +12,11 @@ import {
   Shield,
   Users,
   Wallet,
+  Radar,
+  Target,
+  Briefcase,
+  ShieldCheck,
+  FlaskConical,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -21,12 +26,19 @@ import { useState } from "react";
 import type { AdminRole } from "@/types/marketplace";
 import { AppSwitcher } from "@/components/app-switcher";
 
-const navItems = [
+const coreNavItems = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/admin/requests", label: "Requests", icon: FileText },
   { href: "/admin/review-queue", label: "Review Queue", icon: ClipboardCheck },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/payouts", label: "Payouts", icon: Wallet },
+];
+
+const scannerNavItems = [
+  { href: "/admin/scanner", label: "Scanner", icon: Radar, exact: true },
+  { href: "/admin/scanner/matches", label: "Matches", icon: Target },
+  { href: "/admin/scanner/jobs", label: "Scan Jobs", icon: Briefcase },
+  { href: "/admin/scanner/test", label: "Testing", icon: FlaskConical },
 ];
 
 const roleLabels: Record<AdminRole, string> = {
@@ -65,13 +77,10 @@ function SidebarContent({ displayName, role }: AdminSidebarProps) {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="px-6 py-5 border-b border-border/30 flex items-center justify-between">
-        <Link
-          href="/"
-          className="font-[family-name:var(--font-heading)] text-2xl italic"
-        >
-          <span className="text-primary">made of </span>
-          <span className="text-secondary">us</span>
-          <span className="text-xs text-muted-foreground ml-2 not-italic">admin</span>
+        <Link href="/" className="flex items-center gap-2">
+          <ShieldCheck className="w-5 h-5 text-primary" />
+          <span className="font-semibold text-foreground text-lg">madeofus</span>
+          <span className="text-xs text-muted-foreground">admin</span>
         </Link>
         <AppSwitcher />
       </div>
@@ -99,8 +108,32 @@ function SidebarContent({ displayName, role }: AdminSidebarProps) {
       </div>
 
       {/* Nav items */}
-      <nav className="flex-1 px-3 py-3 space-y-1">
-        {navItems.map((item) => {
+      <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
+        {coreNavItems.map((item) => {
+          const active = isActive(item.href, item.exact);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                active
+                  ? "bg-primary/10 text-primary border-l-2 border-primary -ml-[2px] pl-[14px]"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+              }`}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              {item.label}
+            </Link>
+          );
+        })}
+
+        <div className="pt-3 pb-1 px-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+            Scanner
+          </p>
+        </div>
+
+        {scannerNavItems.map((item) => {
           const active = isActive(item.href, item.exact);
           return (
             <Link
@@ -160,13 +193,10 @@ export function AdminMobileHeader(props: AdminSidebarProps) {
 
   return (
     <header className="lg:hidden sticky top-0 z-20 flex items-center justify-between px-4 py-3 border-b border-border/30 bg-background/80 backdrop-blur-sm">
-      <Link
-        href="/"
-        className="font-[family-name:var(--font-heading)] text-2xl italic"
-      >
-        <span className="text-primary">made of </span>
-        <span className="text-secondary">us</span>
-        <span className="text-xs text-muted-foreground ml-2 not-italic">admin</span>
+      <Link href="/" className="flex items-center gap-2">
+        <ShieldCheck className="w-5 h-5 text-primary" />
+        <span className="font-semibold text-foreground text-lg">madeofus</span>
+        <span className="text-xs text-muted-foreground">admin</span>
       </Link>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>

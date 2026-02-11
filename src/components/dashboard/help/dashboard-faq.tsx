@@ -8,39 +8,39 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const faqItems = [
   {
-    question: "How are my photos used in AI training?",
+    question: "How does facial scanning work?",
     answer:
-      "Your photos are used to train AI models that generate synthetic images. The models learn visual patterns from your photos — things like lighting, poses, and features — to create new, original images. Your actual photos are never published or shared directly.",
+      "We create a unique facial signature from the photos you upload during onboarding. Our scanner compares this signature against images found on AI platforms. When we find a match above our confidence threshold, you're notified and can take action.",
+  },
+  {
+    question: "What platforms do you monitor?",
+    answer:
+      "We monitor CivitAI, DeviantArt, Reddit AI communities, Hugging Face, and hundreds more. The exact number depends on your subscription tier. Free users get 2 platforms, while Protected and Premium members get full coverage.",
+  },
+  {
+    question: "How long does a takedown take?",
+    answer:
+      "Most DMCA takedown requests are processed within 48-72 hours. Some platforms respond faster. You can track every takedown's status in real-time from your Matches page.",
+  },
+  {
+    question: "What does a match 'confidence score' mean?",
+    answer:
+      "The confidence score (e.g., 94%) indicates how closely the discovered image matches your facial signature. Higher scores mean a stronger match. You can review every match and dismiss false positives.",
   },
   {
     question: "Can I remove my photos after contributing?",
     answer:
-      "Yes. Go to My Contributions and remove any photo you want. Removed photos won't be used in future training batches. However, models that have already been trained cannot be un-trained — this is a limitation of current AI technology.",
-  },
-  {
-    question: "When will I start earning?",
-    answer:
-      "We're building the compensation system now. As a founding contributor, you'll be first in line when it launches. We'll notify you by email as soon as earnings become available.",
-  },
-  {
-    question: "What does 'opting out' mean?",
-    answer:
-      "Opting out means your photos will no longer be included in any future AI training batches. Your photos remain in storage but are flagged as inactive. You can opt back in at any time from Privacy & Data.",
-  },
-  {
-    question: "Is my identity information stored?",
-    answer:
-      "Your ID verification is processed by Sumsub, a trusted third-party KYC provider. We never store your ID documents directly — only the verification status (verified/not verified) is kept in our system.",
+      "Yes. Go to Your Data and remove any photo you want. Your facial signature will be updated accordingly. You can also opt out entirely from the Privacy Controls tab.",
   },
   {
     question: "What happens if I delete my account?",
     answer:
-      "Account deletion has a 30-day cooling period. After that, all your data is permanently removed: profile, uploaded photos, consent records, and activity history. Models that were already trained with your photos cannot be retroactively modified.",
+      "Account deletion has a 30-day cooling period. After that, all your data is permanently removed: profile, photos, facial signatures, match history, and activity. Active takedowns will continue to completion.",
   },
   {
-    question: "How do I change my email or password?",
+    question: "Is my facial data safe?",
     answer:
-      "Email changes are not currently supported. For password changes, use the forgot password flow from the login page. Two-factor authentication is coming soon.",
+      "Your facial data is encrypted at rest and in transit. We never share it with third parties. The facial embeddings we create are mathematical representations — they cannot be reverse-engineered back into your photos.",
   },
 ];
 

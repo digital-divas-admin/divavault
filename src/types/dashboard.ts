@@ -7,29 +7,19 @@ export interface ActivityLog {
   created_at: string;
 }
 
-export interface Earning {
-  id: string;
-  contributor_id: string;
-  period_start: string;
-  period_end: string;
-  amount_cents: number;
-  currency: string;
-  status: "pending" | "processing" | "paid" | "held";
-  description: string | null;
-  paid_at: string | null;
-  payout_batch_id: string | null;
-  payout_item_id: string | null;
-  payout_failure_reason: string | null;
-  created_at: string;
-}
-
 export interface NotificationPreferences {
   contributor_id: string;
   email_earnings: boolean;
   email_photo_status: boolean;
   email_platform_updates: boolean;
   email_security_alerts: boolean;
+  email_match_alerts: boolean;
+  email_scan_updates: boolean;
+  email_takedown_updates: boolean;
+  email_bounty_matches: boolean;
+  email_bounty_updates: boolean;
   updated_at: string;
+  [key: string]: string | boolean;
 }
 
 export type UploadStatus =
@@ -42,7 +32,7 @@ export type UploadStatus =
 export interface DashboardUpload {
   id: string;
   contributor_id: string;
-  source: "instagram" | "manual";
+  source: "instagram" | "manual" | "capture";
   file_path: string;
   original_url: string | null;
   file_size: number | null;
@@ -81,6 +71,7 @@ export interface DashboardContributor {
   suspended_at: string | null;
   flagged: boolean;
   flag_reason: string | null;
+  subscription_tier: string;
   created_at: string;
   updated_at: string;
 }

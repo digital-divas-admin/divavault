@@ -1,6 +1,6 @@
 # Made Of Us
 
-A platform for influencers and creators to monetize their likeness through ethical AI training. Contributors upload photos (via guided camera capture, Instagram, or manual upload), complete identity verification, and earn from their data.
+An AI likeness protection platform. Members upload photos and verify their identity to create a facial signature. We then continuously scan AI platforms (CivitAI, DeviantArt, Reddit, 247+) for unauthorized use of their face and file DMCA takedowns automatically. Dark purple-black theme with tiered protection plans (Free / Protected / Premium).
 
 ## Tech Stack
 
@@ -95,16 +95,21 @@ src/
 
 ## Important Patterns
 
-### Light Cream Theme
-The app uses a warm light-mode design. No dark mode toggle. The color palette is:
-- **Primary:** Teal (#0D7377) — buttons, links, interactive elements
-- **Secondary:** Coral (#E8845C) — accent highlights, icons in dark sections
-- **Accent:** Amber (#F0A050) — tertiary highlights
-- **Background:** Cream (#F7F5F0)
-- **Foreground:** Navy (#1C2333) — text
+### Dark Purple-Black Theme
+The app uses a dark theme. No light mode toggle. The color palette is:
+- **Primary:** Purple (#8B5CF6) — CTAs, badges, highlights, accent text
+- **Secondary:** Dark gray (#27272A) — secondary surfaces
+- **Accent:** Green (#22C55E) — success stats, resolved badges
+- **Destructive:** Red (#EF4444) — errors, warnings
+- **Background:** Near-black (#09090B) — page bg
+- **Card/Surface:** Dark zinc (#18181B) — cards, elevated sections
+- **Foreground:** White (#FAFAFA) — headings, primary text
+- **Muted text:** Gray (#A1A1AA) — body text, descriptions
 - **Fonts:** DM Serif Display (headings), DM Sans (body)
 
-CSS utilities: `.card-hover` (shadow + teal top-border on hover), `.section-dark` (navy background for contrast sections).
+CSS utilities: `.card-hover` (shadow + purple top-border on hover), `.section-elevated` (#18181B background for contrast sections).
+
+Badge variants: `success` (green), `warning` (yellow), `purple` (primary accent).
 
 ### Supabase SSR Auth
 Three Supabase client factories:

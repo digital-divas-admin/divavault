@@ -7,9 +7,10 @@ interface StatCardProps {
   value: string | number;
   subtitle?: string;
   muted?: boolean;
+  valueClassName?: string;
 }
 
-export function StatCard({ icon: Icon, label, value, subtitle, muted }: StatCardProps) {
+export function StatCard({ icon: Icon, label, value, subtitle, muted, valueClassName }: StatCardProps) {
   return (
     <Card className="border-border/50 bg-card rounded-xl">
       <CardContent className="p-5">
@@ -18,7 +19,7 @@ export function StatCard({ icon: Icon, label, value, subtitle, muted }: StatCard
           <span className="text-xs font-medium">{label}</span>
         </div>
         <p
-          className={`text-2xl font-bold ${muted ? "text-muted-foreground/50" : "text-primary"}`}
+          className={`text-2xl font-bold ${valueClassName || (muted ? "text-muted-foreground/50" : "text-primary")}`}
         >
           {value}
         </p>

@@ -88,6 +88,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Also insert into uploads table so dashboard queries can find these photos
+    const { error: uploadError } = await supabase.from("uploads").insert({
+      contributor_id: user.id,
+      source: "capture",
+      file_path: filePath,
+      bucket,
+      file_size: fileSize || null,
+      status: "processing",
+    });
+
+    if (uploadError) {
+      console.error("Insert upload record error:", uploadError.message);
+    }
+
     // Update session image count using actual DB count for accuracy
     const { count, error: countError } = await supabase
       .from("contributor_images")

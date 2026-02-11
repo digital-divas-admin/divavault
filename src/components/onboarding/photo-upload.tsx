@@ -73,6 +73,17 @@ export function PhotoUpload() {
           continue;
         }
 
+        // Record in uploads table so dashboard can find this photo
+        await fetch("/api/onboarding/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filePath,
+            bucket: "sfw-uploads",
+            fileSize: file.size,
+          }),
+        }).catch((err) => console.error("Upload record error:", err));
+
         uploaded.push(filePath);
         setProgress(Math.round(((i + 1) / fileArray.length) * 100));
       }

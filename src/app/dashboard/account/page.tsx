@@ -34,7 +34,7 @@ export default async function AccountPage() {
 
       <div className="grid gap-6">
         <ProfileForm
-          fullName={contributor.full_name}
+          fullName={contributor.full_name || ""}
           email={contributor.email}
           displayName={contributor.display_name}
           memberSince={contributor.created_at}

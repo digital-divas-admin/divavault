@@ -8,34 +8,49 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const terms = [
   {
-    term: "AI Training",
+    term: "Match",
     definition:
-      "The process of teaching an artificial intelligence model to recognize patterns by showing it large amounts of data — in this case, photos you contribute.",
+      "An image discovered on an AI platform that our system has identified as potentially containing your likeness. Each match includes a confidence score and can be reviewed, disputed, or acted upon.",
   },
   {
-    term: "Synthetic Images",
+    term: "Confidence Tier",
     definition:
-      "Images created entirely by AI that don't depict real photographs. These are generated based on patterns learned during training.",
+      "The level of certainty that a discovered image matches your facial signature. High confidence means a very strong match; lower tiers may require manual review.",
+  },
+  {
+    term: "DMCA Takedown",
+    definition:
+      "A legal request under the Digital Millennium Copyright Act to remove content that uses your likeness without authorization. We file these automatically for Protected and Premium members.",
+  },
+  {
+    term: "Takedown",
+    definition:
+      "The process of requesting removal of unauthorized content from a platform. Statuses include pending, submitted, completed (removed), and denied.",
+  },
+  {
+    term: "Evidence",
+    definition:
+      "Screenshots, archived pages, and metadata captured to document unauthorized use of your likeness. Evidence is preserved with cryptographic hashes for legal proceedings.",
+  },
+  {
+    term: "Face Embedding",
+    definition:
+      "A mathematical representation of your facial features used for comparison. Embeddings cannot be reverse-engineered into photos and are encrypted at rest.",
   },
   {
     term: "KYC (Know Your Customer)",
     definition:
-      "Identity verification required to ensure every contributor is a real person contributing their own likeness. Processed by Sumsub.",
+      "Identity verification required to ensure every member is a real person. Processed by Sumsub — we never store your ID documents.",
   },
   {
     term: "Consent",
     definition:
-      "Your explicit, informed agreement to allow your photos to be used for AI training. You can review or revoke your consent at any time.",
+      "Your explicit, informed agreement about how your data is used. You can review or modify your consent preferences at any time from Your Data.",
   },
   {
     term: "Opt-Out",
     definition:
-      "Withdrawing your photos from future AI training batches. Already-trained models cannot be un-trained, but your data won't be used going forward.",
-  },
-  {
-    term: "Training Batch",
-    definition:
-      "A collection of approved photos that are processed together to train or update AI models. Batches run periodically.",
+      "Withdrawing your photos and facial data from active scanning. You can opt back in at any time from Privacy Controls.",
   },
 ];
 

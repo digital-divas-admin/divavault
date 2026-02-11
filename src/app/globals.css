@@ -49,40 +49,40 @@
   --font-sans: "DM Sans", system-ui, sans-serif;
   --font-heading: "DM Serif Display", Georgia, serif;
 
-  /* Light cream/teal/coral palette */
-  --background: #F7F5F0;
-  --foreground: #1C2333;
-  --card: #FFFFFF;
-  --card-foreground: #1C2333;
-  --popover: #FFFFFF;
-  --popover-foreground: #1C2333;
-  --primary: #0D7377;
+  /* Dark purple-black palette */
+  --background: #09090B;
+  --foreground: #FAFAFA;
+  --card: #18181B;
+  --card-foreground: #FAFAFA;
+  --popover: #18181B;
+  --popover-foreground: #FAFAFA;
+  --primary: #8B5CF6;
   --primary-foreground: #FFFFFF;
-  --secondary: #E8845C;
-  --secondary-foreground: #FFFFFF;
-  --muted: #E8E4DD;
-  --muted-foreground: #6B7280;
-  --accent: #F0A050;
-  --accent-foreground: #1C2333;
-  --destructive: #DC2626;
-  --border: #D4CFC7;
-  --input: #D4CFC7;
-  --ring: #0D7377;
+  --secondary: #27272A;
+  --secondary-foreground: #FAFAFA;
+  --muted: #27272A;
+  --muted-foreground: #A1A1AA;
+  --accent: #22C55E;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --border: #27272A;
+  --input: #27272A;
+  --ring: #8B5CF6;
 
-  --chart-1: #0D7377;
-  --chart-2: #E8845C;
-  --chart-3: #F0A050;
-  --chart-4: #6366F1;
+  --chart-1: #8B5CF6;
+  --chart-2: #22C55E;
+  --chart-3: #F59E0B;
+  --chart-4: #3B82F6;
   --chart-5: #EC4899;
 
-  --sidebar: #FFFFFF;
-  --sidebar-foreground: #1C2333;
-  --sidebar-primary: #0D7377;
+  --sidebar: #0F0F13;
+  --sidebar-foreground: #FAFAFA;
+  --sidebar-primary: #8B5CF6;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #E8E4DD;
-  --sidebar-accent-foreground: #1C2333;
-  --sidebar-border: #D4CFC7;
-  --sidebar-ring: #0D7377;
+  --sidebar-accent: #18181B;
+  --sidebar-accent-foreground: #FAFAFA;
+  --sidebar-border: #27272A;
+  --sidebar-ring: #8B5CF6;
 }
 
 @layer base {
@@ -94,20 +94,51 @@
   }
 }
 
-/* Card hover effect — subtle shadow + teal top-border */
+/* Card hover effect — subtle shadow + purple top-border */
 .card-hover {
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .card-hover:hover {
-  box-shadow: 0 4px 24px rgba(13, 115, 119, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
-  border-top-color: #0D7377;
+  box-shadow: 0 4px 24px rgba(139, 92, 246, 0.12), 0 1px 4px rgba(0, 0, 0, 0.2);
+  border-top-color: #8B5CF6;
 }
 
-/* Dark navy section (for contrast blocks) */
-.section-dark {
-  background-color: #1C2333;
-  color: #F7F5F0;
+/* Elevated surface section */
+.section-elevated {
+  background-color: #18181B;
 }
-.section-dark .text-muted-foreground {
-  color: #9CA3AF;
+
+/* Live Scanner — scan line sweep */
+@keyframes scanner-sweep {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(var(--scanner-height, 250px)); }
+}
+
+.scanner-line {
+  background: linear-gradient(90deg, transparent, #8B5CF6 20%, #22C55E 50%, #8B5CF6 80%, transparent);
+  box-shadow: 0 0 8px 2px rgba(139,92,246,0.3), 0 0 16px 4px rgba(34,197,94,0.15);
+  animation: scanner-sweep 4s ease-in-out infinite;
+  will-change: transform;
+}
+
+@media (min-width: 640px) {
+  .scanner-line {
+    box-shadow: 0 0 12px 4px rgba(139,92,246,0.3), 0 0 24px 8px rgba(34,197,94,0.15);
+  }
+}
+
+/* Live Scanner — row highlight as line passes */
+@keyframes scanner-row-highlight {
+  0%, 100% { background-color: transparent; border-left-color: transparent; }
+  10%, 16% { background-color: rgba(139,92,246,0.06); border-left-color: #8B5CF6; }
+}
+
+.scanner-row-highlight {
+  animation: scanner-row-highlight 4s ease-in-out infinite;
+}
+
+/* Reduced motion: disable scanner animations */
+@media (prefers-reduced-motion: reduce) {
+  .scanner-line { display: none; }
+  .scanner-row-highlight { animation: none; }
 }

@@ -1,26 +1,26 @@
-import { UserPlus, UserCheck, Upload } from "lucide-react";
+import { Upload, Radar, Gavel } from "lucide-react";
 
 const steps = [
   {
-    icon: UserPlus,
-    number: "01",
-    title: "Sign Up & Verify",
-    description:
-      "Create an account and complete a quick identity check. This confirms you're a real person and protects everyone from impersonation.",
-  },
-  {
     icon: Upload,
-    number: "02",
-    title: "Upload Your Content",
+    number: "01",
+    title: "Upload & Verify",
     description:
-      "Import from Instagram or drag-and-drop your photos. You pick exactly which ones to share — nothing is selected for you.",
+      "Upload your photos and verify your identity to create a unique facial signature. This is the reference we use to scan for unauthorized use.",
   },
   {
-    icon: UserCheck,
-    number: "03",
-    title: "Earn From AI Training",
+    icon: Radar,
+    number: "02",
+    title: "Continuous Monitoring",
     description:
-      "Review your consent in plain language, then you're done. When our payment system launches, early contributors are first in line.",
+      "We scan CivitAI, DeviantArt, Reddit, and 244+ other platforms daily, looking for AI-generated content that matches your face.",
+  },
+  {
+    icon: Gavel,
+    number: "03",
+    title: "Automated Protection",
+    description:
+      "When a match is found, DMCA takedown requests are filed automatically. Track every case in real-time from your dashboard.",
   },
 ];
 
@@ -32,7 +32,7 @@ export function HowItWorks() {
           How It Works
         </h2>
         <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12 sm:mb-16">
-          Three steps, fully transparent. Take your time — there&apos;s no rush.
+          Three steps to protect your likeness from unauthorized AI use.
         </p>
 
         <div className="grid md:grid-cols-3 gap-6 md:gap-8">
@@ -45,7 +45,9 @@ export function HowItWorks() {
                 <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-semibold">
                   {step.number}
                 </div>
-                <step.icon className="w-5 h-5 text-primary" />
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <step.icon className="w-5 h-5 text-primary" />
+                </div>
               </div>
               <h3 className="font-[family-name:var(--font-heading)] text-xl mb-3">
                 {step.title}

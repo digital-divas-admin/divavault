@@ -7,26 +7,23 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  CheckCircle2,
-  ImageIcon,
-  Shield,
-  DollarSign,
-  Plus,
-  FileText,
-  HelpCircle,
-  Sparkles,
+  Radar,
+  Target,
+  Gavel,
+  ArrowRight,
 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { ActivityFeed } from "@/components/dashboard/protection/activity-feed";
+import { RecentMatchesCard } from "@/components/dashboard/protection/recent-matches-card";
+import { NoMatchesCard } from "@/components/dashboard/protection/no-matches-card";
+import { TierUpsellBanner } from "@/components/dashboard/protection/tier-upsell-banner";
+import { getProtectionStats, getContributorMatches, getProtectionActivityFeed } from "@/lib/protection-queries";
 import type { DashboardContributor } from "@/types/dashboard";
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ welcome?: string }>;
-}) {
+export default async function DashboardPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -43,179 +40,75 @@ export default async function DashboardPage({
   if (!contributor) redirect("/onboarding");
 
   const c = contributor as DashboardContributor;
-  const params = await searchParams;
-  const isWelcome = params.welcome === "true";
+
+  const [stats, recentMatchesResult, activities] = await Promise.all([
+    getProtectionStats(user.id),
+    getContributorMatches(user.id, { pageSize: 5 }),
+    getProtectionActivityFeed(user.id, 8),
+  ]);
 
   return (
     <div className="max-w-4xl mx-auto">
       <PageHeader
-        title={`Welcome back${c?.display_name ? `, ${c.display_name}` : c?.full_name ? `, ${c.full_name.split(" ")[0]}` : ""}`}
-        description="Here's an overview of your contribution status."
+        title="Protection Dashboard"
+        description="We're monitoring the web for unauthorized use of your likeness."
       />
 
-      {/* First-visit celebration */}
-      {isWelcome && (
-        <Card className="border-primary/20 bg-primary/5 rounded-2xl mb-6">
-          <CardContent className="p-5 sm:p-6 flex items-center gap-4">
-            <Sparkles className="h-8 w-8 text-primary shrink-0" />
-            <div>
-              <h2 className="font-[family-name:var(--font-heading)] text-lg font-bold">
-                You&apos;re officially a contributor!
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Welcome to the vault. Your photos are being processed and
-                you&apos;ll be notified as they enter the training pipeline.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* What just happened summary */}
-      <Card className="border-secondary/20 bg-secondary/5 rounded-2xl mb-6">
-        <CardContent className="p-5 sm:p-6">
-          <h2 className="font-semibold text-sm mb-4">
-            Here&apos;s what just happened
-          </h2>
-          <ul className="space-y-3">
-            <li className="flex items-start gap-3 text-sm">
-              <CheckCircle2 className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
-              <span className="text-muted-foreground">
-                Your identity was verified — only you can contribute as you
-              </span>
-            </li>
-            <li className="flex items-start gap-3 text-sm">
-              <CheckCircle2 className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
-              <span className="text-muted-foreground">
-                {c?.photo_count || 0} photos were securely uploaded to encrypted
-                storage
-              </span>
-            </li>
-            <li className="flex items-start gap-3 text-sm">
-              <CheckCircle2 className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
-              <span className="text-muted-foreground">
-                Your consent was recorded — you can review it anytime
-              </span>
-            </li>
-            <li className="flex items-start gap-3 text-sm">
-              <CheckCircle2 className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
-              <span className="text-muted-foreground">
-                Your photos will enter the AI training pipeline within 48 hours
-              </span>
-            </li>
-          </ul>
-        </CardContent>
-      </Card>
-
-      {/* Stats */}
+      {/* Stats row */}
       <div className="grid sm:grid-cols-3 gap-4 sm:gap-6 mb-6">
         <StatCard
-          icon={ImageIcon}
-          label="Photos Contributed"
-          value={c?.photo_count || 0}
+          icon={Radar}
+          label="Platforms Monitored"
+          value={stats.platformsMonitored}
         />
-        <Card className="border-border/50 bg-card rounded-xl">
-          <CardContent className="p-5">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <Shield className="h-4 w-4" />
-              <span className="text-xs font-medium">Verification</span>
-            </div>
-            <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
-              {c?.sumsub_status === "green"
-                ? "Verified"
-                : c?.sumsub_status || "Pending"}
-            </Badge>
-          </CardContent>
-        </Card>
-        <Card className="border-border/50 bg-card rounded-xl">
-          <CardContent className="p-5">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <DollarSign className="h-4 w-4" />
-              <span className="text-xs font-medium">Earnings</span>
-            </div>
-            <p className="text-2xl font-bold text-muted-foreground/50">--</p>
-            <p className="text-xs text-muted-foreground mt-1">Coming soon</p>
-          </CardContent>
-        </Card>
+        <StatCard
+          icon={Target}
+          label="Matches Found"
+          value={stats.matchCount}
+          valueClassName="text-accent"
+        />
+        <StatCard
+          icon={Gavel}
+          label="Takedowns Filed"
+          value={stats.takedownsFiled}
+          valueClassName="text-accent"
+        />
       </div>
 
-      {/* Quick Actions */}
-      <div className="grid sm:grid-cols-3 gap-4 mb-6">
-        <Link href="/dashboard/contributions" className="block">
-          <Card className="border-border/50 bg-card rounded-xl hover:border-primary/30 transition-colors h-full">
-            <CardContent className="p-5 text-center">
-              <Plus className="h-6 w-6 text-primary mx-auto mb-2" />
-              <h3 className="text-sm font-medium">Add More Photos</h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Contribute additional photos
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/dashboard/privacy" className="block">
-          <Card className="border-border/50 bg-card rounded-xl hover:border-primary/30 transition-colors h-full">
-            <CardContent className="p-5 text-center">
-              <FileText className="h-6 w-6 text-secondary mx-auto mb-2" />
-              <h3 className="text-sm font-medium">Review Consent</h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                View your data rights
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/dashboard/help" className="block">
-          <Card className="border-border/50 bg-card rounded-xl hover:border-primary/30 transition-colors h-full">
-            <CardContent className="p-5 text-center">
-              <HelpCircle className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
-              <h3 className="text-sm font-medium">Need Help?</h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                FAQ & support
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
-
-      {/* What to Expect */}
-      <Card className="border-border/50 bg-card rounded-xl">
-        <CardHeader>
-          <CardTitle className="text-lg">What to Expect</CardTitle>
+      {/* Recent Matches */}
+      <Card className="border-border/50 bg-card rounded-2xl mb-6">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg">Recent Matches</CardTitle>
+          {recentMatchesResult.total > 0 && (
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/dashboard/matches">
+                View All
+                <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </Link>
+            </Button>
+          )}
         </CardHeader>
-        <CardContent className="space-y-5 text-sm">
-          <div>
-            <h3 className="font-medium mb-1">
-              Your photos are in the pipeline
-            </h3>
-            <p className="text-muted-foreground">
-              Our team reviews new contributions within 48 hours. Once approved,
-              your photos will be included in the next training batch.
-            </p>
-          </div>
-          <div>
-            <h3 className="font-medium mb-1">Compensation is coming</h3>
-            <p className="text-muted-foreground">
-              We&apos;re building the payment system right now. Early
-              contributors will be first in line when it launches — we&apos;ll
-              notify you as soon as it&apos;s ready.
-            </p>
-          </div>
-          <div>
-            <h3 className="font-medium mb-1">
-              You&apos;re always in control
-            </h3>
-            <p className="text-muted-foreground">
-              Want to opt out? Visit{" "}
-              <Link
-                href="/dashboard/privacy"
-                className="text-primary hover:underline"
-              >
-                Privacy & Data
-              </Link>{" "}
-              anytime. Your photos will be removed from all future training sets.
-            </p>
-          </div>
+        <CardContent>
+          {recentMatchesResult.matches.length > 0 ? (
+            <RecentMatchesCard matches={recentMatchesResult.matches} />
+          ) : (
+            <NoMatchesCard />
+          )}
         </CardContent>
       </Card>
+
+      {/* Activity Feed */}
+      <Card className="border-border/50 bg-card rounded-2xl mb-6">
+        <CardHeader>
+          <CardTitle className="text-lg">Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ActivityFeed activities={activities} />
+        </CardContent>
+      </Card>
+
+      {/* Tier Upgrade */}
+      <TierUpsellBanner tier={c.subscription_tier || "free"} />
     </div>
   );
 }

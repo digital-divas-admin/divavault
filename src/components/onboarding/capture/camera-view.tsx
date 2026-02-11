@@ -126,7 +126,6 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
       <div className="relative w-full aspect-[3/4] max-h-[60vh] bg-black rounded-2xl overflow-hidden">
         <video
           ref={videoRef}
-          autoPlay
           playsInline
           muted
           className="w-full h-full object-cover mirror"

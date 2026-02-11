@@ -16,13 +16,13 @@ const dmSerifDisplay = DM_Serif_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Made Of Us | Ethical AI Training on Your Terms",
+  title: "Made Of Us | AI Likeness Protection",
   description:
-    "Contribute your photos to train ethical AI models — on your terms. Made Of Us gives influencers and creators full control, identity protection, and transparent consent.",
+    "Protect your face from unauthorized AI use. Made Of Us scans AI platforms for your likeness, files takedowns, and keeps you in control.",
   openGraph: {
-    title: "Made Of Us | Ethical AI Training on Your Terms",
+    title: "Made Of Us | AI Likeness Protection",
     description:
-      "Contribute your photos to train ethical AI models — with full control over what you share.",
+      "Protect your face from unauthorized AI use. We scan 247+ platforms and file takedowns automatically.",
     type: "website",
   },
 };

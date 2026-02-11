@@ -23,3 +23,38 @@ services:
         sync: false
       - key: INSTAGRAM_REDIRECT_URI
         sync: false
+
+  - type: web
+    name: scanner
+    runtime: docker
+    dockerfilePath: apps/scanner/Dockerfile
+    dockerContext: apps/scanner
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_BUCKET_NAME
+        sync: false
+      - key: TINEYE_API_KEY
+        sync: false
+      - key: HIVE_API_KEY
+        sync: false
+      - key: MATCH_THRESHOLD_LOW
+        sync: false
+      - key: MATCH_THRESHOLD_MEDIUM
+        sync: false
+      - key: MATCH_THRESHOLD_HIGH
+        sync: false
+      - key: INSIGHTFACE_MODEL
+        sync: false
+      - key: LOG_LEVEL
+        sync: false

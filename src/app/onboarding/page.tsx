@@ -16,6 +16,17 @@ function OnboardingContent() {
   const handoffProcessed = useRef(false);
   const [handoffError, setHandoffError] = useState<string | null>(null);
 
+  // Process step param (e.g. from dashboard "Upload Photos" link)
+  useEffect(() => {
+    const stepParam = searchParams.get("step");
+    if (stepParam) {
+      const step = parseInt(stepParam, 10);
+      if (step >= 1 && step <= 5) {
+        setStep(step);
+      }
+    }
+  }, [searchParams, setStep]);
+
   // Process handoff token from QR code — jump to the encoded step
   useEffect(() => {
     if (handoffProcessed.current) return;

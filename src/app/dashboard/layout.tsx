@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar, MobileHeader } from "@/components/dashboard/sidebar";
 import type { DashboardContributor } from "@/types/dashboard";
+import type { SubscriptionTier } from "@/types/protection";
 
 export default async function DashboardLayout({
   children,
@@ -29,9 +30,17 @@ export default async function DashboardLayout({
 
   const c = contributor as DashboardContributor;
 
+  // Get platform count
+  const { count: platformCount } = await supabase
+    .from("platform_crawl_schedule")
+    .select("platform", { count: "exact", head: true })
+    .eq("enabled", true);
+
   const sidebarProps = {
-    userName: c.display_name || c.full_name,
+    userName: c.display_name || c.full_name || "Contributor",
     verified: c.sumsub_status === "green",
+    tier: (c.subscription_tier || "free") as SubscriptionTier,
+    platformsMonitored: platformCount || 0,
   };
 
   return (

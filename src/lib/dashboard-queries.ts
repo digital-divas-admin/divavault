@@ -4,7 +4,6 @@ import type {
   DashboardUpload,
   ActivityLog,
   NotificationPreferences,
-  Earning,
 } from "@/types/dashboard";
 
 export async function getContributor(
@@ -90,18 +89,13 @@ export async function getNotificationPreferences(
     email_photo_status: true,
     email_platform_updates: true,
     email_security_alerts: true,
+    email_match_alerts: true,
+    email_scan_updates: true,
+    email_takedown_updates: true,
+    email_bounty_matches: true,
+    email_bounty_updates: true,
     updated_at: new Date().toISOString(),
   };
-}
-
-export async function getEarnings(userId: string): Promise<Earning[]> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("earnings")
-    .select("*")
-    .eq("contributor_id", userId)
-    .order("period_start", { ascending: false });
-  return (data as Earning[]) || [];
 }
 
 export async function logActivity(

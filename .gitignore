@@ -46,3 +46,16 @@ nul
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+*.egg
+.venv/
+venv/
+htmlcov/
+.pytest_cache/
+.coverage

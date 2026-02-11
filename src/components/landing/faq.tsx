@@ -9,32 +9,32 @@ import {
 
 const faqs = [
   {
-    q: "What will my photos be used for?",
-    a: "Your photos will be used exclusively to train ethical AI models. This includes AI-generated influencer content, digital avatars, and visual media. Your images are never sold to third parties or shared publicly. You can see what you've shared from your dashboard at any time.",
+    q: "How does facial scanning work?",
+    a: "When you sign up, we create a unique facial signature from the photos you upload. Our scanner then compares this signature against images found on AI platforms like CivitAI, DeviantArt, and others. When we find a match above our confidence threshold, you're notified immediately.",
   },
   {
-    q: "How does compensation work?",
-    a: "We're building the payment system now — it isn't live yet, and we want to be upfront about that. When it launches, you'll be compensated based on how your contributed images are used in AI training datasets. Early contributors will be first in line for payouts.",
+    q: "What platforms do you monitor?",
+    a: "We currently monitor 247+ platforms including CivitAI, DeviantArt, Reddit AI communities, Hugging Face, and dozens more. We're adding new platforms every week as the AI landscape evolves.",
   },
   {
-    q: "Can I opt out after contributing?",
-    a: "Yes, absolutely. You can opt out at any time by contacting our support team. When you opt out, your images are removed from all future training sets. We want to be transparent about one thing: AI models that have already been trained can't be un-trained — that's a technical limitation, not a choice we made. But your photos will never be used in new training after you opt out.",
+    q: "How long does a takedown take?",
+    a: "Most DMCA takedown requests are processed within 48-72 hours. Some platforms respond faster. You can track the status of every takedown in real-time from your dashboard.",
   },
   {
-    q: "What is identity verification for?",
-    a: "Identity verification (KYC) ensures that only real, consenting individuals can contribute their likeness. This protects you from impersonation and protects the integrity of our dataset.",
+    q: "Is my face data safe?",
+    a: "Your facial data is encrypted at rest and in transit. We never share it with third parties. The facial embeddings we create are mathematical representations — they can't be reverse-engineered back into your photos.",
   },
   {
-    q: "Is my data safe?",
-    a: "All data is stored securely with enterprise-grade encryption. Your photos are kept in private storage buckets with strict access controls. Identity verification is handled by Sumsub, a regulated provider — we never see or store your ID documents. We'll always tell you what we store and why.",
+    q: "Can I protect multiple people?",
+    a: "Yes, our Premium plan supports multi-person protection. This is ideal for agencies managing multiple creators or families who want to protect their children's likeness.",
   },
   {
-    q: "What kind of content can I contribute?",
-    a: "Made Of Us focuses on lifestyle content — fashion, social media, editorial, and brand campaign imagery. Your photos train AI models for digital influencers, brand ambassadors, and creative visual media. All content is SFW and handled with strong identity protections.",
+    q: "What if I get a false positive?",
+    a: "False positives can happen. Every match includes a confidence score and side-by-side comparison so you can review it yourself. You can dismiss false positives with one click, and our system learns from your feedback.",
   },
   {
-    q: "What happens to my photos after I contribute?",
-    a: "Your photos are stored in encrypted cloud storage, then fed into our AI training pipeline. They are never published, displayed publicly, or shared as-is. The AI model learns patterns from your photos to generate new synthetic images — your original files stay locked in storage and are only accessed by our training systems.",
+    q: "Do I need to be a creator or influencer?",
+    a: "Not at all. Anyone can use Made Of Us. If your face has ever appeared online — social media, news, group photos — it could be used to train AI models without your knowledge. Protection is for everyone.",
   },
 ];
 
@@ -46,7 +46,7 @@ export function FAQ() {
           Frequently Asked Questions
         </h2>
         <p className="text-muted-foreground text-center mb-8 sm:mb-12">
-          Everything you need to know before getting started.
+          Everything you need to know about protecting your likeness.
         </p>
 
         <Accordion type="single" collapsible className="space-y-3">

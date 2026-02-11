@@ -37,14 +37,24 @@ export function NotificationPreferences({
 
   const items = [
     {
-      key: "email_earnings" as const,
-      label: "Earnings Updates",
-      description: "Get notified when earnings are available",
+      key: "email_match_alerts" as const,
+      label: "Match Alerts",
+      description: "Get notified when your likeness is found on AI platforms",
+    },
+    {
+      key: "email_scan_updates" as const,
+      label: "Scan Updates",
+      description: "Status updates when scans complete",
+    },
+    {
+      key: "email_takedown_updates" as const,
+      label: "Takedown Updates",
+      description: "Status changes on DMCA takedown requests",
     },
     {
       key: "email_photo_status" as const,
       label: "Photo Status Changes",
-      description: "When photos are approved or flagged",
+      description: "When photos are processed or flagged",
     },
     {
       key: "email_platform_updates" as const,
@@ -74,7 +84,7 @@ export function NotificationPreferences({
               </p>
             </div>
             <Switch
-              checked={prefs[item.key]}
+              checked={prefs[item.key] ?? true}
               onCheckedChange={(v) => handleToggle(item.key, v)}
               disabled={item.alwaysOn}
             />

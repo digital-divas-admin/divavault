@@ -105,13 +105,20 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // If completed, also mark capture_completed on contributor
+    // If completed, also mark capture_completed on contributor and update photo_count
     if (status === "completed") {
+      // Count total uploads for this contributor
+      const { count } = await supabase
+        .from("uploads")
+        .select("id", { count: "exact", head: true })
+        .eq("contributor_id", user.id);
+
       await supabase
         .from("contributors")
         .update({
           capture_completed: true,
           current_onboarding_step: 5,
+          photo_count: count || 0,
           updated_at: new Date().toISOString(),
         })
         .eq("id", user.id);

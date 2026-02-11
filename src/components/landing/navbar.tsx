@@ -3,12 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Menu, X } from "lucide-react";
+import { Menu, X, ShieldCheck } from "lucide-react";
 
 const navLinks = [
   { href: "#how-it-works", label: "How It Works" },
-  { href: "#why-join", label: "Why Join" },
+  { href: "#protection", label: "Protection" },
+  { href: "#pricing", label: "Pricing" },
   { href: "#faq", label: "FAQ" },
+  { href: "/login", label: "Sign In" },
 ];
 
 export function Navbar() {
@@ -19,10 +21,10 @@ export function Navbar() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <Link
           href="/"
-          className="font-[family-name:var(--font-heading)] text-3xl italic"
+          className="flex items-center gap-2"
         >
-          <span className="text-primary">made of </span>
-          <span className="text-secondary">us</span>
+          <ShieldCheck className="w-6 h-6 text-primary" />
+          <span className="font-semibold text-foreground text-xl">madeofus</span>
         </Link>
 
         <div className="hidden md:flex items-center gap-8">
@@ -38,8 +40,8 @@ export function Navbar() {
         </div>
 
         <div className="hidden md:block">
-          <Button asChild size="sm">
-            <Link href="/signup">Get Started</Link>
+          <Button asChild size="sm" className="rounded-full">
+            <Link href="/signup">Protect My Face</Link>
           </Button>
         </div>
 
