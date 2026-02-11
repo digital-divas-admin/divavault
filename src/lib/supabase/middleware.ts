@@ -4,6 +4,11 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
+  // Health check must respond instantly — skip all session logic
+  if (pathname === "/api/health") {
+    return NextResponse.next({ request });
+  }
+
   // Platform API routes use API key auth, not cookies — handle CORS and skip session refresh
   if (pathname.startsWith("/api/platform/v1/")) {
     return handlePlatformApiRequest(request);
