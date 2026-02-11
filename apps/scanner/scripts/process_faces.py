@@ -59,10 +59,29 @@ from src.utils.image_download import load_and_resize
 TEMP_DIR = Path(settings.temp_dir)
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-async def download(session, url, img_id):
+async def download(session, url, img_id, stored_url=None):
+    # Prefer stored URL (Supabase Storage) over source URL (may have expired tokens)
+    dl_url = url
+    headers = {{}}
+    if stored_url:
+        dl_url = f"{{settings.supabase_url}}/storage/v1/object/authenticated/discovered-images/{{stored_url}}"
+        headers = {{
+            "Authorization": f"Bearer {{settings.supabase_service_role_key}}",
+            "apikey": settings.supabase_service_role_key,
+        }}
     try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-            if resp.status != 200: return None
+        async with session.get(dl_url, timeout=aiohttp.ClientTimeout(total=15), headers=headers) as resp:
+            if resp.status != 200:
+                # Fallback to source_url if stored URL fails
+                if stored_url and url:
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp2:
+                        if resp2.status != 200: return None
+                        data = await resp2.read()
+                        if len(data) < 1000: return None
+                        path = TEMP_DIR / f"{{img_id}}.jpg"
+                        path.write_bytes(data)
+                        return path
+                return None
             data = await resp.read()
             if len(data) < 1000: return None
             path = TEMP_DIR / f"{{img_id}}.jpg"
@@ -77,9 +96,9 @@ async def main():
 
     async with async_session() as db:
         r = await db.execute(text(
-            "SELECT id, source_url FROM discovered_images WHERE has_face IS NULL ORDER BY discovered_at DESC LIMIT :lim"
+            "SELECT id, source_url, image_stored_url FROM discovered_images WHERE has_face IS NULL ORDER BY discovered_at DESC LIMIT :lim"
         ), {{"lim": {chunk_size}}})
-        batch = [dict(id=row[0], url=row[1]) for row in r.fetchall()]
+        batch = [dict(id=row[0], url=row[1], stored_url=row[2]) for row in r.fetchall()]
 
     if not batch:
         print("0,0")
@@ -90,7 +109,7 @@ async def main():
     for i in range(0, len(batch), 50):
         mini = batch[i:i+50]
         async with aiohttp.ClientSession(connector=connector) as http:
-            paths = await asyncio.gather(*[download(http, img["url"], img["id"]) for img in mini])
+            paths = await asyncio.gather(*[download(http, img["url"], img["id"], img.get("stored_url")) for img in mini])
 
         async with async_session() as db:
             for img, path in zip(mini, paths):

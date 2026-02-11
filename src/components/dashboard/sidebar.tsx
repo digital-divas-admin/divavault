@@ -8,7 +8,6 @@ import {
   ImageIcon,
   User,
   HelpCircle,
-  LogOut,
   Menu,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -17,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { AppSwitcher } from "@/components/app-switcher";
+import { SignOutButton } from "@/components/auth/signout-button";
 import type { SubscriptionTier } from "@/types/protection";
 
 const navItems = [
@@ -119,17 +119,7 @@ function SidebarContent({ userName, verified, tier = "free", platformsMonitored 
         <p className="text-[11px] text-muted-foreground/60 text-center">
           Actively monitoring {platformsMonitored} platform{platformsMonitored !== 1 ? "s" : ""}
         </p>
-        <form action="/api/auth/signout" method="post">
-          <Button
-            variant="ghost"
-            size="sm"
-            type="submit"
-            className="w-full justify-start text-muted-foreground hover:text-destructive"
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Sign Out
-          </Button>
-        </form>
+        <SignOutButton />
       </div>
     </div>
   );

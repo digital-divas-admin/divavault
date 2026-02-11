@@ -41,6 +41,7 @@ class DiscoveredImageResult:
     page_url: str | None = None
     page_title: str | None = None
     platform: str | None = None
+    image_stored_url: str | None = None
 
 
 @dataclass

@@ -701,7 +701,8 @@ async def batch_insert_discovered_images(
 ) -> int:
     """Batch insert discovered images with URL dedup. Returns count of new rows.
 
-    Each dict in images should have: source_url, page_url (optional), page_title (optional).
+    Each dict in images should have: source_url, page_url (optional), page_title (optional),
+    image_stored_url (optional).
     Uses ON CONFLICT (md5(source_url)) DO NOTHING for dedup.
     """
     total_inserted = 0
@@ -714,6 +715,7 @@ async def batch_insert_discovered_images(
                 "page_url": img.get("page_url"),
                 "page_title": img.get("page_title"),
                 "platform": platform,
+                "image_stored_url": img.get("image_stored_url"),
             }
             for img in chunk
         ]

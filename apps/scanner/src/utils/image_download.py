@@ -174,6 +174,64 @@ def load_and_resize(path: Path, max_edge: int = RESIZE_TARGET) -> np.ndarray | N
         return None
 
 
+async def download_and_store(
+    url: str,
+    bucket: str,
+    storage_path: str,
+    session: aiohttp.ClientSession | None = None,
+) -> str | None:
+    """Download an image from URL and upload it to Supabase Storage.
+
+    Returns the storage path on success, or None on failure.
+    """
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        log.warning("supabase_credentials_missing_for_store")
+        return None
+
+    # Download to temp file first
+    local_path = await download_image(url, session)
+    if local_path is None:
+        return None
+
+    try:
+        upload_url = (
+            f"{settings.supabase_url}/storage/v1/object/{bucket}/{storage_path}"
+        )
+        headers = {
+            "Authorization": f"Bearer {settings.supabase_service_role_key}",
+            "apikey": settings.supabase_service_role_key,
+            "Content-Type": "image/jpeg",
+            "x-upsert": "true",
+        }
+
+        own_session = session is None
+        if own_session:
+            session = aiohttp.ClientSession()
+        try:
+            with open(local_path, "rb") as f:
+                async with session.put(upload_url, headers=headers, data=f) as resp:
+                    if resp.status not in (200, 201):
+                        body = await resp.text()
+                        log.warning(
+                            "store_upload_failed",
+                            status=resp.status,
+                            path=storage_path,
+                            body=body[:200],
+                        )
+                        return None
+        finally:
+            if own_session:
+                await session.close()
+
+        log.debug("image_stored", bucket=bucket, path=storage_path)
+        return storage_path
+    except Exception as e:
+        log.warning("store_upload_error", path=storage_path, error=str(e))
+        return None
+    finally:
+        local_path.unlink(missing_ok=True)
+
+
 async def download_from_supabase(
     bucket: str,
     file_path: str,

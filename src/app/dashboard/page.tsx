@@ -41,11 +41,31 @@ export default async function DashboardPage() {
 
   const c = contributor as DashboardContributor;
 
-  const [stats, recentMatchesResult, activities] = await Promise.all([
+  const [stats, recentMatchesResult, activities, embeddingCounts] = await Promise.all([
     getProtectionStats(user.id),
     getContributorMatches(user.id, { pageSize: 5 }),
     getProtectionActivityFeed(user.id, 8),
+    supabase
+      .from("uploads")
+      .select("embedding_status")
+      .eq("contributor_id", user.id),
   ]);
+
+  // Determine embedding state for the no-matches card
+  const uploads = embeddingCounts.data || [];
+  let embeddingState: "processing" | "ready" | "failed" = "ready";
+  if (uploads.length > 0) {
+    const pending = uploads.some(
+      (u) => u.embedding_status === "pending" || u.embedding_status === "processing"
+    );
+    const anyReady = uploads.some((u) => u.embedding_status === "completed");
+    const allFailed = uploads.every((u) => u.embedding_status === "failed");
+    if (allFailed) {
+      embeddingState = "failed";
+    } else if (pending && !anyReady) {
+      embeddingState = "processing";
+    }
+  }
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -92,7 +112,7 @@ export default async function DashboardPage() {
           {recentMatchesResult.matches.length > 0 ? (
             <RecentMatchesCard matches={recentMatchesResult.matches} />
           ) : (
-            <NoMatchesCard />
+            <NoMatchesCard embeddingState={embeddingState} />
           )}
         </CardContent>
       </Card>

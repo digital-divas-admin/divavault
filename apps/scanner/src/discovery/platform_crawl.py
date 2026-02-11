@@ -1,9 +1,12 @@
 """CivitAI platform crawl discovery source."""
 
+import hashlib
+
 import aiohttp
 
 from src.config import settings
 from src.discovery.base import BaseDiscoverySource, DiscoveredImageResult, DiscoveryContext, DiscoveryResult
+from src.utils.image_download import download_and_store
 from src.utils.logging import get_logger
 from src.utils.rate_limiter import get_limiter
 from src.utils.retry import CircuitOpenError, retry_async, with_circuit_breaker
@@ -26,6 +29,9 @@ DEFAULT_IMAGE_SEARCH_TERMS = [
 ]
 
 
+DISCOVERED_IMAGES_BUCKET = "discovered-images"
+
+
 class CivitAICrawl(BaseDiscoverySource):
     """Platform crawl for CivitAI — high-risk platform for AI-generated likeness content."""
 
@@ -34,6 +40,16 @@ class CivitAICrawl(BaseDiscoverySource):
 
     def get_source_name(self) -> str:
         return "civitai"
+
+    @staticmethod
+    async def _store_image(
+        source_url: str,
+        session: aiohttp.ClientSession,
+    ) -> str | None:
+        """Download image and upload to Supabase Storage. Returns storage path or None."""
+        url_hash = hashlib.md5(source_url.encode()).hexdigest()
+        storage_path = f"civitai/{url_hash}.jpg"
+        return await download_and_store(source_url, DISCOVERED_IMAGES_BUCKET, storage_path, session)
 
     async def discover(self, context: DiscoveryContext) -> DiscoveryResult:
         results: list[DiscoveredImageResult] = []
@@ -238,12 +254,14 @@ class CivitAICrawl(BaseDiscoverySource):
             meta = item.get("meta") or {}
 
             # All results from a face-targeted search are relevant — no filtering needed
+            stored_path = await self._store_image(image_url, session)
             results.append(
                 DiscoveredImageResult(
                     source_url=image_url,
                     page_url=page_url,
                     page_title=meta.get("prompt", "")[:200] if meta.get("prompt") else None,
                     platform="civitai",
+                    image_stored_url=stored_path,
                 )
             )
 
@@ -309,13 +327,15 @@ class CivitAICrawl(BaseDiscoverySource):
             )
 
             if has_face_indicator or not tags:
-                # Include untagged images too (conservative approach)
+                # Store to Supabase to avoid token expiry
+                stored_path = await self._store_image(image_url, session)
                 results.append(
                     DiscoveredImageResult(
                         source_url=image_url,
                         page_url=page_url,
                         page_title=meta.get("prompt", "")[:200] if meta.get("prompt") else None,
                         platform="civitai",
+                        image_stored_url=stored_path,
                     )
                 )
 
@@ -354,12 +374,14 @@ class CivitAICrawl(BaseDiscoverySource):
                 for image in version.get("images", []):
                     image_url = image.get("url")
                     if image_url:
+                        stored_path = await self._store_image(image_url, session)
                         results.append(
                             DiscoveredImageResult(
                                 source_url=image_url,
                                 page_url=page_url,
                                 page_title=model_name[:200],
                                 platform="civitai",
+                                image_stored_url=stored_path,
                             )
                         )
 

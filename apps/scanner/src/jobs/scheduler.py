@@ -332,6 +332,7 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
                 "source_url": disc.source_url,
                 "page_url": disc.page_url,
                 "page_title": disc.page_title,
+                "image_stored_url": disc.image_stored_url,
             }
             for disc in discovery_result.images
         ]
@@ -786,11 +787,16 @@ async def _handle_match(
         from src.db.models import DiscoveredImage
         from sqlalchemy import select
         disc = await session.execute(
-            select(DiscoveredImage.source_url).where(DiscoveredImage.id == discovered_image_id)
+            select(DiscoveredImage.image_stored_url, DiscoveredImage.source_url).where(DiscoveredImage.id == discovered_image_id)
         )
-        source_url = disc.scalar_one_or_none()
-        if source_url:
-            ai_result = await classify_ai_generated(source_url)
+        row = disc.one_or_none()
+        image_url = (row[0] or row[1]) if row else None
+        if image_url:
+            # If stored_url is a storage path, build the full Supabase URL
+            if image_url and not image_url.startswith("http"):
+                from src.config import settings as _settings
+                image_url = f"{_settings.supabase_url}/storage/v1/object/authenticated/discovered-images/{image_url}"
+            ai_result = await classify_ai_generated(image_url)
             if ai_result:
                 await update_match(
                     session, match.id,

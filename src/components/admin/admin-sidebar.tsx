@@ -7,7 +7,6 @@ import {
   FileText,
   ClipboardCheck,
   ArrowLeft,
-  LogOut,
   Menu,
   Shield,
   Users,
@@ -25,6 +24,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { useState } from "react";
 import type { AdminRole } from "@/types/marketplace";
 import { AppSwitcher } from "@/components/app-switcher";
+import { SignOutButton } from "@/components/auth/signout-button";
 
 const coreNavItems = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
@@ -164,17 +164,7 @@ function SidebarContent({ displayName, role }: AdminSidebarProps) {
             Back to Dashboard
           </Button>
         </Link>
-        <form action="/api/auth/signout" method="post">
-          <Button
-            variant="ghost"
-            size="sm"
-            type="submit"
-            className="w-full justify-start text-muted-foreground hover:text-destructive"
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Sign Out
-          </Button>
-        </form>
+        <SignOutButton />
       </div>
     </div>
   );
