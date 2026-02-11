@@ -2,24 +2,19 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 
 export async function GET() {
+  // Always return 200 for Render's liveness check.
+  // DB status is informational only — a failed DB connection
+  // should not prevent the service from being marked as live.
+  let db = "unknown";
   try {
     const supabase = await createServiceClient();
     const { error } = await supabase
       .from("contributors")
       .select("id", { count: "exact", head: true });
-
-    if (error) {
-      return NextResponse.json(
-        { status: "unhealthy", db: "error" },
-        { status: 503 }
-      );
-    }
-
-    return NextResponse.json({ status: "healthy", db: "connected" });
+    db = error ? "error" : "connected";
   } catch {
-    return NextResponse.json(
-      { status: "unhealthy", db: "unreachable" },
-      { status: 503 }
-    );
+    db = "unreachable";
   }
+
+  return NextResponse.json({ status: "healthy", db });
 }
