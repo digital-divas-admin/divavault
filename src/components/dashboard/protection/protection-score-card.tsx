@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   Card,
   CardContent,
@@ -5,7 +6,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Lightbulb } from "lucide-react";
+import { Shield, Lightbulb, ChevronRight } from "lucide-react";
 import type { ProtectionScore } from "@/types/protection-score";
 
 const TIER_COLORS: Record<ProtectionScore["tier"], string> = {
@@ -48,6 +49,7 @@ interface BreakdownRow {
   label: string;
   score: number;
   max: number;
+  sectionLink?: string;
 }
 
 export function ProtectionScoreCard({ score }: ProtectionScoreCardProps) {
@@ -61,16 +63,19 @@ export function ProtectionScoreCard({ score }: ProtectionScoreCardProps) {
       label: "Angle Coverage",
       score: score.breakdown.angleCoverage.score,
       max: score.breakdown.angleCoverage.max,
+      sectionLink: "angles",
     },
     {
       label: "Expression Coverage",
       score: score.breakdown.expressionCoverage.score,
       max: score.breakdown.expressionCoverage.max,
+      sectionLink: "expressions",
     },
     {
       label: "Photo Count",
       score: score.breakdown.photoCount.score,
       max: score.breakdown.photoCount.max,
+      sectionLink: "body",
     },
     {
       label: "Average Quality",
@@ -147,10 +152,15 @@ export function ProtectionScoreCard({ score }: ProtectionScoreCardProps) {
           </h4>
           {rows.map((row) => {
             const pct = row.max > 0 ? (row.score / row.max) * 100 : 0;
-            return (
-              <div key={row.label}>
+            const content = (
+              <>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-foreground">{row.label}</span>
+                  <span className="text-xs text-foreground flex items-center gap-1">
+                    {row.label}
+                    {row.sectionLink && (
+                      <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+                    )}
+                  </span>
                   <span className="text-xs text-muted-foreground">
                     {Math.round(row.score)}/{row.max}
                   </span>
@@ -161,6 +171,24 @@ export function ProtectionScoreCard({ score }: ProtectionScoreCardProps) {
                     style={{ width: `${Math.min(pct, 100)}%` }}
                   />
                 </div>
+              </>
+            );
+
+            if (row.sectionLink) {
+              return (
+                <Link
+                  key={row.label}
+                  href={`/dashboard/your-data?section=${row.sectionLink}`}
+                  className="block -mx-2 px-2 py-1 rounded-lg hover:bg-muted/10 transition-colors"
+                >
+                  {content}
+                </Link>
+              );
+            }
+
+            return (
+              <div key={row.label}>
+                {content}
               </div>
             );
           })}

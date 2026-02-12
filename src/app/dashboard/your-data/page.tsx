@@ -5,9 +5,11 @@ import {
   getActivityLog,
   getUploadsWithSignedUrls,
 } from "@/lib/dashboard-queries";
+import { getCoverageImages } from "@/lib/coverage-queries";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PhotoGrid } from "@/components/dashboard/contributions/photo-grid";
+import { PhotoCoverageGrid } from "@/components/dashboard/contributions/photo-coverage-grid";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ConsentSummary } from "@/components/dashboard/privacy/consent-summary";
 import { OptOutCard } from "@/components/dashboard/privacy/opt-out-card";
@@ -16,7 +18,11 @@ import { AccountDeletionCard } from "@/components/dashboard/privacy/account-dele
 import { Card, CardContent } from "@/components/ui/card";
 import { ImageIcon, CheckCircle2, Clock, Camera } from "lucide-react";
 
-export default async function YourDataPage() {
+export default async function YourDataPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ section?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -24,10 +30,12 @@ export default async function YourDataPage() {
 
   if (!user) redirect("/login");
 
-  const [contributor, , uploads] = await Promise.all([
+  const [contributor, , uploads, coverageImages, params] = await Promise.all([
     getContributor(user.id),
     getActivityLog(user.id),
     getUploadsWithSignedUrls(user.id),
+    getCoverageImages(user.id),
+    searchParams,
   ]);
 
   if (!contributor) redirect("/onboarding");
@@ -68,6 +76,17 @@ export default async function YourDataPage() {
               value={processingCount}
             />
           </div>
+
+          <PhotoCoverageGrid
+            initialCoverage={coverageImages}
+            initialSection={params.section}
+          />
+
+          <div className="border-t border-border/30 my-8" />
+
+          <h3 className="font-[family-name:var(--font-heading)] text-base font-semibold mb-4">
+            All Photos
+          </h3>
 
           {uploads.length === 0 ? (
             <Card className="border-border/50 bg-card rounded-2xl">
