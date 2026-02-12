@@ -186,7 +186,26 @@
   animation: sparkle-twinkle 2.5s ease-in-out infinite;
 }
 
-/* Reduced motion: disable scanner animations */
+/* Match card new-status pulse */
+@keyframes match-new-pulse {
+  0%, 100% { border-left-color: rgba(139, 92, 246, 0.3); }
+  50% { border-left-color: rgba(139, 92, 246, 0.8); }
+}
+.match-new-pulse {
+  border-left: 3px solid rgba(139, 92, 246, 0.3);
+  animation: match-new-pulse 2s ease-in-out infinite;
+}
+
+/* Takedown timeline active node pulse */
+@keyframes timeline-node-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(234, 179, 8, 0.1); }
+}
+.timeline-node-active {
+  animation: timeline-node-pulse 2s ease-in-out infinite;
+}
+
+/* Reduced motion: disable all animations */
 @media (prefers-reduced-motion: reduce) {
   .scanner-line { display: none; }
   .scanner-row-highlight { animation: none; }
@@ -200,4 +219,6 @@
   .score-number { opacity: 1; transform: scale(1); }
   .score-bar-fill { transform: scaleX(1); }
   .score-sparkle { opacity: 0.6; }
+  .match-new-pulse { animation: none; border-left-color: rgba(139, 92, 246, 0.5); }
+  .timeline-node-active { animation: none; }
 }

@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,20 +8,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ArrowLeft, ExternalLink } from "lucide-react";
-import { PageHeader } from "@/components/dashboard/page-header";
+import { ArrowLeft, ExternalLink, Camera } from "lucide-react";
 import { TierGate } from "@/components/dashboard/matches/tier-gate";
+import { MatchHero } from "@/components/dashboard/matches/match-hero";
+import { AiDetectionCallout } from "@/components/dashboard/matches/ai-detection-callout";
+import { MatchActions } from "@/components/dashboard/matches/match-actions";
+import { TakedownTimeline } from "@/components/dashboard/matches/takedown-timeline";
 import { getContributorMatchDetail } from "@/lib/protection-queries";
 import { getTierCapabilities } from "@/lib/tier-capabilities";
-
-const statusVariant: Record<string, "success" | "warning" | "purple" | "secondary"> = {
-  new: "purple",
-  reviewed: "secondary",
-  takedown_filed: "success",
-  removed: "success",
-  disputed: "warning",
-  dismissed: "secondary",
-};
+import { timeAgo } from "@/lib/format";
 
 export default async function MatchDetailPage({
   params,
@@ -39,18 +33,30 @@ export default async function MatchDetailPage({
   const { id } = await params;
   const [detail, contributorRes] = await Promise.all([
     getContributorMatchDetail(user.id, id),
-    supabase.from("contributors").select("subscription_tier").eq("id", user.id).single(),
+    supabase
+      .from("contributors")
+      .select("subscription_tier")
+      .eq("id", user.id)
+      .single(),
   ]);
 
   if (!detail) notFound();
 
   const tier = getTierCapabilities(contributorRes.data?.subscription_tier);
-  const confidencePercent = Math.round(detail.similarity_score * 100);
+  const hasPendingTakedown = detail.takedowns.some(
+    (t) => t.status === "pending" || t.status === "submitted"
+  );
 
   return (
     <div className="max-w-4xl mx-auto">
+      {/* Back button */}
       <div className="mb-4">
-        <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+        >
           <Link href="/dashboard/matches">
             <ArrowLeft className="w-4 h-4 mr-1" />
             Back to Matches
@@ -58,48 +64,29 @@ export default async function MatchDetailPage({
         </Button>
       </div>
 
-      <PageHeader
-        title={`Match on ${detail.platform || "Unknown Platform"}`}
-        description={`Detected on ${new Date(detail.created_at).toLocaleDateString()}`}
+      {/* Hero */}
+      <MatchHero
+        similarityScore={detail.similarity_score}
+        confidenceTier={detail.confidence_tier}
+        platform={detail.platform}
+        createdAt={detail.created_at}
+        status={detail.status}
       />
 
-      {/* Match overview */}
-      <div className="grid sm:grid-cols-2 gap-4 mb-6">
-        <Card className="border-border/50 bg-card rounded-xl">
-          <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">
-              Similarity
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-4xl font-bold">{confidencePercent}%</p>
-            <p className="text-xs text-muted-foreground mt-1 capitalize">
-              {detail.confidence_tier} confidence
-            </p>
-          </CardContent>
-        </Card>
+      {/* AI Detection Callout */}
+      <AiDetectionCallout
+        isAiGenerated={detail.is_ai_generated}
+        aiDetectionScore={detail.ai_detection_score}
+        aiGenerator={detail.ai_generator}
+      />
 
-        <Card className="border-border/50 bg-card rounded-xl">
-          <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">
-              Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Badge
-              variant={statusVariant[detail.status] || "secondary"}
-              className="capitalize text-sm px-3 py-1"
-            >
-              {detail.status.replace(/_/g, " ")}
-            </Badge>
-            {detail.ai_generator && (
-              <p className="text-xs text-muted-foreground mt-2">
-                AI Model: {detail.ai_generator}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      {/* Actions */}
+      <MatchActions
+        matchId={detail.id}
+        currentStatus={detail.status}
+        canRequestTakedown={tier.canRequestTakedown}
+        hasPendingTakedown={hasPendingTakedown}
+      />
 
       {/* Platform Details — tier-gated */}
       <TierGate feature="platform details" canAccess={tier.canSeePlatformUrls}>
@@ -140,23 +127,26 @@ export default async function MatchDetailPage({
           </CardHeader>
           <CardContent>
             {detail.evidence.length > 0 ? (
-              <div className="space-y-3">
+              <div className="grid sm:grid-cols-2 gap-3">
                 {detail.evidence.map((ev) => (
                   <div
                     key={ev.id}
-                    className="flex items-center justify-between py-2 border-b border-border/30 last:border-0"
+                    className="rounded-lg border border-border/50 bg-secondary/30 p-4"
                   >
-                    <div>
-                      <p className="text-sm capitalize">
-                        {ev.evidence_type.replace(/_/g, " ")}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(ev.captured_at).toLocaleString()}
-                      </p>
+                    <div className="flex items-center justify-center h-24 bg-muted/20 rounded-md mb-3">
+                      <Camera className="w-8 h-8 text-muted-foreground/30" />
                     </div>
-                    <p className="text-xs text-muted-foreground font-mono">
-                      {ev.sha256_hash.slice(0, 12)}...
+                    <p className="text-sm font-medium capitalize">
+                      {ev.evidence_type.replace(/_/g, " ")}
                     </p>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-xs text-muted-foreground">
+                        {timeAgo(ev.captured_at)}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/60 font-mono">
+                        {ev.sha256_hash.slice(0, 8)}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -172,46 +162,10 @@ export default async function MatchDetailPage({
       {/* Takedown Timeline */}
       <Card className="border-border/50 bg-card rounded-xl">
         <CardHeader>
-          <CardTitle className="text-lg">Takedown History</CardTitle>
+          <CardTitle className="text-lg">Takedown Timeline</CardTitle>
         </CardHeader>
         <CardContent>
-          {detail.takedowns.length > 0 ? (
-            <div className="space-y-3">
-              {detail.takedowns.map((td) => (
-                <div
-                  key={td.id}
-                  className="flex items-center justify-between py-2 border-b border-border/30 last:border-0"
-                >
-                  <div>
-                    <p className="text-sm">
-                      {td.takedown_type.toUpperCase()} — {td.platform}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {td.submitted_at
-                        ? `Submitted ${new Date(td.submitted_at).toLocaleDateString()}`
-                        : `Created ${new Date(td.created_at).toLocaleDateString()}`}
-                    </p>
-                  </div>
-                  <Badge
-                    variant={
-                      td.status === "completed" || td.status === "removed"
-                        ? "success"
-                        : td.status === "pending"
-                          ? "warning"
-                          : "secondary"
-                    }
-                    className="capitalize text-[10px]"
-                  >
-                    {td.status}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No takedowns filed for this match yet.
-            </p>
-          )}
+          <TakedownTimeline takedowns={detail.takedowns} />
         </CardContent>
       </Card>
     </div>

@@ -60,6 +60,22 @@ export interface ProtectionActivity {
   metadata?: Record<string, unknown>;
 }
 
+export interface MatchesPageStats {
+  totalMatches: number;
+  newMatches: number;
+  activeTakedowns: number;
+  resolvedTakedowns: number;
+  successRate: number;
+  highConfidenceCount: number;
+  platformBreakdown: { platform: string; count: number }[];
+}
+
+export type MatchDismissReason =
+  | "my_account"
+  | "not_me"
+  | "authorized_use"
+  | "other";
+
 export type SubscriptionTier = "free" | "protected" | "premium";
 
 export interface TierUpgradeFeature {

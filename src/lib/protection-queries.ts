@@ -4,6 +4,7 @@ import type {
   ContributorMatch,
   ContributorMatchDetail,
   ProtectionActivity,
+  MatchesPageStats,
 } from "@/types/protection";
 import type { ProtectionScore } from "@/types/protection-score";
 
@@ -77,12 +78,13 @@ export async function getContributorMatches(
   options: {
     status?: string;
     confidence?: string;
+    platform?: string;
     page?: number;
     pageSize?: number;
   } = {}
 ): Promise<{ matches: ContributorMatch[]; total: number }> {
   const supabase = await createClient();
-  const { status, confidence, page = 1, pageSize = 20 } = options;
+  const { status, confidence, platform, page = 1, pageSize = 20 } = options;
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
@@ -107,8 +109,11 @@ export async function getContributorMatches(
   if (status && status !== "all") {
     query = query.eq("status", status);
   }
-  if (confidence) {
+  if (confidence && confidence !== "all") {
     query = query.eq("confidence_tier", confidence);
+  }
+  if (platform && platform !== "all") {
+    query = query.eq("discovered_images.platform", platform);
   }
 
   const { data, count } = await query;
@@ -137,6 +142,97 @@ export async function getContributorMatches(
   );
 
   return { matches, total: count || 0 };
+}
+
+export async function getMatchesPageStats(
+  userId: string
+): Promise<MatchesPageStats> {
+  const supabase = await createClient();
+
+  const [totalRes, newRes, activeTdRes, resolvedTdRes, highRes, platformRes] =
+    await Promise.all([
+      supabase
+        .from("matches")
+        .select("id", { count: "exact", head: true })
+        .eq("contributor_id", userId),
+      supabase
+        .from("matches")
+        .select("id", { count: "exact", head: true })
+        .eq("contributor_id", userId)
+        .eq("status", "new"),
+      supabase
+        .from("takedowns")
+        .select("id", { count: "exact", head: true })
+        .eq("contributor_id", userId)
+        .in("status", ["pending", "submitted"]),
+      supabase
+        .from("takedowns")
+        .select("id", { count: "exact", head: true })
+        .eq("contributor_id", userId)
+        .in("status", ["completed", "removed"]),
+      supabase
+        .from("matches")
+        .select("id", { count: "exact", head: true })
+        .eq("contributor_id", userId)
+        .eq("confidence_tier", "high"),
+      supabase
+        .from("matches")
+        .select("discovered_images!inner(platform)")
+        .eq("contributor_id", userId),
+    ]);
+
+  const totalMatches = totalRes.count || 0;
+  const newMatches = newRes.count || 0;
+  const activeTakedowns = activeTdRes.count || 0;
+  const resolvedTakedowns = resolvedTdRes.count || 0;
+  const highConfidenceCount = highRes.count || 0;
+
+  const totalTakedowns = activeTakedowns + resolvedTakedowns;
+  const successRate =
+    totalTakedowns > 0
+      ? Math.round((resolvedTakedowns / totalTakedowns) * 100)
+      : 0;
+
+  // Build platform breakdown
+  const platformCounts = new Map<string, number>();
+  for (const row of platformRes.data || []) {
+    const di = row.discovered_images as unknown as Record<string, unknown>;
+    const p = (di?.platform as string) || "unknown";
+    platformCounts.set(p, (platformCounts.get(p) || 0) + 1);
+  }
+  const platformBreakdown = Array.from(platformCounts.entries())
+    .map(([platform, count]) => ({ platform, count }))
+    .sort((a, b) => b.count - a.count);
+
+  return {
+    totalMatches,
+    newMatches,
+    activeTakedowns,
+    resolvedTakedowns,
+    successRate,
+    highConfidenceCount,
+    platformBreakdown,
+  };
+}
+
+export async function getDistinctPlatforms(
+  userId: string
+): Promise<string[]> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("matches")
+    .select("discovered_images!inner(platform)")
+    .eq("contributor_id", userId);
+
+  const platforms = new Set<string>();
+  for (const row of data || []) {
+    const di = row.discovered_images as unknown as Record<string, unknown>;
+    const p = di?.platform as string;
+    if (p) platforms.add(p);
+  }
+
+  return Array.from(platforms).sort();
 }
 
 export async function getContributorMatchDetail(
