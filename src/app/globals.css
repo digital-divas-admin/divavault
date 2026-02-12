@@ -138,8 +138,66 @@
   animation: scanner-row-highlight 4s ease-in-out infinite;
 }
 
+/* ── Protection Score Card animations ──────────────────────── */
+
+/* Score ring fill — animates stroke-dashoffset from full circumference to target */
+@keyframes score-ring-fill {
+  from { stroke-dashoffset: var(--ring-circumference); }
+  to { stroke-dashoffset: var(--ring-target); }
+}
+
+/* Score number fade-in + scale-up */
+@keyframes score-number-reveal {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Bar fill — scaleX from 0 to 1 */
+@keyframes bar-fill-in {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Sparkle twinkle — opacity + scale pulse */
+@keyframes sparkle-twinkle {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+.score-ring-progress {
+  animation: score-ring-fill 1.2s ease-out forwards;
+}
+
+.score-ring-glow {
+  animation: score-ring-fill 1.2s ease-out 0.15s forwards;
+}
+
+.score-number {
+  animation: score-number-reveal 0.5s ease-out 0.8s both;
+}
+
+.score-bar-fill {
+  transform-origin: left center;
+  animation: bar-fill-in 0.6s ease-out both;
+  width: var(--bar-width);
+}
+
+.score-sparkle {
+  animation: sparkle-twinkle 2.5s ease-in-out infinite;
+}
+
 /* Reduced motion: disable scanner animations */
 @media (prefers-reduced-motion: reduce) {
   .scanner-line { display: none; }
   .scanner-row-highlight { animation: none; }
+  .score-ring-progress,
+  .score-ring-glow,
+  .score-number,
+  .score-bar-fill,
+  .score-sparkle {
+    animation: none;
+  }
+  .score-number { opacity: 1; transform: scale(1); }
+  .score-bar-fill { transform: scaleX(1); }
+  .score-sparkle { opacity: 0.6; }
 }
