@@ -3,6 +3,7 @@ import { Hero } from "@/components/landing/hero";
 import { LiveScanner } from "@/components/landing/live-scanner";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { ValueProps } from "@/components/landing/value-props";
+import { CompensationFlow } from "@/components/landing/compensation-flow";
 import { Pricing } from "@/components/landing/pricing";
 import { SocialProof } from "@/components/landing/social-proof";
 import { FAQ } from "@/components/landing/faq";
@@ -17,6 +18,7 @@ export default function Home() {
       <LiveScanner />
       <HowItWorks />
       <ValueProps />
+      <CompensationFlow />
       <Pricing />
       <SocialProof />
       <FAQ />

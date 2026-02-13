@@ -205,6 +205,30 @@
   animation: timeline-node-pulse 2s ease-in-out infinite;
 }
 
+/* Compensation flow — dashed line march (horizontal) */
+@keyframes flow-dash-march {
+  to { stroke-dashoffset: -20; }
+}
+.flow-line-dash {
+  animation: flow-dash-march 1.2s linear infinite;
+}
+
+/* Compensation flow — dashed line march (vertical / mobile) */
+@keyframes flow-dash-march-v {
+  to { background-position: 0 20px; }
+}
+.flow-line-dash-vertical {
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(139, 92, 246, 0.4) 0px,
+    rgba(139, 92, 246, 0.4) 6px,
+    transparent 6px,
+    transparent 10px
+  );
+  background-size: 2px 20px;
+  animation: flow-dash-march-v 1.2s linear infinite;
+}
+
 /* Reduced motion: disable all animations */
 @media (prefers-reduced-motion: reduce) {
   .scanner-line { display: none; }
@@ -221,4 +245,6 @@
   .score-sparkle { opacity: 0.6; }
   .match-new-pulse { animation: none; border-left-color: rgba(139, 92, 246, 0.5); }
   .timeline-node-active { animation: none; }
+  .flow-line-dash { animation: none; }
+  .flow-line-dash-vertical { animation: none; }
 }
