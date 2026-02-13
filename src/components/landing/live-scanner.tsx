@@ -24,6 +24,10 @@ const PLATFORMS: Platform[] = [
   { name: "X / Twitter", icon: "X", confidenceRange: [80, 91], possibleStatuses: ["Clear", "Match Found"] },
   { name: "Hugging Face", icon: "HF", confidenceRange: [87, 95], possibleStatuses: ["Takedown Filed", "Removed"] },
   { name: "ArtStation", icon: "AS", confidenceRange: [84, 94], possibleStatuses: ["Scanning...", "Clear"] },
+  { name: "Nano Banana Pro", icon: "NB", confidenceRange: [81, 93], possibleStatuses: ["Scanning...", "Match Found"] },
+  { name: "Seedream 4.5", icon: "Se", confidenceRange: [84, 96], possibleStatuses: ["Match Found", "Takedown Filed"] },
+  { name: "Z-Image", icon: "ZI", confidenceRange: [80, 91], possibleStatuses: ["Match Found", "Scanning..."] },
+  { name: "Flux2", icon: "F2", confidenceRange: [86, 95], possibleStatuses: ["Takedown Filed", "Match Found"] },
 ];
 
 const STATUS_VARIANT: Record<Status, "success" | "warning" | "purple" | "secondary"> = {
@@ -88,12 +92,12 @@ export function LiveScanner() {
   const nextIndexRef = useRef(VISIBLE_COUNT);
 
   const [rows, setRows] = useState<DisplayRow[]>(INITIAL_ROWS);
-  const mountedRef = useRef(false);
+  const [mounted, setMounted] = useState(false);
 
   // Randomize rows after mount to avoid hydration mismatch
   useEffect(() => {
     const id = requestAnimationFrame(() => {
-      mountedRef.current = true;
+      setMounted(true);
       setRows(PLATFORMS.slice(0, VISIBLE_COUNT).map((p) => generateRow(p, false)));
     });
     return () => cancelAnimationFrame(id);
@@ -121,10 +125,10 @@ export function LiveScanner() {
   }, []);
 
   useEffect(() => {
-    if (reducedMotion || !mountedRef.current) return;
+    if (reducedMotion || !mounted) return;
     const id = setInterval(cycleRow, 3000);
     return () => clearInterval(id);
-  }, [reducedMotion, cycleRow]);
+  }, [reducedMotion, cycleRow, mounted]);
 
   return (
     <section className="py-10 px-4 sm:px-6">
