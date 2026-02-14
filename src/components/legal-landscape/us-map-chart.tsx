@@ -10,17 +10,17 @@ const GEO_URL =
   "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 
 const PROTECTION_COLORS: Record<ProtectionLevel, string> = {
-  strong: "#22C55E",
-  moderate: "#F59E0B",
-  basic: "#3B82F6",
-  none: "#EF4444",
+  strong: "#16794A",
+  moderate: "#A37218",
+  basic: "#2563A8",
+  none: "#9F3030",
 };
 
 const PROTECTION_HOVER_COLORS: Record<ProtectionLevel, string> = {
-  strong: "#4ADE80",
-  moderate: "#FBBF24",
-  basic: "#60A5FA",
-  none: "#F87171",
+  strong: "#1E9D5E",
+  moderate: "#C8901F",
+  basic: "#3478CC",
+  none: "#C04040",
 };
 
 const PROTECTION_LABELS: Record<ProtectionLevel, string> = {
@@ -61,6 +61,19 @@ export default function USMapChart({
 
   return (
     <div className="relative bg-card/50 rounded-xl border border-border/50 p-4">
+      {/* Legend */}
+      <div className="flex items-center justify-center gap-5 sm:gap-8 mb-3 pb-3 border-b border-border/50">
+        {LEGEND_ITEMS.map(({ level, label }) => (
+          <div key={level} className="flex items-center gap-2">
+            <span
+              className="size-3 rounded-sm"
+              style={{ backgroundColor: PROTECTION_COLORS[level] }}
+            />
+            <span className="text-xs text-muted-foreground">{label}</span>
+          </div>
+        ))}
+      </div>
+
       <ComposableMap
         projection="geoAlbersUsa"
         projectionConfig={{ scale: 1000 }}
@@ -139,18 +152,6 @@ export default function USMapChart({
         </div>
       )}
 
-      {/* Legend */}
-      <div className="flex items-center justify-center gap-6 mt-2">
-        {LEGEND_ITEMS.map(({ level, label }) => (
-          <div key={level} className="flex items-center gap-2">
-            <span
-              className="size-3 rounded-full"
-              style={{ backgroundColor: PROTECTION_COLORS[level] }}
-            />
-            <span className="text-xs text-muted-foreground">{label}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
