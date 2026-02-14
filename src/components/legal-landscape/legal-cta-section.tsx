@@ -4,8 +4,9 @@ import { ArrowRight, Bell } from "lucide-react";
 
 export function LegalCTASection() {
   return (
-    <section className="py-16 px-4 sm:py-24 sm:px-6 bg-primary">
-      <div className="max-w-3xl mx-auto text-center">
+    <section className="relative py-16 px-4 sm:py-24 sm:px-6 bg-primary overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/10 pointer-events-none" />
+      <div className="max-w-3xl mx-auto text-center relative">
         <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl md:text-5xl text-primary-foreground mb-6">
           Your face, your rights
         </h2>
@@ -28,9 +29,9 @@ export function LegalCTASection() {
             asChild
             size="lg"
             variant="outline"
-            className="text-base px-8 py-5 rounded-full border-white text-white hover:bg-white/10 hover:text-white"
+            className="text-base px-8 py-5 rounded-full border-white/80 text-white hover:bg-white/10 hover:text-white"
           >
-            <Link href="#get-notified">
+            <Link href="/legal-landscape#get-notified">
               Get Notified
               <Bell className="ml-2 w-4 h-4" />
             </Link>

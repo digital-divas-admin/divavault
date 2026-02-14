@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { statesData } from "@/data/legal-landscape/states";
 
 const notifySchema = z.object({
@@ -122,17 +122,17 @@ export function GetNotified() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-xl font-[family-name:var(--font-heading)] mb-2">
+    <Card className="border-border/50">
+      <CardHeader>
+        <CardTitle className="text-xl font-[family-name:var(--font-heading)]">
           Stay informed about AI likeness rights
-        </h3>
-        <p className="text-muted-foreground">
+        </CardTitle>
+        <CardDescription>
           Get notified when laws change, new bills are introduced, or
           enforcement actions affect your protections.
-        </p>
-      </div>
-
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         {/* Email */}
         <div className="space-y-2">
@@ -220,6 +220,7 @@ export function GetNotified() {
           {submitting ? "Subscribing..." : "Get Notified"}
         </Button>
       </form>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -60,7 +60,7 @@ export default function USMapChart({
   }, [selectedState]);
 
   return (
-    <div className="relative bg-zinc-900/50 rounded-xl border border-zinc-800 p-4">
+    <div className="relative bg-card/50 rounded-xl border border-border/50 p-4">
       <ComposableMap
         projection="geoAlbersUsa"
         projectionConfig={{ scale: 1000 }}
@@ -123,7 +123,7 @@ export default function USMapChart({
 
       {/* Tooltip bar */}
       {hoveredState && (
-        <div className="absolute bottom-14 left-1/2 -translate-x-1/2 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 flex items-center gap-3 shadow-lg">
+        <div className="absolute bottom-14 left-1/2 -translate-x-1/2 bg-card border border-border/50 rounded-lg px-4 py-2 flex items-center gap-3 shadow-lg pointer-events-none">
           <span
             className="size-3 rounded-full"
             style={{

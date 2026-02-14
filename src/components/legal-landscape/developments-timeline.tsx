@@ -92,7 +92,7 @@ export function DevelopmentsTimeline() {
       </div>
 
       {/* Timeline */}
-      <div className="relative ml-4 border-l-2 border-zinc-700 space-y-8 pb-4">
+      <div className="relative ml-4 border-l-2 border-border space-y-8 pb-4">
         {filteredEvents.map((event) => {
           const config = CATEGORY_CONFIG[event.category];
 
@@ -100,7 +100,7 @@ export function DevelopmentsTimeline() {
             <div key={event.id} className="relative pl-8">
               {/* Dot */}
               <div
-                className="absolute -left-[9px] top-1.5 size-4 rounded-full border-2 border-zinc-900"
+                className="absolute -left-[9px] top-1.5 size-4 rounded-full border-2 border-background"
                 style={{ backgroundColor: config.color }}
               />
 

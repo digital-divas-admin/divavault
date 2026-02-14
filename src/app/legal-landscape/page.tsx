@@ -22,15 +22,10 @@ export default function LegalLandscapePage() {
       <Navbar />
       <main className="min-h-screen pt-16">
         {/* Hero Section */}
-        <section className="py-16 px-4 sm:py-24 sm:px-6 text-center">
-          <div className="max-w-4xl mx-auto">
-            <div className="inline-flex items-center gap-2 mb-6 px-3 py-1 rounded-full bg-primary/10 border border-primary/20">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-xs font-mono text-primary tracking-wider">
-                LIVE TRACKER
-              </span>
-            </div>
-            <h1 className="font-[family-name:var(--font-heading)] text-4xl sm:text-5xl md:text-6xl text-foreground mb-6">
+        <section className="pt-12 pb-8 px-4 sm:pt-20 sm:pb-12 sm:px-6 text-center relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent pointer-events-none" />
+          <div className="max-w-4xl mx-auto relative">
+            <h1 className="font-[family-name:var(--font-heading)] text-4xl sm:text-5xl md:text-6xl text-foreground mb-5">
               AI Likeness Rights{" "}
               <span className="text-primary">Legal Landscape</span>
             </h1>

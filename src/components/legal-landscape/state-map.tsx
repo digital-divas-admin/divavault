@@ -11,7 +11,9 @@ import { statesByAbbreviation } from "@/data/legal-landscape/states";
 const USMapChart = dynamic(() => import("./us-map-chart"), {
   ssr: false,
   loading: () => (
-    <div className="h-[400px] w-full bg-zinc-800/50 animate-pulse rounded-xl" />
+    <div className="h-[400px] w-full bg-card/50 animate-pulse rounded-xl border border-border/50 flex items-center justify-center">
+      <div className="text-muted-foreground/40 text-sm">Loading map...</div>
+    </div>
   ),
 });
 
@@ -28,7 +30,7 @@ export function StateMap() {
       />
 
       {state && (
-        <Card>
+        <Card className="border-border/50">
           <CardHeader>
             <div className="flex flex-wrap items-center gap-3">
               <CardTitle className="text-xl font-[family-name:var(--font-heading)]">

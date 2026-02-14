@@ -58,10 +58,10 @@ export function FederalTracker() {
     <div className="space-y-6">
       {/* Pipeline summary bar */}
       <div className="space-y-3">
-        <h3 className="text-sm font-medium text-muted-foreground">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
           Legislative Pipeline
         </h3>
-        <div className="flex h-10 rounded-lg overflow-hidden">
+        <div className="flex h-10 rounded-lg overflow-hidden border border-border/50">
           {STATUS_ORDER.map((status) => {
             const count = statusCounts[status];
             if (count === 0) return null;
@@ -105,7 +105,7 @@ export function FederalTracker() {
       {/* Bill cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {sortedBills.map((bill) => (
-          <Card key={bill.id}>
+          <Card key={bill.id} className="border-border/50 card-hover">
             <CardHeader>
               <div className="flex items-start justify-between gap-2">
                 <div className="space-y-1">
@@ -127,7 +127,7 @@ export function FederalTracker() {
               <p className="text-sm text-muted-foreground leading-relaxed">
                 <GlossaryText text={bill.summary} />
               </p>
-              <p className="text-xs text-muted-foreground border-t border-zinc-800 pt-3">
+              <p className="text-xs text-muted-foreground border-t border-border/50 pt-3">
                 Last action: {bill.lastActionDate} &mdash; {bill.lastAction}
               </p>
             </CardContent>

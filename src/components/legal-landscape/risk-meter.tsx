@@ -51,7 +51,7 @@ export function RiskMeter({
         {Array.from({ length: TOTAL_SEGMENTS }, (_, i) => {
           const isFilled = i < filled;
           const opacity = isFilled
-            ? 1 - ((i / (filled - 1 || 1)) * 0.4)
+            ? 1 - ((i / (filled - 1 || 1)) * 0.5)
             : undefined;
 
           return (
@@ -59,7 +59,7 @@ export function RiskMeter({
               key={i}
               className={cn(
                 "h-3 w-full rounded",
-                !isFilled && "bg-zinc-800",
+                !isFilled && "bg-secondary",
                 !prefersReducedMotion &&
                   "transition-all duration-500 ease-out"
               )}

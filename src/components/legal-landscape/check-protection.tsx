@@ -45,7 +45,7 @@ export function CheckProtection() {
       </Select>
 
       {!state ? (
-        <Card>
+        <Card className="border-border/50">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <Shield className="size-12 text-muted-foreground/40 mb-4" />
             <p className="text-muted-foreground text-lg">
@@ -72,7 +72,7 @@ export function CheckProtection() {
 
           {/* What's Protected + Coverage Gaps */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="border-l-4 border-l-green-500">
+            <Card className="border-border/50 border-l-4 border-l-green-500">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-green-400">
                   <Check className="size-4" />
@@ -91,7 +91,7 @@ export function CheckProtection() {
               </CardContent>
             </Card>
 
-            <Card className="border-l-4 border-l-amber-500">
+            <Card className="border-border/50 border-l-4 border-l-amber-500">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-amber-400">
                   <AlertTriangle className="size-4" />
@@ -117,7 +117,7 @@ export function CheckProtection() {
           </div>
 
           {/* Federal Protections */}
-          <Card className="border-l-4 border-l-blue-500">
+          <Card className="border-border/50 border-l-4 border-l-blue-500">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-blue-400">
                 <Scale className="size-4" />
@@ -138,10 +138,10 @@ export function CheckProtection() {
           {/* Applicable Laws */}
           {state.laws.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-lg font-semibold">Applicable Laws</h3>
+              <h3 className="text-lg font-semibold font-[family-name:var(--font-heading)]">Applicable Laws</h3>
               <div className="space-y-3">
                 {state.laws.map((law, i) => (
-                  <Card key={i}>
+                  <Card key={i} className="border-border/50 card-hover">
                     <CardContent className="flex flex-col gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold">{law.name}</span>
@@ -158,10 +158,13 @@ export function CheckProtection() {
           )}
 
           {/* Action Paths */}
-          <ActionPaths
-            protectionLevel={state.protectionLevel}
-            stateName={state.name}
-          />
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold font-[family-name:var(--font-heading)]">What You Can Do</h3>
+            <ActionPaths
+              protectionLevel={state.protectionLevel}
+              stateName={state.name}
+            />
+          </div>
         </div>
       )}
     </div>

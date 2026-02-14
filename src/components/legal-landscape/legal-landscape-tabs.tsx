@@ -17,18 +17,23 @@ export function LegalLandscapeTabs() {
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6">
       {/* LIVE TRACKER indicator */}
-      <div className="flex items-center gap-2 mb-6">
-        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+      <div className="flex items-center gap-2 mb-4">
+        <span className="relative flex size-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+          <span className="relative inline-flex size-2 rounded-full bg-green-500" />
+        </span>
         <span className="text-xs font-mono text-primary tracking-wider">
           LIVE TRACKER
         </span>
-        <span className="text-xs text-muted-foreground">UPDATED FEB 2025</span>
+        <span className="text-xs text-muted-foreground/60">
+          UPDATED FEB 2025
+        </span>
       </div>
 
       <Tabs defaultValue="check">
         <TabsList
           variant="line"
-          className="w-full overflow-x-auto justify-start"
+          className="w-full justify-start border-b border-border/50 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
         >
           <TabsTrigger value="check">
             <ShieldCheck className="size-4" />
@@ -52,23 +57,23 @@ export function LegalLandscapeTabs() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="check">
+        <TabsContent value="check" className="pt-6">
           <CheckProtection />
         </TabsContent>
 
-        <TabsContent value="map">
+        <TabsContent value="map" className="pt-6">
           <StateMap />
         </TabsContent>
 
-        <TabsContent value="federal">
+        <TabsContent value="federal" className="pt-6">
           <FederalTracker />
         </TabsContent>
 
-        <TabsContent value="timeline">
+        <TabsContent value="timeline" className="pt-6">
           <DevelopmentsTimeline />
         </TabsContent>
 
-        <TabsContent value="notify" id="get-notified">
+        <TabsContent value="notify" id="get-notified" className="pt-6">
           <GetNotified />
         </TabsContent>
       </Tabs>
