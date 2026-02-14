@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     # InsightFace
     insightface_model: str = "buffalo_sc"
 
+    # Ad Intelligence
+    meta_ad_library_access_token: str = ""
+    shutterstock_api_key: str = ""
+    shutterstock_api_secret: str = ""
+    getty_api_key: str = ""
+    adobe_stock_api_key: str = ""
+    anthropic_api_key: str = ""
+    ad_intel_enabled: bool = False
+
     # Logging
     log_level: str = "INFO"
 

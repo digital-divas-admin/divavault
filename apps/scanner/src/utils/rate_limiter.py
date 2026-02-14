@@ -51,6 +51,11 @@ RATE_LIMITERS: dict[str, RateLimiter] = {
     "civitai": RateLimiter(rate=5.0, max_tokens=20.0),       # 5 req/sec, burst of 20
     "deviantart": RateLimiter(rate=2.0, max_tokens=10.0),   # 2 req/sec, burst of 10
     "supabase_storage": RateLimiter(rate=10.0, max_tokens=50.0),  # 10 req/sec
+    "meta_ad_library": RateLimiter(rate=2.0, max_tokens=10.0),    # 2 req/sec, burst of 10
+    "shutterstock": RateLimiter(rate=3.0, max_tokens=15.0),       # 3 req/sec, burst of 15
+    "getty": RateLimiter(rate=3.0, max_tokens=15.0),              # 3 req/sec, burst of 15
+    "adobe_stock": RateLimiter(rate=3.0, max_tokens=15.0),        # 3 req/sec, burst of 15
+    "anthropic": RateLimiter(rate=5.0, max_tokens=20.0),          # 5 req/sec, burst of 20
 }
 
 

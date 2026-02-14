@@ -123,6 +123,17 @@ async def run_scheduler(job_store: JobStore) -> None:
             if shutdown_requested:
                 break
 
+            # e. Ad Intelligence scanning
+            if settings.ad_intel_enabled:
+                try:
+                    from src.ad_intelligence.scheduler import run_ad_intel_tick
+                    await run_ad_intel_tick(job_store)
+                except Exception as e:
+                    log.error("ad_intel_tick_error", error=str(e))
+
+            if shutdown_requested:
+                break
+
             # d. Cleanup (hourly)
             now = time.monotonic()
             if now - last_cleanup > 3600:
