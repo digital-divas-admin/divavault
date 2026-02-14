@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Menu, X, ShieldCheck } from "lucide-react";
 
 const navLinks = [
-  { href: "#how-it-works", label: "How It Works" },
-  { href: "#protection", label: "Protection" },
-  { href: "#pricing", label: "Pricing" },
-  { href: "#faq", label: "FAQ" },
+  { href: "/#how-it-works", label: "How It Works" },
+  { href: "/#protection", label: "Protection" },
+  { href: "/#pricing", label: "Pricing" },
+  { href: "/#faq", label: "FAQ" },
   { href: "/legal-landscape", label: "Legal" },
   { href: "/login", label: "Sign In" },
 ];
