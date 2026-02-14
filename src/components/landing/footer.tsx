@@ -31,6 +31,12 @@ export function Footer() {
               Pricing
             </Link>
             <Link
+              href="/legal-landscape"
+              className="hover:text-foreground transition-colors"
+            >
+              Legal Landscape
+            </Link>
+            <Link
               href="/signup"
               className="hover:text-foreground transition-colors"
             >

@@ -10,6 +10,7 @@ const navLinks = [
   { href: "#protection", label: "Protection" },
   { href: "#pricing", label: "Pricing" },
   { href: "#faq", label: "FAQ" },
+  { href: "/legal-landscape", label: "Legal" },
   { href: "/login", label: "Sign In" },
 ];
 
