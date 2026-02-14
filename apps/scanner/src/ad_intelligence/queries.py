@@ -343,6 +343,30 @@ async def update_config(session: AsyncSession, key: str, value) -> None:
 # --- Stats queries ---
 
 
+async def insert_activity_log(
+    session: AsyncSession,
+    event_type: str,
+    title: str,
+    description: str | None = None,
+    metadata: dict | None = None,
+    stage: str | None = None,
+) -> None:
+    """Insert a row into ad_intel_activity_log."""
+    await session.execute(
+        text("""
+            INSERT INTO ad_intel_activity_log (event_type, stage, title, description, metadata)
+            VALUES (:event_type, :stage, :title, :description, :metadata::jsonb)
+        """),
+        {
+            "event_type": event_type,
+            "stage": stage,
+            "title": title,
+            "description": description,
+            "metadata": __import__("json").dumps(metadata) if metadata else None,
+        },
+    )
+
+
 async def get_stats(session: AsyncSession) -> dict:
     """Aggregate counts for the ad intel dashboard."""
     stats = {}

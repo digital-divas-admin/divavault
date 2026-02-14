@@ -71,6 +71,232 @@ export interface AdIntelMatchDetail {
   } | null;
 }
 
+// --- Pipeline Status ---
+
+export interface PipelineStatus {
+  pendingAds: number;
+  processingAds: number;
+  undescribedFaces: number;
+  unsearchedFaces: number;
+  unmatchedFaces: number;
+  runningJobs: number;
+}
+
+export async function getAdIntelPipelineStatus(): Promise<PipelineStatus> {
+  const supabase = await createServiceClient();
+
+  const [
+    { count: pendingAds },
+    { count: processingAds },
+    { count: undescribedFaces },
+    { count: unsearchedFaces },
+    { count: unmatchedFaces },
+    { count: runningJobs },
+  ] = await Promise.all([
+    supabase
+      .from("ad_intel_ads")
+      .select("*", { count: "exact", head: true })
+      .eq("processing_status", "pending"),
+    supabase
+      .from("ad_intel_ads")
+      .select("*", { count: "exact", head: true })
+      .eq("processing_status", "processing"),
+    supabase
+      .from("ad_intel_faces")
+      .select("*", { count: "exact", head: true })
+      .eq("described", false),
+    supabase
+      .from("ad_intel_faces")
+      .select("*", { count: "exact", head: true })
+      .eq("described", true)
+      .eq("searched", false),
+    supabase
+      .from("ad_intel_faces")
+      .select("*", { count: "exact", head: true })
+      .eq("searched", true)
+      .eq("matched", false),
+    supabase
+      .from("scan_jobs")
+      .select("*", { count: "exact", head: true })
+      .eq("scan_type", "ad_intel")
+      .eq("status", "running"),
+  ]);
+
+  return {
+    pendingAds: pendingAds || 0,
+    processingAds: processingAds || 0,
+    undescribedFaces: undescribedFaces || 0,
+    unsearchedFaces: unsearchedFaces || 0,
+    unmatchedFaces: unmatchedFaces || 0,
+    runningJobs: runningJobs || 0,
+  };
+}
+
+// --- Activity Log ---
+
+export interface ActivityLogItem {
+  id: string;
+  event_type: string;
+  stage: string | null;
+  title: string;
+  description: string | null;
+  metadata: Record<string, unknown> | null;
+  actor_id: string | null;
+  created_at: string;
+}
+
+export async function logAdIntelActivity(event: {
+  event_type: string;
+  stage?: string;
+  title: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
+  actor_id?: string;
+}): Promise<void> {
+  const supabase = await createServiceClient();
+  const { error } = await supabase.from("ad_intel_activity_log").insert({
+    event_type: event.event_type,
+    stage: event.stage || null,
+    title: event.title,
+    description: event.description || null,
+    metadata: event.metadata || null,
+    actor_id: event.actor_id || null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function getAdIntelActivityLog({
+  limit = 20,
+  offset = 0,
+  eventType,
+}: {
+  limit?: number;
+  offset?: number;
+  eventType?: string;
+}): Promise<{ items: ActivityLogItem[]; total: number }> {
+  const supabase = await createServiceClient();
+
+  let query = supabase
+    .from("ad_intel_activity_log")
+    .select("*", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (eventType && eventType !== "all") {
+    query = query.eq("event_type", eventType);
+  }
+
+  const { data, count } = await query;
+  return {
+    items: (data as ActivityLogItem[]) || [],
+    total: count || 0,
+  };
+}
+
+// --- Ad Management ---
+
+export interface AdIntelAdListItem {
+  id: string;
+  platform: string;
+  advertiser_name: string | null;
+  creative_url: string | null;
+  processing_status: string;
+  face_count: number | null;
+  is_ai_generated: boolean | null;
+  created_at: string;
+}
+
+export interface AdIntelFaceListItem {
+  id: string;
+  face_index: number;
+  description: string | null;
+  described: boolean;
+  searched: boolean;
+  matched: boolean;
+  created_at: string;
+}
+
+export async function insertAdIntelAd({
+  url,
+  platform,
+  advertiserName,
+}: {
+  url: string;
+  platform: string;
+  advertiserName?: string;
+}): Promise<string> {
+  const supabase = await createServiceClient();
+  const { data, error } = await supabase
+    .from("ad_intel_ads")
+    .insert({
+      creative_url: url,
+      platform,
+      advertiser_name: advertiserName || null,
+      processing_status: "pending",
+    })
+    .select("id")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data.id;
+}
+
+export async function getAdIntelAds({
+  page = 1,
+  pageSize = 20,
+  status,
+}: {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+}): Promise<{ ads: AdIntelAdListItem[]; total: number }> {
+  const supabase = await createServiceClient();
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
+    .from("ad_intel_ads")
+    .select(
+      "id, platform, advertiser_name, creative_url, processing_status, face_count, is_ai_generated, created_at",
+      { count: "exact" }
+    )
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (status && status !== "all") {
+    query = query.eq("processing_status", status);
+  }
+
+  const { data, count } = await query;
+  return {
+    ads: (data as AdIntelAdListItem[]) || [],
+    total: count || 0,
+  };
+}
+
+export async function getAdIntelAdFaces(
+  adId: string
+): Promise<AdIntelFaceListItem[]> {
+  const supabase = await createServiceClient();
+  const { data } = await supabase
+    .from("ad_intel_faces")
+    .select("id, face_index, description, described, searched, matched, created_at")
+    .eq("ad_id", adId)
+    .order("face_index");
+
+  return (data as AdIntelFaceListItem[]) || [];
+}
+
+export async function resetFaceSearched(faceId: string): Promise<void> {
+  const supabase = await createServiceClient();
+  const { error } = await supabase
+    .from("ad_intel_faces")
+    .update({ searched: false, matched: false })
+    .eq("id", faceId);
+
+  if (error) throw new Error(error.message);
+}
+
 // --- Stats ---
 
 export async function getAdIntelStats(): Promise<AdIntelStats> {

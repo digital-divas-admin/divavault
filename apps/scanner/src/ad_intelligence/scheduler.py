@@ -9,6 +9,7 @@ Runs one stage per tick in priority order (process existing before discovering m
 """
 
 import numpy as np
+from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ad_intelligence.queries import (
@@ -17,6 +18,7 @@ from src.ad_intelligence.queries import (
     get_undescribed_faces,
     get_unmatched_faces,
     get_unsearched_faces,
+    insert_activity_log,
     insert_face,
     mark_face_matched,
     mark_face_searched,
@@ -46,6 +48,69 @@ async def run_ad_intel_tick(job_store) -> None:
     batch_size = config.get("batch_size", 5)
     if isinstance(batch_size, dict):
         batch_size = batch_size.get("value", 5)
+
+    # Check for manually-triggered stage jobs
+    async with async_session() as session:
+        result = await session.execute(sa_text("""
+            SELECT id, stage FROM scan_jobs
+            WHERE scan_type = 'ad_intel' AND status = 'pending' AND stage IS NOT NULL
+            ORDER BY created_at LIMIT 1
+        """))
+        manual_job = result.first()
+
+    if manual_job:
+        job_id, stage = manual_job
+        log.info("manual_stage_job", job_id=str(job_id), stage=stage)
+
+        # Mark as running
+        from src.db.queries import update_scan_job
+        async with async_session() as session:
+            await update_scan_job(session, job_id, status="running")
+            await session.commit()
+
+        try:
+            stage_runners = {
+                "discover": lambda: _stage_scan(config, job_store),
+                "detect": lambda: _run_stage_detect(batch_size),
+                "describe": lambda: _run_stage_describe(batch_size),
+                "search": lambda: _run_stage_search(batch_size),
+                "match": lambda: _run_stage_match(batch_size, config),
+            }
+
+            runner = stage_runners.get(stage)
+            if runner:
+                await runner()
+
+            async with async_session() as session:
+                await update_scan_job(session, job_id, status="completed")
+                await insert_activity_log(
+                    session,
+                    event_type="stage_completed",
+                    title=f"{stage} stage completed",
+                    description=f"Manually triggered {stage} stage finished",
+                    stage=stage,
+                    metadata={"job_id": str(job_id)},
+                )
+                await session.commit()
+
+        except Exception as e:
+            async with async_session() as session:
+                await update_scan_job(
+                    session, job_id,
+                    status="failed",
+                    error_message=str(e)[:500],
+                )
+                await insert_activity_log(
+                    session,
+                    event_type="error",
+                    title=f"{stage} stage failed",
+                    description=str(e)[:200],
+                    stage=stage,
+                    metadata={"job_id": str(job_id)},
+                )
+                await session.commit()
+
+        return
 
     # Stage 1: Match — cross-match faces with candidates but no matches
     async with async_session() as session:
@@ -335,3 +400,35 @@ async def _stage_scan(config: dict, job_store) -> None:
             )
             await session.commit()
         raise
+
+
+async def _run_stage_detect(batch_size: int) -> None:
+    """Helper: run detect stage for manual trigger."""
+    async with async_session() as session:
+        pending = await get_pending_ads(session, limit=batch_size)
+    if pending:
+        await _stage_detect(pending)
+
+
+async def _run_stage_describe(batch_size: int) -> None:
+    """Helper: run describe stage for manual trigger."""
+    async with async_session() as session:
+        undescribed = await get_undescribed_faces(session, limit=batch_size)
+    if undescribed:
+        await _stage_describe(undescribed)
+
+
+async def _run_stage_search(batch_size: int) -> None:
+    """Helper: run search stage for manual trigger."""
+    async with async_session() as session:
+        unsearched = await get_unsearched_faces(session, limit=batch_size)
+    if unsearched:
+        await _stage_search(unsearched)
+
+
+async def _run_stage_match(batch_size: int, config: dict) -> None:
+    """Helper: run match stage for manual trigger."""
+    async with async_session() as session:
+        unmatched = await get_unmatched_faces(session, limit=batch_size)
+    if unmatched:
+        await _stage_match(unmatched, config)

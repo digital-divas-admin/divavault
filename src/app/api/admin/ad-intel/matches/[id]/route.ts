@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin-queries";
 import {
   getAdIntelMatchDetail,
   reviewMatch,
+  logAdIntelActivity,
 } from "@/lib/ad-intel-admin-queries";
 
 export async function GET(
@@ -81,6 +82,19 @@ export async function PATCH(
       notes: (body.notes as string) || undefined,
       reviewerId: user.id,
     });
+
+    await logAdIntelActivity({
+      event_type: "match_reviewed",
+      title: `Match ${status}`,
+      description: `Match ${id.slice(0, 8)}... marked as ${status}`,
+      metadata: {
+        match_id: id,
+        review_status: status,
+        notes: body.notes || null,
+      },
+      actor_id: user.id,
+    });
+
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json(

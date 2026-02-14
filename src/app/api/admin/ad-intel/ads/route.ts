@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/admin-queries";
 import {
-  getAdIntelConfig,
-  updateAdIntelConfig,
+  getAdIntelAds,
+  insertAdIntelAd,
   logAdIntelActivity,
 } from "@/lib/ad-intel-admin-queries";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -22,18 +22,22 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const { searchParams } = new URL(request.url);
+  const page = parseInt(searchParams.get("page") || "1", 10);
+  const status = searchParams.get("status") || undefined;
+
   try {
-    const config = await getAdIntelConfig();
-    return NextResponse.json(config);
+    const result = await getAdIntelAds({ page, status });
+    return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to fetch config" },
+      { error: err instanceof Error ? err.message : "Failed to fetch ads" },
       { status: 500 }
     );
   }
 }
 
-export async function PATCH(request: NextRequest) {
+export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -55,35 +59,32 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const key = body.key as string | undefined;
-  const value = body.value;
+  const url = body.url as string | undefined;
+  const platform = body.platform as string | undefined;
+  const advertiserName = body.advertiserName as string | undefined;
 
-  if (!key) {
-    return NextResponse.json({ error: "Missing key" }, { status: 400 });
+  if (!url) {
+    return NextResponse.json({ error: "Missing url" }, { status: 400 });
   }
-  if (value === undefined) {
-    return NextResponse.json({ error: "Missing value" }, { status: 400 });
+  if (!platform) {
+    return NextResponse.json({ error: "Missing platform" }, { status: 400 });
   }
 
   try {
-    // Fetch old value for activity log
-    const currentConfig = await getAdIntelConfig();
-    const oldValue = currentConfig[key]?.value;
-
-    await updateAdIntelConfig(key, value);
+    const adId = await insertAdIntelAd({ url, platform, advertiserName });
 
     await logAdIntelActivity({
-      event_type: "config_changed",
-      title: "Config updated",
-      description: `Changed "${key}"`,
-      metadata: { config_key: key, old_value: oldValue, new_value: value },
+      event_type: "ad_added",
+      title: "Ad manually added",
+      description: `Added ${platform} ad: ${url}`,
+      metadata: { ad_id: adId, url, platform, advertiser_name: advertiserName },
       actor_id: user.id,
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, id: adId });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Update failed" },
+      { error: err instanceof Error ? err.message : "Failed to add ad" },
       { status: 500 }
     );
   }
