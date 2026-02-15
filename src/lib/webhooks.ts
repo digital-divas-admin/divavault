@@ -6,7 +6,10 @@ export type WebhookEventType =
   | "contributor.opted_out"
   | "contributor.photos_added"
   | "bounty.created"
-  | "bounty.submission_reviewed";
+  | "bounty.submission_reviewed"
+  | "registry.identity_created"
+  | "registry.consent_updated"
+  | "registry.consent_revoked";
 
 async function buildSignature(
   secret: string,

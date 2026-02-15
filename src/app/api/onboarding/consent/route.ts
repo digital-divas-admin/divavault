@@ -154,6 +154,30 @@ export async function POST(request: NextRequest) {
       },
     }).catch((err) => console.error("Webhook dispatch error:", err));
 
+    // Registry dual-write (non-blocking)
+    (async () => {
+      try {
+        const {
+          getIdentityByContributorId,
+          recordConsentEvent,
+          buildConsentScope,
+        } = await import("@/lib/registry");
+        const identity = await getIdentityByContributorId(user.id);
+        if (!identity) return; // No registry identity yet
+
+        await recordConsentEvent({
+          cid: identity.cid,
+          eventType: "grant",
+          consentScope: buildConsentScope(parsed.data),
+          source: "onboarding",
+          ipAddress: ip || undefined,
+          userAgent: userAgent || undefined,
+        });
+      } catch (err) {
+        console.error("Registry consent dual-write error:", err);
+      }
+    })();
+
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json(

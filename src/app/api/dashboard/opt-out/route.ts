@@ -55,5 +55,31 @@ export async function POST() {
     }).catch((err) => console.error("Webhook dispatch error:", err));
   }
 
+  // Registry consent event (non-blocking)
+  (async () => {
+    try {
+      const { getIdentityByContributorId, recordConsentEvent, getCurrentConsent } =
+        await import("@/lib/registry");
+      const identity = await getIdentityByContributorId(user.id);
+      if (!identity) return;
+
+      await recordConsentEvent({
+        cid: identity.cid,
+        eventType: newOptedOut ? "revoke" : "reinstate",
+        consentScope: newOptedOut
+          ? { revocation_reason: "user_opt_out" }
+          : (await getCurrentConsent(identity.cid)) || {},
+        source: "dashboard",
+      });
+
+      dispatchWebhook(
+        newOptedOut ? "registry.consent_revoked" : "registry.consent_updated",
+        { cid: identity.cid, event_type: newOptedOut ? "revoke" : "reinstate" }
+      ).catch((err) => console.error("Registry webhook error:", err));
+    } catch (err) {
+      console.error("Registry opt-out event error:", err);
+    }
+  })();
+
   return NextResponse.json({ success: true, opted_out: newOptedOut });
 }

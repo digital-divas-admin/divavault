@@ -95,6 +95,60 @@ export async function POST() {
       completed_at: new Date().toISOString(),
     }).catch((err) => console.error("Webhook dispatch error:", err));
 
+    // Create registry identity (non-blocking — every user gets one)
+    try {
+      const { createRegistryIdentity, recordConsentEvent, buildConsentScope } =
+        await import("@/lib/registry");
+
+      const { data: fullContributor } = await supabase
+        .from("contributors")
+        .select("sumsub_applicant_id")
+        .eq("id", user.id)
+        .single();
+
+      const identity = await createRegistryIdentity({
+        contributorId: user.id,
+        sumsubApplicantId: fullContributor?.sumsub_applicant_id ?? null,
+        verifiedAt: new Date().toISOString(),
+      });
+
+      // Backfill the latest consent as a "grant" event
+      const { data: latestConsent } = await supabase
+        .from("contributor_consents")
+        .select("*")
+        .eq("contributor_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (latestConsent) {
+        await recordConsentEvent({
+          cid: identity.cid,
+          eventType: "grant",
+          consentScope: buildConsentScope({
+            allowCommercial: latestConsent.allow_commercial,
+            allowEditorial: latestConsent.allow_editorial,
+            allowEntertainment: latestConsent.allow_entertainment,
+            allowELearning: latestConsent.allow_e_learning,
+            geoRestrictions: latestConsent.geo_restrictions ?? [],
+            contentExclusions: latestConsent.content_exclusions ?? [],
+          }),
+          source: "onboarding",
+          legacyConsentId: latestConsent.id,
+        });
+      }
+
+      const { dispatchWebhook: dispatchRegistryWebhook } = await import(
+        "@/lib/webhooks"
+      );
+      dispatchRegistryWebhook("registry.identity_created", {
+        cid: identity.cid,
+        contributor_id: user.id,
+      }).catch((err) => console.error("Registry webhook error:", err));
+    } catch (err) {
+      console.error("Registry identity creation error:", err);
+    }
+
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json(

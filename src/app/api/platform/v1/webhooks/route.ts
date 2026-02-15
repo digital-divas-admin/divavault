@@ -20,6 +20,9 @@ const VALID_EVENTS = [
   "contributor.photos_added",
   "bounty.created",
   "bounty.submission_reviewed",
+  "registry.identity_created",
+  "registry.consent_updated",
+  "registry.consent_revoked",
 ];
 
 export async function GET(request: NextRequest) {
