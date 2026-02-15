@@ -68,9 +68,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Add contact email if provided
+    // Add contact email if provided + send confirmation
     if (email) {
       await addRegistryContact(identity.cid, email);
+
+      // Fire-and-forget confirmation email
+      import("@/lib/email")
+        .then(({ sendClaimConfirmation }) =>
+          sendClaimConfirmation(email, identity.cid)
+        )
+        .catch((err) => console.error("Claim email error:", err));
     }
 
     return NextResponse.json({

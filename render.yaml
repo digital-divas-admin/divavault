@@ -43,6 +43,9 @@ services:
         sync: false
       - key: CASTMI_CLIENT_SECRET
         sync: false
+      # Resend (transactional email)
+      - key: RESEND_API_KEY
+        sync: false
       # PayPal
       - key: PAYPAL_CLIENT_ID
         sync: false
