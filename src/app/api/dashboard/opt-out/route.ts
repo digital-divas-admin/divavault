@@ -55,6 +55,20 @@ export async function POST() {
     }).catch((err) => console.error("Webhook dispatch error:", err));
   }
 
+  // Send security alert email (fire and forget)
+  if (user.email) {
+    import("@/lib/email")
+      .then(({ sendSecurityAlert }) =>
+        sendSecurityAlert(user.email!, {
+          event: newOptedOut ? "Opted out of AI training" : "Opted back in to AI training",
+          description: newOptedOut
+            ? "You have opted out of AI training. Your likeness will no longer be scanned or monitored. You can opt back in at any time from your privacy settings."
+            : "You have opted back in to AI training protection. We will resume scanning AI platforms for unauthorized use of your likeness.",
+        })
+      )
+      .catch((err) => console.error("Opt-out email error:", err));
+  }
+
   // Registry consent event (non-blocking)
   (async () => {
     try {

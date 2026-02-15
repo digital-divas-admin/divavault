@@ -71,5 +71,17 @@ export async function POST(
     .eq("id", id)
     .eq("contributor_id", user.id);
 
+  // Send takedown confirmation email (fire and forget)
+  if (user.email) {
+    import("@/lib/email")
+      .then(({ sendTakedownUpdate }) =>
+        sendTakedownUpdate(user.email!, {
+          platform,
+          status: "pending",
+        })
+      )
+      .catch((err) => console.error("Takedown email error:", err));
+  }
+
   return NextResponse.json(takedown, { status: 201 });
 }
