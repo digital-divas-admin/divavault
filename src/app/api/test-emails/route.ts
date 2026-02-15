@@ -88,6 +88,8 @@ export async function POST(request: NextRequest) {
       }),
   };
 
+  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
   if (template === "all") {
     for (const [name, fn] of Object.entries(templates)) {
       try {
@@ -96,6 +98,8 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         results[name] = { success: false, error: String(err) };
       }
+      // Resend free tier: 2 requests/second — space them out
+      await delay(600);
     }
   } else if (templates[template]) {
     try {
