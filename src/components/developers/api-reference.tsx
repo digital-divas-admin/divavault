@@ -3,6 +3,8 @@
 import { useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Copy, Download, Check } from "lucide-react";
 
 const sections = [
   { id: "auth", label: "Authentication" },
@@ -733,11 +735,407 @@ const sectionComponents: Record<string, React.FC> = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Full API reference as markdown (for copy / download)               */
+/* ------------------------------------------------------------------ */
+
+const FULL_API_MARKDOWN = `# Made Of Us — API Reference
+
+## Authentication
+
+All API requests must include an API key in the \`Authorization\` header using the Bearer scheme.
+
+### API Key Format
+
+\`\`\`
+mou_live_{64 hex characters}
+\`\`\`
+
+API keys are issued per-platform and scoped to specific permissions. Store them securely and never expose them in client-side code.
+
+### Authorization Header
+
+\`\`\`
+Authorization: Bearer mou_live_a1b2c3d4e5f6...
+\`\`\`
+
+### Available Scopes
+
+| Scope | Description |
+|-------|-------------|
+| \`registry:read\` | Look up identities and registry statistics |
+| \`registry:consent:read\` | Check consent status for a given identity |
+| \`webhooks:manage\` | Create, update, and delete webhook subscriptions |
+
+---
+
+## Consent Oracle
+
+**GET** \`/api/platform/v1/registry/consent/check\`
+
+The primary endpoint for checking whether a specific identity has granted consent for a given use case. Use this before training on or generating content with a person's likeness.
+
+### Query Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| \`cid\` | string | Yes | The contributor identity ID to check consent for |
+| \`use_type\` | string | No | Type of use: "commercial", "editorial", "entertainment", or "elearning" |
+| \`region\` | string | No | ISO 3166-1 alpha-2 region code (e.g. "US", "GB") |
+| \`modality\` | string | No | Content modality: "face", "voice", or "body" |
+| \`verify\` | boolean | No | When true, performs on-chain consent verification. Defaults to false |
+
+### Example Request
+
+\`\`\`bash
+curl -X GET \\
+  "https://api.madeofus.ai/api/platform/v1/registry/consent/check?cid=CID-1a8f3e2b7c9d0f14&use_type=commercial&region=US&modality=face" \\
+  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..."
+\`\`\`
+
+### Response
+
+\`\`\`json
+{
+  "allowed": true,
+  "cid": "CID-1a8f3e2b7c9d0f14",
+  "use_type": "commercial",
+  "region": "US",
+  "modality": "face",
+  "consent_status": "active",
+  "checked_at": "2025-01-15T10:30:00Z",
+  "chain_verified": false
+}
+\`\`\`
+
+---
+
+## Bulk Lookup
+
+**POST** \`/api/platform/v1/registry/batch/lookup\`
+
+**Scope:** \`registry:read\`
+
+Look up multiple identities in a single request. Useful for batch processing pipelines that need to verify whether identities exist in the registry.
+
+### Request Body
+
+\`\`\`json
+{
+  "cids": ["CID-1a8f3e2b7c9d0f14", "CID-1def456789abcdef", "CID-1ghi789012345678"]
+}
+\`\`\`
+
+Maximum of 100 CIDs per request.
+
+### Response
+
+\`\`\`json
+{
+  "results": {
+    "CID-1a8f3e2b7c9d0f14": {
+      "found": true,
+      "status": "verified",
+      "consent_status": "active"
+    },
+    "CID-1def456789abcdef": {
+      "found": true,
+      "status": "claimed",
+      "consent_status": "no_events"
+    },
+    "CID-1ghi789012345678": {
+      "found": false
+    }
+  },
+  "meta": {
+    "total": 3,
+    "found": 2,
+    "not_found": 1
+  }
+}
+\`\`\`
+
+---
+
+## Bulk Consent Check
+
+**POST** \`/api/platform/v1/registry/batch/consent\`
+
+**Scope:** \`registry:consent:read\`
+
+Check consent for multiple identities at once. Accepts optional filtering by use type, region, and modality applied uniformly across all CIDs.
+
+### Request Body
+
+\`\`\`json
+{
+  "cids": ["CID-1a8f3e2b7c9d0f14", "CID-1def456789abcdef"],
+  "use_type": "commercial",
+  "region": "US",
+  "modality": "face"
+}
+\`\`\`
+
+Maximum of 100 CIDs per request. The \`use_type\`, \`region\`, and \`modality\` fields are optional.
+
+### Response
+
+\`\`\`json
+{
+  "results": {
+    "CID-1a8f3e2b7c9d0f14": {
+      "allowed": true,
+      "consent_status": "active"
+    },
+    "CID-1def456789abcdef": {
+      "allowed": false,
+      "consent_status": "revoked"
+    }
+  },
+  "meta": {
+    "total": 2,
+    "allowed": 1,
+    "denied": 1,
+    "not_found": 0
+  }
+}
+\`\`\`
+
+---
+
+## Single Identity
+
+**GET** \`/api/registry/identity/{cid}\`
+
+**Scope:** \`registry:read\`
+
+Retrieve details for a single registered identity, including verification status and timestamps.
+
+### Example Request
+
+\`\`\`bash
+curl -X GET \\
+  "https://api.madeofus.ai/api/registry/identity/CID-1a8f3e2b7c9d0f14" \\
+  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..."
+\`\`\`
+
+### Response
+
+\`\`\`json
+{
+  "cid": "CID-1a8f3e2b7c9d0f14",
+  "status": "verified",
+  "created_at": "2025-01-10T08:00:00Z",
+  "verified_at": "2025-01-10T08:15:00Z",
+  "updated_at": "2025-01-12T14:30:00Z"
+}
+\`\`\`
+
+---
+
+## Single Consent
+
+**GET** \`/api/registry/identity/{cid}/consent\`
+
+**Scope:** \`registry:consent:read\`
+
+Retrieve the current consent scope and event history summary for a specific identity.
+
+### Example Request
+
+\`\`\`bash
+curl -X GET \\
+  "https://api.madeofus.ai/api/registry/identity/CID-1a8f3e2b7c9d0f14/consent" \\
+  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..."
+\`\`\`
+
+### Response
+
+\`\`\`json
+{
+  "cid": "CID-1a8f3e2b7c9d0f14",
+  "consent_status": "active",
+  "scope": {
+    "use_types": {
+      "commercial": true,
+      "editorial": true,
+      "entertainment": false,
+      "elearning": true
+    },
+    "geographic_scope": {
+      "type": "allowlist",
+      "regions": ["US", "GB", "CA"]
+    },
+    "modalities": {
+      "face": true,
+      "voice": false,
+      "body": true
+    }
+  },
+  "event_count": 4,
+  "last_updated": "2025-01-14T12:00:00Z"
+}
+\`\`\`
+
+---
+
+## Registry Stats
+
+**GET** \`/api/platform/v1/registry/stats\`
+
+**Scope:** \`registry:read\`
+
+Returns aggregate statistics about the registry, including total identities, verification counts, and consent event totals.
+
+### Example Request
+
+\`\`\`bash
+curl -X GET \\
+  "https://api.madeofus.ai/api/platform/v1/registry/stats" \\
+  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..."
+\`\`\`
+
+### Response
+
+\`\`\`json
+{
+  "total_identities": 12847,
+  "verified_count": 11203,
+  "claimed_count": 1644,
+  "total_consent_events": 38291,
+  "active_consents": 10856,
+  "revoked_consents": 347
+}
+\`\`\`
+
+---
+
+## Webhooks
+
+Subscribe to real-time events from the registry. Webhooks are delivered as POST requests to your specified endpoint with an HMAC-SHA256 signature for verification.
+
+### Event Types
+
+| Event | Description |
+|-------|-------------|
+| \`registry.identity_created\` | A new identity has been registered in the system |
+| \`registry.consent_updated\` | An identity's consent scope has been modified |
+| \`registry.consent_revoked\` | An identity has revoked their consent entirely |
+| \`contributor.verified\` | A contributor has completed identity verification |
+| \`contributor.onboarded\` | A contributor has completed the full onboarding flow |
+
+### Signature Verification
+
+Every webhook request includes an \`X-Webhook-Signature\` header containing an HMAC-SHA256 signature of the request body. Verify this signature using your webhook secret.
+
+\`\`\`javascript
+const crypto = require("crypto");
+
+function verifyWebhookSignature(body, signature, secret) {
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(body, "utf8")
+    .digest("hex");
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expected)
+  );
+}
+\`\`\`
+
+### Subscribe to Webhooks
+
+**POST** \`/api/platform/v1/webhooks\`
+
+**Scope:** \`webhooks:manage\`
+
+\`\`\`bash
+curl -X POST \\
+  "https://api.madeofus.ai/api/platform/v1/webhooks" \\
+  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..." \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://your-platform.com/webhooks/madeofus",
+    "events": [
+      "registry.consent_updated",
+      "registry.consent_revoked"
+    ],
+    "secret": "your_webhook_secret_here"
+  }'
+\`\`\`
+
+### Response
+
+\`\`\`json
+{
+  "id": "wh_abc123",
+  "url": "https://your-platform.com/webhooks/madeofus",
+  "events": [
+    "registry.consent_updated",
+    "registry.consent_revoked"
+  ],
+  "active": true,
+  "created_at": "2025-01-15T10:00:00Z"
+}
+\`\`\`
+
+---
+
+## Consent Spec v0.1
+
+The \`ConsentScope\` object defines the full structure of a contributor's consent preferences. This is the canonical format used across all API responses and webhook payloads.
+
+### ConsentScope Structure
+
+\`\`\`json
+{
+  "spec_version": "0.1",
+  "use_types": {
+    "commercial": true,
+    "editorial": true,
+    "entertainment": false,
+    "elearning": true
+  },
+  "geographic_scope": {
+    "type": "allowlist",
+    "regions": ["US", "GB", "CA", "AU"]
+  },
+  "content_exclusions": [
+    "adult",
+    "political",
+    "tobacco"
+  ],
+  "modalities": {
+    "face": true,
+    "voice": false,
+    "body": true
+  },
+  "temporal": {
+    "valid_from": "2025-01-01T00:00:00Z",
+    "valid_until": "2026-01-01T00:00:00Z",
+    "auto_renew": true
+  }
+}
+\`\`\`
+
+### Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| \`spec_version\` | string | The version of the consent spec. Currently "0.1" |
+| \`use_types\` | object | Boolean flags for each allowed use category: commercial, editorial, entertainment, elearning |
+| \`geographic_scope\` | object | Defines allowed or blocked regions. "type" is "allowlist" or "blocklist". "regions" is an array of ISO 3166-1 alpha-2 codes |
+| \`content_exclusions\` | string[] | Categories of content the contributor has explicitly excluded (e.g. adult, political, tobacco, gambling) |
+| \`modalities\` | object | Boolean flags indicating which likeness modalities are consented: face, voice, body |
+| \`temporal\` | object | Time-bound consent window. Includes valid_from (ISO 8601), valid_until (ISO 8601), and auto_renew (boolean) |
+`;
+
+/* ------------------------------------------------------------------ */
 /*  Main component                                                     */
 /* ------------------------------------------------------------------ */
 
 export function ApiReference() {
   const [activeSection, setActiveSection] = useState("auth");
+  const [copied, setCopied] = useState(false);
 
   const handleNavClick = useCallback(
     (id: string) => {
@@ -750,8 +1148,62 @@ export function ApiReference() {
     []
   );
 
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(FULL_API_MARKDOWN);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    const blob = new Blob([FULL_API_MARKDOWN], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "madeofus-api-reference.md";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
   return (
     <div className="max-w-6xl mx-auto">
+      {/* LLM-friendly export bar */}
+      <Card className="mb-8 border-primary/20 bg-primary/5">
+        <CardContent className="p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground">
+              Feed this entire API reference to your LLM
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Copy or download the full docs as markdown — paste into ChatGPT, Claude, or any AI assistant for integration help.
+            </p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCopy}
+              className="gap-2"
+            >
+              {copied ? (
+                <Check className="h-4 w-4 text-green-400" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+              {copied ? "Copied!" : "Copy All"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownload}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Download .md
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Mobile horizontal nav */}
       <div className="lg:hidden mb-8 overflow-x-auto scrollbar-hide">
         <div className="flex gap-2 min-w-max pb-2">
