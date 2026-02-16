@@ -28,7 +28,7 @@ export default async function OptOutsPage() {
     <div className="max-w-4xl mx-auto">
       <PageHeader
         title="AI Opt-Out Manager"
-        description="Send formal opt-out notices to AI companies and build a legal evidence trail of your data rights requests."
+        description="AI companies don't make it easy to opt out. We help you build a legally documented trail — formal notices sent, delivery records, and follow-ups — so you have proof you exercised your rights."
       />
 
       {/* Stats row */}
