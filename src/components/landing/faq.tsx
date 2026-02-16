@@ -34,18 +34,18 @@ const faqs = [
   },
   {
     q: "Do I need to be a creator or influencer?",
-    a: "Not at all. Anyone can use Made Of Us. If your face has ever appeared online — social media, news, group photos — it could be used to train AI models without your knowledge. Protection is for everyone.",
+    a: "Not at all. Anyone can use Consented AI. If your face has ever appeared online — social media, news, group photos — it could be used to train AI models without your knowledge. Protection is for everyone.",
   },
 ];
 
 export function FAQ() {
   return (
-    <section id="faq" className="py-16 px-4 sm:py-24 sm:px-6">
+    <section id="faq" className="py-16 px-4 sm:py-24 sm:px-6 bg-[#F0F4FA]">
       <div className="max-w-3xl mx-auto">
-        <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl text-center mb-4">
+        <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl text-center mb-4 text-[#0C1424]">
           Frequently Asked Questions
         </h2>
-        <p className="text-muted-foreground text-center mb-8 sm:mb-12">
+        <p className="font-[family-name:var(--font-outfit)] text-[#3A5070] text-center mb-8 sm:mb-12">
           Everything you need to know about protecting your likeness.
         </p>
 
@@ -54,12 +54,12 @@ export function FAQ() {
             <AccordionItem
               key={i}
               value={`item-${i}`}
-              className="border border-border rounded-xl px-4 sm:px-6 bg-card data-[state=open]:border-primary/30"
+              className="border border-[#D0D8E6] rounded-xl px-4 sm:px-6 bg-white data-[state=open]:border-[#DC2626]/30"
             >
-              <AccordionTrigger className="text-left text-base font-medium hover:no-underline hover:text-primary py-5">
+              <AccordionTrigger className="text-left text-base font-medium hover:no-underline hover:text-[#DC2626] py-5 text-[#0C1424]">
                 {faq.q}
               </AccordionTrigger>
-              <AccordionContent className="text-muted-foreground leading-relaxed pb-5">
+              <AccordionContent className="font-[family-name:var(--font-outfit)] text-[#3A5070] leading-relaxed pb-5">
                 {faq.a}
               </AccordionContent>
             </AccordionItem>

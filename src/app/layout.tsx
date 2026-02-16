@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Sans, DM_Serif_Display } from "next/font/google";
+import { DM_Sans, DM_Serif_Display, Outfit, DM_Mono } from "next/font/google";
 import { Suspense } from "react";
 import { SignoutCleanup } from "@/components/auth/signout-cleanup";
 import "@/lib/env";
@@ -16,12 +16,23 @@ const dmSerifDisplay = DM_Serif_Display({
   weight: "400",
 });
 
+const outfit = Outfit({
+  variable: "--font-outfit",
+  subsets: ["latin"],
+});
+
+const dmMono = DM_Mono({
+  variable: "--font-mono",
+  subsets: ["latin"],
+  weight: ["400", "500"],
+});
+
 export const metadata: Metadata = {
-  title: "Made Of Us | AI Likeness Protection",
+  title: "Consented AI | AI Likeness Protection",
   description:
-    "Protect your face from unauthorized AI use. Made Of Us scans AI platforms for your likeness, files takedowns, and keeps you in control.",
+    "Protect your face from unauthorized AI use. Consented AI scans AI platforms for your likeness, files takedowns, and keeps you in control.",
   openGraph: {
-    title: "Made Of Us | AI Likeness Protection",
+    title: "Consented AI | AI Likeness Protection",
     description:
       "Protect your face from unauthorized AI use. We scan 247+ platforms and file takedowns automatically.",
     type: "website",
@@ -36,7 +47,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body
-        className={`${dmSans.variable} ${dmSerifDisplay.variable} font-sans antialiased`}
+        className={`${dmSans.variable} ${dmSerifDisplay.variable} ${outfit.variable} ${dmMono.variable} font-sans antialiased`}
       >
         <Suspense fallback={null}>
           <SignoutCleanup />

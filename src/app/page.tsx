@@ -1,29 +1,27 @@
 import { Navbar } from "@/components/landing/navbar";
 import { Hero } from "@/components/landing/hero";
-import { LiveScanner } from "@/components/landing/live-scanner";
+import { ProblemSection } from "@/components/landing/problem-section";
 import { HowItWorks } from "@/components/landing/how-it-works";
-import { ValueProps } from "@/components/landing/value-props";
-import { CompensationFlow } from "@/components/landing/compensation-flow";
+import { OpportunitySection } from "@/components/landing/opportunity-section";
+import { MarketplaceSection } from "@/components/landing/marketplace-section";
 import { Pricing } from "@/components/landing/pricing";
-import { SocialProof } from "@/components/landing/social-proof";
+import { FinalCTA } from "@/components/landing/final-cta";
 import { FAQ } from "@/components/landing/faq";
-import { CTASection } from "@/components/landing/cta-section";
-import { Footer } from "@/components/landing/footer";
+import { NewFooter } from "@/components/landing/new-footer";
 
 export default function Home() {
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen bg-[#F0F4FA]">
       <Navbar />
       <Hero />
-      <LiveScanner />
+      <ProblemSection />
       <HowItWorks />
-      <ValueProps />
-      <CompensationFlow />
+      <OpportunitySection />
+      <MarketplaceSection />
       <Pricing />
-      <SocialProof />
+      <FinalCTA />
       <FAQ />
-      <CTASection />
-      <Footer />
+      <NewFooter />
     </main>
   );
 }

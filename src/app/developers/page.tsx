@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import { Navbar } from "@/components/landing/navbar";
-import { Footer } from "@/components/landing/footer";
+import { NewFooter } from "@/components/landing/new-footer";
 import { ApiReference } from "@/components/developers/api-reference";
 
 export const metadata: Metadata = {
-  title: "Developer API Reference | Made Of Us",
+  title: "Developer API Reference | Consented AI",
   description:
     "Integrate with the Consented Identity Registry. API reference, authentication guide, and consent specification for AI platforms.",
   openGraph: {
-    title: "Developer API Reference | Made Of Us",
+    title: "Developer API Reference | Consented AI",
     description:
       "Integrate with the Consented Identity Registry API to verify consent before using someone's likeness in AI.",
     type: "website",
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 export default function DevelopersPage() {
   return (
     <>
-      <Navbar />
+      <Navbar variant="dark" />
       <main className="min-h-screen pt-16">
         {/* Hero Section */}
         <section className="pt-12 pb-8 px-4 sm:pt-20 sm:pb-12 sm:px-6 text-center relative overflow-hidden">
@@ -40,7 +40,7 @@ export default function DevelopersPage() {
           <ApiReference />
         </section>
       </main>
-      <Footer />
+      <NewFooter />
     </>
   );
 }

@@ -2,12 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Menu, X, ShieldCheck } from "lucide-react";
+import { Menu, X } from "lucide-react";
 
 const navLinks = [
   { href: "/#how-it-works", label: "How It Works" },
-  { href: "/#protection", label: "Protection" },
   { href: "/#pricing", label: "Pricing" },
   { href: "/#faq", label: "FAQ" },
   { href: "/legal-landscape", label: "Legal" },
@@ -15,18 +13,81 @@ const navLinks = [
   { href: "/login", label: "Sign In" },
 ];
 
-export function Navbar() {
+export function Navbar({ variant = "light" }: { variant?: "light" | "dark" }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  if (variant === "dark") {
+    return (
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border/50">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <Link href="/" className="text-lg font-semibold">
+            <span className="text-foreground">consented</span>
+            <span className="text-[#DC2626]">ai</span>
+          </Link>
+
+          <div className="hidden md:flex items-center gap-8">
+            {navLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+
+          <div className="hidden md:block">
+            <Link
+              href="/signup"
+              className="inline-flex items-center justify-center text-sm font-medium bg-primary text-primary-foreground px-5 py-2 rounded-full hover:bg-primary/90 transition-colors"
+            >
+              Get Started
+            </Link>
+          </div>
+
+          <button
+            className="md:hidden p-2 text-foreground"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
+
+        {mobileOpen && (
+          <div className="md:hidden bg-background border-b border-border/50 px-4 pb-4">
+            <div className="flex flex-col gap-3">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              ))}
+              <Link
+                href="/signup"
+                className="inline-flex items-center justify-center text-sm font-medium bg-primary text-primary-foreground px-5 py-2 rounded-full mt-2"
+              >
+                Get Started
+              </Link>
+            </div>
+          </div>
+        )}
+      </nav>
+    );
+  }
+
+  // Light variant
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border/50">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-[#F0F4FA]/80 backdrop-blur-md border-b border-[#D0D8E6]/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        <Link
-          href="/"
-          className="flex items-center gap-2"
-        >
-          <ShieldCheck className="w-6 h-6 text-primary" />
-          <span className="font-semibold text-foreground text-xl">madeofus</span>
+        <Link href="/" className="text-lg font-semibold">
+          <span className="text-[#0C1424]">consented</span>
+          <span className="text-[#DC2626]">ai</span>
         </Link>
 
         <div className="hidden md:flex items-center gap-8">
@@ -34,7 +95,7 @@ export function Navbar() {
             <Link
               key={link.href}
               href={link.href}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="text-sm text-[#3A5070] hover:text-[#0C1424] transition-colors"
             >
               {link.label}
             </Link>
@@ -42,13 +103,16 @@ export function Navbar() {
         </div>
 
         <div className="hidden md:block">
-          <Button asChild size="sm" className="rounded-full">
-            <Link href="/signup">Protect My Face</Link>
-          </Button>
+          <Link
+            href="/signup"
+            className="inline-flex items-center justify-center text-sm font-medium bg-[#DC2626] text-white px-5 py-2 rounded-full hover:bg-[#EF4444] transition-colors"
+          >
+            Get Started
+          </Link>
         </div>
 
         <button
-          className="md:hidden p-2 text-foreground"
+          className="md:hidden p-2 text-[#0C1424]"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label="Toggle menu"
         >
@@ -57,21 +121,24 @@ export function Navbar() {
       </div>
 
       {mobileOpen && (
-        <div className="md:hidden bg-background border-b border-border/50 px-4 pb-4">
+        <div className="md:hidden bg-[#F0F4FA] border-b border-[#D0D8E6]/50 px-4 pb-4">
           <div className="flex flex-col gap-3">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
+                className="text-sm text-[#3A5070] hover:text-[#0C1424] transition-colors py-1"
                 onClick={() => setMobileOpen(false)}
               >
                 {link.label}
               </Link>
             ))}
-            <Button asChild size="sm" className="mt-2">
-              <Link href="/signup">Get Started</Link>
-            </Button>
+            <Link
+              href="/signup"
+              className="inline-flex items-center justify-center text-sm font-medium bg-[#DC2626] text-white px-5 py-2 rounded-full mt-2"
+            >
+              Get Started
+            </Link>
           </div>
         </div>
       )}

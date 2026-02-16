@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import { Navbar } from "@/components/landing/navbar";
-import { Footer } from "@/components/landing/footer";
+import { NewFooter } from "@/components/landing/new-footer";
 import { LegalLandscapeTabs } from "@/components/legal-landscape/legal-landscape-tabs";
 import { LegalCTASection } from "@/components/legal-landscape/legal-cta-section";
 
 export const metadata: Metadata = {
-  title: "AI Likeness Rights by State | Legal Landscape | Made Of Us",
+  title: "AI Likeness Rights by State | Legal Landscape | Consented AI",
   description:
     "Track AI likeness rights legislation across all 50 US states. Check your state's protection level, follow federal bills, and stay informed about legal developments.",
   openGraph: {
-    title: "AI Likeness Rights by State | Made Of Us",
+    title: "AI Likeness Rights by State | Consented AI",
     description:
       "The definitive tracker for AI likeness rights legislation across all 50 US states and federal level.",
     type: "website",
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 export default function LegalLandscapePage() {
   return (
     <>
-      <Navbar />
+      <Navbar variant="dark" />
       <main className="min-h-screen pt-16">
         {/* Hero Section */}
         <section className="pt-12 pb-8 px-4 sm:pt-20 sm:pb-12 sm:px-6 text-center relative overflow-hidden">
@@ -54,14 +54,14 @@ export default function LegalLandscapePage() {
                 "Track AI likeness rights legislation across all 50 US states.",
               publisher: {
                 "@type": "Organization",
-                name: "Made Of Us",
+                name: "Consented AI",
               },
             }),
           }}
         />
       </main>
       <LegalCTASection />
-      <Footer />
+      <NewFooter />
     </>
   );
 }

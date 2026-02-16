@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Check, Gem, Sparkles } from "lucide-react";
 
 const tiers = [
@@ -68,20 +66,20 @@ export function Pricing() {
   const [isAnnual, setIsAnnual] = useState(false);
 
   return (
-    <section id="pricing" className="py-16 px-4 sm:py-24 sm:px-6">
+    <section id="pricing" className="py-16 px-4 sm:py-24 sm:px-6 bg-[#F8FAFD]">
       <div className="max-w-6xl mx-auto">
-        <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl text-center mb-4">
+        <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl text-center mb-4 text-[#0C1424]">
           Choose Your Protection
         </h2>
-        <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-8 sm:mb-10">
+        <p className="font-[family-name:var(--font-outfit)] text-[#3A5070] text-center max-w-2xl mx-auto mb-8 sm:mb-10">
           Start free. Upgrade when you need more.
         </p>
 
         {/* Billing Toggle */}
         <div className="flex items-center justify-center gap-4 mb-12 sm:mb-16">
           <span
-            className={`text-sm font-medium transition-colors ${
-              !isAnnual ? "text-foreground" : "text-muted-foreground"
+            className={`font-[family-name:var(--font-outfit)] text-sm font-medium transition-colors ${
+              !isAnnual ? "text-[#0C1424]" : "text-[#6A80A0]"
             }`}
           >
             Monthly
@@ -92,7 +90,7 @@ export function Pricing() {
             aria-label="Toggle annual billing"
             onClick={() => setIsAnnual(!isAnnual)}
             className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors ${
-              isAnnual ? "bg-primary" : "bg-secondary"
+              isAnnual ? "bg-[#DC2626]" : "bg-[#DEE6F2]"
             }`}
           >
             <span
@@ -102,15 +100,15 @@ export function Pricing() {
             />
           </button>
           <span
-            className={`text-sm font-medium transition-colors ${
-              isAnnual ? "text-foreground" : "text-muted-foreground"
+            className={`font-[family-name:var(--font-outfit)] text-sm font-medium transition-colors ${
+              isAnnual ? "text-[#0C1424]" : "text-[#6A80A0]"
             }`}
           >
             Annual
           </span>
-          <Badge className="bg-green-500 text-white border-transparent text-xs font-bold uppercase tracking-wide">
+          <span className="bg-emerald-500 text-white text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-full">
             2 months free
-          </Badge>
+          </span>
         </div>
 
         <div className="grid md:grid-cols-3 gap-6 md:gap-8">
@@ -128,10 +126,10 @@ export function Pricing() {
             return (
               <div
                 key={tier.name}
-                className={`bg-card border rounded-2xl p-6 sm:p-8 relative ${
+                className={`bg-white border rounded-2xl p-6 sm:p-8 relative ${
                   tier.featured
-                    ? "border-primary ring-1 ring-primary"
-                    : "border-border"
+                    ? "border-[#DC2626] ring-2 ring-[#DC2626]"
+                    : "border-[#D0D8E6]"
                 }`}
               >
                 {tier.badge && (
@@ -139,8 +137,8 @@ export function Pricing() {
                     <span
                       className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider ${
                         tier.featured
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-green-500 text-white"
+                          ? "bg-[#DC2626] text-white"
+                          : "bg-emerald-500 text-white"
                       }`}
                     >
                       {tier.badge.icon === "gem" ? (
@@ -153,42 +151,48 @@ export function Pricing() {
                   </div>
                 )}
 
-                <h3 className="font-[family-name:var(--font-heading)] text-2xl mb-1 mt-2">
+                <h3 className="font-[family-name:var(--font-heading)] text-2xl mb-1 mt-2 text-[#0C1424]">
                   {tier.name}
                 </h3>
-                <p className="text-sm text-muted-foreground mb-4">{tier.description}</p>
+                <p className="font-[family-name:var(--font-outfit)] text-sm text-[#3A5070] mb-4">
+                  {tier.description}
+                </p>
 
                 <div className="mb-6">
                   {!isFree && isAnnual && (
-                    <span className="text-lg text-muted-foreground line-through mr-2">
+                    <span className="text-lg text-[#6A80A0] line-through mr-2">
                       ${tier.monthlyPrice}
                     </span>
                   )}
-                  <span className="text-4xl font-bold">${displayPrice}</span>
-                  <span className="text-muted-foreground text-sm ml-1">
+                  <span className="text-4xl font-bold text-[#0C1424]">${displayPrice}</span>
+                  <span className="text-[#3A5070] text-sm ml-1">
                     {isFree ? "forever" : "/mo"}
                   </span>
                   {!isFree && isAnnual && (
-                    <div className="text-xs text-muted-foreground mt-1">
+                    <div className="font-[family-name:var(--font-outfit)] text-xs text-[#6A80A0] mt-1">
                       billed ${tier.annualTotal}/year
                     </div>
                   )}
                 </div>
 
-                <Button
-                  asChild
-                  className={`w-full rounded-full mb-6 ${
-                    tier.featured ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                <Link
+                  href={ctaHref}
+                  className={`flex items-center justify-center w-full rounded-full py-2.5 font-medium text-sm mb-6 transition-colors ${
+                    tier.featured
+                      ? "bg-[#DC2626] text-white hover:bg-[#EF4444]"
+                      : "bg-[#0C1424] text-white hover:bg-[#162034]"
                   }`}
                 >
-                  <Link href={ctaHref}>{tier.cta}</Link>
-                </Button>
+                  {tier.cta}
+                </Link>
 
                 <ul className="space-y-3">
                   {tier.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-2 text-sm">
-                      <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                      <span className="text-muted-foreground">{feature}</span>
+                      <Check className="w-4 h-4 text-[#DC2626] shrink-0 mt-0.5" />
+                      <span className="font-[family-name:var(--font-outfit)] text-[#3A5070]">
+                        {feature}
+                      </span>
                     </li>
                   ))}
                 </ul>
