@@ -114,7 +114,7 @@ function AuthSection() {
           <CardTitle>API Key Format</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <CodeBlock>{`mou_live_{64 hex characters}`}</CodeBlock>
+          <CodeBlock>{`cai_live_{64 hex characters}`}</CodeBlock>
           <p className="text-sm text-muted-foreground">
             API keys are issued per-platform and scoped to specific permissions.
             Store them securely and never expose them in client-side code.
@@ -127,7 +127,7 @@ function AuthSection() {
           <CardTitle>Authorization Header</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <CodeBlock>{`Authorization: Bearer mou_live_a1b2c3d4e5f6...`}</CodeBlock>
+          <CodeBlock>{`Authorization: Bearer cai_live_a1b2c3d4e5f6...`}</CodeBlock>
         </CardContent>
       </Card>
 
@@ -216,8 +216,8 @@ function ConsentOracleSection() {
         </CardHeader>
         <CardContent>
           <CodeBlock>{`curl -X GET \\
-  "https://api.madeofus.ai/api/platform/v1/registry/consent/check?cid=cid_abc123&use_type=commercial&region=US&modality=face" \\
-  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..."`}</CodeBlock>
+  "https://api.consentedai.com/api/platform/v1/registry/consent/check?cid=cid_abc123&use_type=commercial&region=US&modality=face" \\
+  -H "Authorization: Bearer cai_live_a1b2c3d4e5f6..."`}</CodeBlock>
         </CardContent>
       </Card>
 
@@ -385,8 +385,8 @@ function SingleIdentitySection() {
         </CardHeader>
         <CardContent>
           <CodeBlock>{`curl -X GET \\
-  "https://api.madeofus.ai/api/registry/identity/cid_abc123" \\
-  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..."`}</CodeBlock>
+  "https://api.consentedai.com/api/registry/identity/cid_abc123" \\
+  -H "Authorization: Bearer cai_live_a1b2c3d4e5f6..."`}</CodeBlock>
         </CardContent>
       </Card>
 
@@ -427,8 +427,8 @@ function SingleConsentSection() {
         </CardHeader>
         <CardContent>
           <CodeBlock>{`curl -X GET \\
-  "https://api.madeofus.ai/api/registry/identity/cid_abc123/consent" \\
-  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..."`}</CodeBlock>
+  "https://api.consentedai.com/api/registry/identity/cid_abc123/consent" \\
+  -H "Authorization: Bearer cai_live_a1b2c3d4e5f6..."`}</CodeBlock>
         </CardContent>
       </Card>
 
@@ -485,8 +485,8 @@ function StatsSection() {
         </CardHeader>
         <CardContent>
           <CodeBlock>{`curl -X GET \\
-  "https://api.madeofus.ai/api/platform/v1/registry/stats" \\
-  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..."`}</CodeBlock>
+  "https://api.consentedai.com/api/platform/v1/registry/stats" \\
+  -H "Authorization: Bearer cai_live_a1b2c3d4e5f6..."`}</CodeBlock>
         </CardContent>
       </Card>
 
@@ -596,11 +596,11 @@ function verifyWebhookSignature(body, signature, secret) {
             <InlineCode>/api/platform/v1/webhooks</InlineCode>
           </div>
           <CodeBlock>{`curl -X POST \\
-  "https://api.madeofus.ai/api/platform/v1/webhooks" \\
-  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..." \\
+  "https://api.consentedai.com/api/platform/v1/webhooks" \\
+  -H "Authorization: Bearer cai_live_a1b2c3d4e5f6..." \\
   -H "Content-Type: application/json" \\
   -d '{
-    "url": "https://your-platform.com/webhooks/madeofus",
+    "url": "https://your-platform.com/webhooks/consentedai",
     "events": [
       "registry.consent_updated",
       "registry.consent_revoked"
@@ -609,7 +609,7 @@ function verifyWebhookSignature(body, signature, secret) {
   }'`}</CodeBlock>
           <CodeBlock>{`{
   "id": "wh_abc123",
-  "url": "https://your-platform.com/webhooks/madeofus",
+  "url": "https://your-platform.com/webhooks/consentedai",
   "events": [
     "registry.consent_updated",
     "registry.consent_revoked"
@@ -747,7 +747,7 @@ All API requests must include an API key in the \`Authorization\` header using t
 ### API Key Format
 
 \`\`\`
-mou_live_{64 hex characters}
+cai_live_{64 hex characters}
 \`\`\`
 
 API keys are issued per-platform and scoped to specific permissions. Store them securely and never expose them in client-side code.
@@ -755,7 +755,7 @@ API keys are issued per-platform and scoped to specific permissions. Store them 
 ### Authorization Header
 
 \`\`\`
-Authorization: Bearer mou_live_a1b2c3d4e5f6...
+Authorization: Bearer cai_live_a1b2c3d4e5f6...
 \`\`\`
 
 ### Available Scopes
@@ -788,8 +788,8 @@ The primary endpoint for checking whether a specific identity has granted consen
 
 \`\`\`bash
 curl -X GET \\
-  "https://api.madeofus.ai/api/platform/v1/registry/consent/check?cid=CID-1a8f3e2b7c9d0f14&use_type=commercial&region=US&modality=face" \\
-  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..."
+  "https://api.consentedai.com/api/platform/v1/registry/consent/check?cid=CID-1a8f3e2b7c9d0f14&use_type=commercial&region=US&modality=face" \\
+  -H "Authorization: Bearer cai_live_a1b2c3d4e5f6..."
 \`\`\`
 
 ### Response
@@ -914,8 +914,8 @@ Retrieve details for a single registered identity, including verification status
 
 \`\`\`bash
 curl -X GET \\
-  "https://api.madeofus.ai/api/registry/identity/CID-1a8f3e2b7c9d0f14" \\
-  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..."
+  "https://api.consentedai.com/api/registry/identity/CID-1a8f3e2b7c9d0f14" \\
+  -H "Authorization: Bearer cai_live_a1b2c3d4e5f6..."
 \`\`\`
 
 ### Response
@@ -944,8 +944,8 @@ Retrieve the current consent scope and event history summary for a specific iden
 
 \`\`\`bash
 curl -X GET \\
-  "https://api.madeofus.ai/api/registry/identity/CID-1a8f3e2b7c9d0f14/consent" \\
-  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..."
+  "https://api.consentedai.com/api/registry/identity/CID-1a8f3e2b7c9d0f14/consent" \\
+  -H "Authorization: Bearer cai_live_a1b2c3d4e5f6..."
 \`\`\`
 
 ### Response
@@ -990,8 +990,8 @@ Returns aggregate statistics about the registry, including total identities, ver
 
 \`\`\`bash
 curl -X GET \\
-  "https://api.madeofus.ai/api/platform/v1/registry/stats" \\
-  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..."
+  "https://api.consentedai.com/api/platform/v1/registry/stats" \\
+  -H "Authorization: Bearer cai_live_a1b2c3d4e5f6..."
 \`\`\`
 
 ### Response
@@ -1050,11 +1050,11 @@ function verifyWebhookSignature(body, signature, secret) {
 
 \`\`\`bash
 curl -X POST \\
-  "https://api.madeofus.ai/api/platform/v1/webhooks" \\
-  -H "Authorization: Bearer mou_live_a1b2c3d4e5f6..." \\
+  "https://api.consentedai.com/api/platform/v1/webhooks" \\
+  -H "Authorization: Bearer cai_live_a1b2c3d4e5f6..." \\
   -H "Content-Type: application/json" \\
   -d '{
-    "url": "https://your-platform.com/webhooks/madeofus",
+    "url": "https://your-platform.com/webhooks/consentedai",
     "events": [
       "registry.consent_updated",
       "registry.consent_revoked"
@@ -1068,7 +1068,7 @@ curl -X POST \\
 \`\`\`json
 {
   "id": "wh_abc123",
-  "url": "https://your-platform.com/webhooks/madeofus",
+  "url": "https://your-platform.com/webhooks/consentedai",
   "events": [
     "registry.consent_updated",
     "registry.consent_revoked"
@@ -1159,7 +1159,7 @@ export function ApiReference() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "madeofus-api-reference.md";
+    a.download = "consentedai-api-reference.md";
     a.click();
     URL.revokeObjectURL(url);
   }, []);

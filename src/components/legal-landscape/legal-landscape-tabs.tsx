@@ -26,7 +26,7 @@ export function LegalLandscapeTabs() {
           LIVE TRACKER
         </span>
         <span className="text-xs text-muted-foreground/60">
-          UPDATED FEB 2025
+          UPDATED FEB 2026
         </span>
       </div>
 
