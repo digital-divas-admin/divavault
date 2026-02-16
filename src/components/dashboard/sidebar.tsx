@@ -61,7 +61,7 @@ function SidebarContent({ userName, verified, tier = "free", platformsMonitored 
       <div className="px-6 py-5 border-b border-border/30 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <ShieldCheck className="w-5 h-5 text-primary" />
-          <span className="font-semibold text-foreground text-lg">madeofus</span>
+          <span className="font-semibold text-foreground text-lg">consented<span className="text-primary">ai</span></span>
         </Link>
         <AppSwitcher />
       </div>
@@ -78,7 +78,7 @@ function SidebarContent({ userName, verified, tier = "free", platformsMonitored 
             <p className="text-sm font-medium truncate">{userName}</p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <Badge
-                variant="purple"
+                variant="primary"
                 className="text-[10px] px-1.5 py-0 h-4"
               >
                 {tierLabels[tier]}
@@ -140,7 +140,7 @@ export function MobileHeader(props: SidebarProps) {
     <header className="lg:hidden sticky top-0 z-20 flex items-center justify-between px-4 py-3 border-b border-border/30 bg-background/80 backdrop-blur-sm">
       <Link href="/" className="flex items-center gap-2">
         <ShieldCheck className="w-5 h-5 text-primary" />
-        <span className="font-semibold text-foreground text-lg">madeofus</span>
+        <span className="font-semibold text-foreground text-lg">consented<span className="text-primary">ai</span></span>
       </Link>
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetTrigger asChild>

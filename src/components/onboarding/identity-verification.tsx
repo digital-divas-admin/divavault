@@ -172,7 +172,7 @@ export function IdentityVerification() {
                 </Badge>
                 <p className="text-sm text-muted-foreground mt-3 max-w-md mx-auto">
                   Your identity is confirmed. Your ID document was processed by
-                  Veriff and is not stored by Made Of Us.
+                  Veriff and is not stored by Consented AI.
                 </p>
               </>
             )}

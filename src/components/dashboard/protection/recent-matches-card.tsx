@@ -2,8 +2,8 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import type { ContributorMatch } from "@/types/protection";
 
-const statusVariant: Record<string, "success" | "warning" | "purple" | "secondary"> = {
-  new: "purple",
+const statusVariant: Record<string, "success" | "warning" | "primary" | "secondary"> = {
+  new: "primary",
   reviewed: "secondary",
   takedown_filed: "success",
   removed: "success",

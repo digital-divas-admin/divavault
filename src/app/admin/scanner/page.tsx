@@ -134,7 +134,7 @@ export default async function ScannerDashboardPage() {
             icon={Bot}
             value={stats.aiGeneratedMatches}
             label="AI-Generated"
-            iconClassName="text-purple-400"
+            iconClassName="text-purple-600"
             iconBgClassName="bg-purple-500/10"
           />
         </div>
@@ -194,7 +194,7 @@ export default async function ScannerDashboardPage() {
             icon={Globe}
             value={stats.crawlSchedules}
             label="Crawl Schedules"
-            iconClassName="text-purple-400"
+            iconClassName="text-purple-600"
             iconBgClassName="bg-purple-500/10"
           />
         </div>

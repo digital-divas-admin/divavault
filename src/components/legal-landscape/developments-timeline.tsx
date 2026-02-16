@@ -8,12 +8,12 @@ import type { DevelopmentCategory } from "@/data/legal-landscape/types";
 
 const CATEGORY_CONFIG: Record<
   DevelopmentCategory,
-  { label: string; color: string; badgeVariant: "purple" | "outline" | "destructive" | "success" }
+  { label: string; color: string; badgeVariant: "primary" | "outline" | "destructive" | "success" }
 > = {
   legislation: {
     label: "Legislation",
-    color: "#8B5CF6",
-    badgeVariant: "purple",
+    color: "#DC2626",
+    badgeVariant: "primary",
   },
   "court-ruling": {
     label: "Court Rulings",

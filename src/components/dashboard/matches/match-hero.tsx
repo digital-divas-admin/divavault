@@ -3,8 +3,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { getPlatformConfig } from "@/lib/platform-icons";
 import { formatDate } from "@/lib/format";
 
-const statusVariant: Record<string, "success" | "warning" | "purple" | "secondary"> = {
-  new: "purple",
+const statusVariant: Record<string, "success" | "warning" | "primary" | "secondary"> = {
+  new: "primary",
   reviewed: "secondary",
   takedown_filed: "success",
   removed: "success",

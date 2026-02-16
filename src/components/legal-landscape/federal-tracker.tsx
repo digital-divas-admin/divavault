@@ -18,8 +18,8 @@ const STATUS_ORDER: BillStatus[] = [
 const STATUS_COLORS: Record<BillStatus, string> = {
   signed: "#22C55E",
   passed: "#4ADE80",
-  committee: "#8B5CF6",
-  introduced: "#A1A1AA",
+  committee: "#DC2626",
+  introduced: "#6A80A0",
   expired: "#EF4444",
 };
 

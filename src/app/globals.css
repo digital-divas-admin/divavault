@@ -47,45 +47,45 @@
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   --radius: 0.625rem;
   --font-sans: "DM Sans", system-ui, sans-serif;
   --font-heading: "DM Serif Display", Georgia, serif;
 
-  /* Dark purple-black palette */
-  --background: #09090B;
-  --foreground: #FAFAFA;
-  --card: #18181B;
-  --card-foreground: #FAFAFA;
-  --popover: #18181B;
-  --popover-foreground: #FAFAFA;
-  --primary: #8B5CF6;
+  /* Ocean Ruby Radiance — light palette */
+  --background: #F0F4FA;
+  --foreground: #0C1424;
+  --card: #FFFFFF;
+  --card-foreground: #0C1424;
+  --popover: #FFFFFF;
+  --popover-foreground: #0C1424;
+  --primary: #DC2626;
   --primary-foreground: #FFFFFF;
-  --secondary: #27272A;
-  --secondary-foreground: #FAFAFA;
-  --muted: #27272A;
-  --muted-foreground: #A1A1AA;
-  --accent: #22C55E;
-  --accent-foreground: #FFFFFF;
+  --secondary: #DEE6F2;
+  --secondary-foreground: #0C1424;
+  --muted: #DEE6F2;
+  --muted-foreground: #3A5070;
+  --accent: #DEE6F2;
+  --accent-foreground: #0C1424;
   --destructive: #EF4444;
-  --border: #27272A;
-  --input: #27272A;
-  --ring: #8B5CF6;
+  --border: #D0D8E6;
+  --input: #D0D8E6;
+  --ring: #DC2626;
 
-  --chart-1: #8B5CF6;
+  --chart-1: #DC2626;
   --chart-2: #22C55E;
   --chart-3: #F59E0B;
-  --chart-4: #3B82F6;
+  --chart-4: #1E60C4;
   --chart-5: #EC4899;
 
-  --sidebar: #0F0F13;
-  --sidebar-foreground: #FAFAFA;
-  --sidebar-primary: #8B5CF6;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #0C1424;
+  --sidebar-primary: #DC2626;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #18181B;
-  --sidebar-accent-foreground: #FAFAFA;
-  --sidebar-border: #27272A;
-  --sidebar-ring: #8B5CF6;
+  --sidebar-accent: #F0F4FA;
+  --sidebar-accent-foreground: #0C1424;
+  --sidebar-border: #D0D8E6;
+  --sidebar-ring: #DC2626;
 }
 
 @layer base {
@@ -102,13 +102,13 @@
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .card-hover:hover {
-  box-shadow: 0 4px 24px rgba(139, 92, 246, 0.12), 0 1px 4px rgba(0, 0, 0, 0.2);
-  border-top-color: #8B5CF6;
+  box-shadow: 0 4px 24px rgba(220, 38, 38, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+  border-top-color: #DC2626;
 }
 
 /* Elevated surface section */
 .section-elevated {
-  background-color: #18181B;
+  background-color: #FFFFFF;
 }
 
 /* ── Protection Score Card animations ──────────────────────── */
@@ -161,11 +161,11 @@
 
 /* Match card new-status pulse */
 @keyframes match-new-pulse {
-  0%, 100% { border-left-color: rgba(139, 92, 246, 0.3); }
-  50% { border-left-color: rgba(139, 92, 246, 0.8); }
+  0%, 100% { border-left-color: rgba(220, 38, 38, 0.3); }
+  50% { border-left-color: rgba(220, 38, 38, 0.8); }
 }
 .match-new-pulse {
-  border-left: 3px solid rgba(139, 92, 246, 0.3);
+  border-left: 3px solid rgba(220, 38, 38, 0.3);
   animation: match-new-pulse 2s ease-in-out infinite;
 }
 
@@ -190,6 +190,6 @@
   .score-number { opacity: 1; transform: scale(1); }
   .score-bar-fill { transform: scaleX(1); }
   .score-sparkle { opacity: 0.6; }
-  .match-new-pulse { animation: none; border-left-color: rgba(139, 92, 246, 0.5); }
+  .match-new-pulse { animation: none; border-left-color: rgba(220, 38, 38, 0.5); }
   .timeline-node-active { animation: none; }
 }

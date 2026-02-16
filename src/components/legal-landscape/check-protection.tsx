@@ -213,7 +213,7 @@ export function CheckProtection() {
                     <CardContent className="flex flex-col gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold">{law.name}</span>
-                        <Badge variant="purple">{law.year}</Badge>
+                        <Badge variant="primary">{law.year}</Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {law.description}

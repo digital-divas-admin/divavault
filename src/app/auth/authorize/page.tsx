@@ -137,7 +137,7 @@ export default function AuthorizePage() {
           </h1>
           <p className="text-muted-foreground text-sm">
             <span className="font-medium text-foreground">{clientInfo?.name}</span>{" "}
-            wants to access your Made Of Us account
+            wants to access your Consented AI account
           </p>
         </div>
 

@@ -8,7 +8,7 @@
 
 import { Resend } from "resend";
 
-const FROM_ADDRESS = "Made Of Us <noreply@updates.consentedai.com>";
+const FROM_ADDRESS = "Consented AI <noreply@updates.consentedai.com>";
 
 let _resend: Resend | null = null;
 
@@ -70,18 +70,18 @@ function wrapHtml(body: string): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { margin: 0; padding: 0; background: #09090B; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { margin: 0; padding: 0; background: #F0F4FA; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
     .container { max-width: 560px; margin: 0 auto; padding: 40px 24px; }
-    .logo { color: #8B5CF6; font-size: 20px; font-weight: 700; margin-bottom: 32px; }
-    h1 { color: #FAFAFA; font-size: 22px; margin: 0 0 12px; }
-    p { color: #A1A1AA; font-size: 15px; line-height: 1.6; margin: 0 0 16px; }
-    .cta { display: inline-block; background: #8B5CF6; color: #FFFFFF; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; margin: 8px 0 24px; }
-    .card { background: #18181B; border: 1px solid #27272A; border-radius: 12px; padding: 20px; margin: 16px 0; }
-    .card-label { color: #A1A1AA; font-size: 12px; margin: 0 0 4px; }
-    .card-value { color: #FAFAFA; font-size: 14px; font-family: monospace; margin: 0; word-break: break-all; }
-    .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #27272A; }
+    .logo { color: #DC2626; font-size: 20px; font-weight: 700; margin-bottom: 32px; }
+    h1 { color: #0C1424; font-size: 22px; margin: 0 0 12px; }
+    p { color: #3A5070; font-size: 15px; line-height: 1.6; margin: 0 0 16px; }
+    .cta { display: inline-block; background: #DC2626; color: #FFFFFF; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; margin: 8px 0 24px; }
+    .card { background: #FFFFFF; border: 1px solid #D0D8E6; border-radius: 12px; padding: 20px; margin: 16px 0; }
+    .card-label { color: #6A80A0; font-size: 12px; margin: 0 0 4px; }
+    .card-value { color: #0C1424; font-size: 14px; font-family: monospace; margin: 0; word-break: break-all; }
+    .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #D0D8E6; }
     .footer p { color: #71717A; font-size: 12px; }
-    .highlight { color: #8B5CF6; }
+    .highlight { color: #DC2626; }
     .success { color: #22C55E; }
     .warning { color: #F59E0B; }
     .danger { color: #EF4444; }
@@ -89,11 +89,11 @@ function wrapHtml(body: string): string {
 </head>
 <body>
   <div class="container">
-    <div class="logo">&#x1f6e1; Made Of Us</div>
+    <div class="logo">consentedai</div>
     ${body}
     <div class="footer">
-      <p>Made Of Us &mdash; AI Likeness Protection<br />
-      <a href="https://www.consentedai.com" style="color: #8B5CF6; text-decoration: none;">www.consentedai.com</a></p>
+      <p>Consented AI &mdash; AI Likeness Protection<br />
+      <a href="https://www.consentedai.com" style="color: #DC2626; text-decoration: none;">www.consentedai.com</a></p>
     </div>
   </div>
 </body>

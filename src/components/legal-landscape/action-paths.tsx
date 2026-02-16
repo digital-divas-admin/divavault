@@ -44,7 +44,7 @@ function getSteps(
             "Capture screenshots, URLs, and timestamps of the infringing content.",
             `File a complaint under ${stateName}'s digital likeness statute for statutory damages.`,
             "Submit a DMCA takedown request to the hosting platform.",
-            "Use Made Of Us to automate detection and takedowns across 247+ platforms.",
+            "Use Consented AI to automate detection and takedowns across 247+ platforms.",
           ]
         : hasModerateLaw
           ? [
@@ -52,7 +52,7 @@ function getSteps(
               `Review ${stateName}'s applicable likeness or publicity rights statutes.`,
               "File a DMCA takedown request with the hosting platform.",
               "Consult an attorney about pursuing damages under state law.",
-              "Use Made Of Us to continuously monitor for future unauthorized use.",
+              "Use Consented AI to continuously monitor for future unauthorized use.",
             ]
           : hasBasicLaw
             ? [
@@ -60,14 +60,14 @@ function getSteps(
                 `${stateName} has limited statutory protections \u2014 consider consulting an attorney about common law claims.`,
                 "File a DMCA takedown request with the hosting platform.",
                 "Report the content to the platform's trust and safety team.",
-                "Use Made Of Us to establish a verified likeness record and automate future takedowns.",
+                "Use Consented AI to establish a verified likeness record and automate future takedowns.",
               ]
             : [
                 "Collect all evidence of the unauthorized use.",
                 `${stateName} currently lacks specific AI likeness protections \u2014 legal options may be limited.`,
                 "File a DMCA takedown request with the hosting platform as a first step.",
                 "Consult an attorney about potential common law or privacy claims.",
-                "Use Made Of Us to create a verifiable likeness record that strengthens any legal action.",
+                "Use Consented AI to create a verifiable likeness record that strengthens any legal action.",
               ],
       ctaLabel: "Start Protecting Now",
       ctaHref: "/signup",
@@ -78,7 +78,7 @@ function getSteps(
       icon: ShieldCheck,
       steps: hasStrongLaw
         ? [
-            "Create a verified likeness record with Made Of Us to establish proof of identity.",
+            "Create a verified likeness record with Consented AI to establish proof of identity.",
             `Register your likeness under ${stateName}'s digital replica protections.`,
             "Enable continuous monitoring across 247+ AI platforms and marketplaces.",
             "Set up automated DMCA takedowns for any unauthorized matches.",
@@ -86,14 +86,14 @@ function getSteps(
           ]
         : hasModerateLaw
           ? [
-              "Create a verified likeness record with Made Of Us before unauthorized use occurs.",
+              "Create a verified likeness record with Consented AI before unauthorized use occurs.",
               "Enable proactive scanning across AI model platforms and image marketplaces.",
               "Set up automated takedown workflows to respond quickly to violations.",
               `Document your likeness to strengthen any claims under ${stateName} law.`,
               "Stay informed about pending legislation that may expand your protections.",
             ]
           : [
-              "Establish a verified likeness record with Made Of Us as your first line of defense.",
+              "Establish a verified likeness record with Consented AI as your first line of defense.",
               "Enable continuous AI platform monitoring to catch unauthorized use early.",
               "Build a documented history of your likeness for potential legal claims.",
               `Since ${stateName} has limited protections, a strong evidence record is especially important.`,
@@ -112,7 +112,7 @@ function getSteps(
             "Obtain verifiable consent before using any real person's likeness in AI-generated content.",
             "Implement opt-out mechanisms to allow individuals to remove their likenesses.",
             "Maintain records of consent and licensing for all AI-generated content featuring real faces.",
-            "Partner with Made Of Us to verify that your AI content does not infringe on protected likenesses.",
+            "Partner with Consented AI to verify that your AI content does not infringe on protected likenesses.",
           ]
         : hasModerateLaw
           ? [
@@ -120,14 +120,14 @@ function getSteps(
               "Establish a consent framework for any AI-generated content featuring real faces.",
               "Conduct regular audits of your AI training data for unauthorized likenesses.",
               "Implement processes to respond to takedown requests promptly.",
-              "Use Made Of Us to verify AI-generated faces against our protected likeness database.",
+              "Use Consented AI to verify AI-generated faces against our protected likeness database.",
             ]
           : [
               "Even without strong state laws, best practices require consent for likeness use.",
               "Develop internal policies for responsible AI-generated content creation.",
               "Monitor evolving federal and state legislation that may impose new requirements.",
               "Prepare for stricter regulations by implementing consent and opt-out frameworks now.",
-              "Partner with Made Of Us to proactively verify your content against protected likenesses.",
+              "Partner with Consented AI to proactively verify your content against protected likenesses.",
             ],
       ctaLabel: "Learn More",
       ctaHref: "/signup",

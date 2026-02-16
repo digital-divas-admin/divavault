@@ -107,21 +107,21 @@ export default function USMapChart({
                   style={{
                     default: {
                       fill: fillColor,
-                      stroke: isSelected ? "#FAFAFA" : "#18181B",
+                      stroke: isSelected ? "#0C1424" : "#D0D8E6",
                       strokeWidth: isSelected ? 2 : 0.5,
                       cursor: "pointer",
                       outline: "none",
                     },
                     hover: {
                       fill: PROTECTION_HOVER_COLORS[level],
-                      stroke: isSelected ? "#FAFAFA" : "#A1A1AA",
+                      stroke: isSelected ? "#0C1424" : "#6A80A0",
                       strokeWidth: isSelected ? 2 : 1,
                       cursor: "pointer",
                       outline: "none",
                     },
                     pressed: {
                       fill: fillColor,
-                      stroke: "#FAFAFA",
+                      stroke: "#0C1424",
                       strokeWidth: 2,
                       cursor: "pointer",
                       outline: "none",

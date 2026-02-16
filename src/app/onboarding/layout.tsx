@@ -13,7 +13,7 @@ export default function OnboardingLayout({
       <header className="border-b border-border/30 px-6 py-4 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <ShieldCheck className="w-5 h-5 text-primary" />
-          <span className="font-semibold text-foreground text-lg">madeofus</span>
+          <span className="font-semibold text-foreground text-lg">consented<span className="text-primary">ai</span></span>
         </Link>
         <AppSwitcher />
       </header>

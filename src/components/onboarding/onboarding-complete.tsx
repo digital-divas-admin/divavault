@@ -78,7 +78,7 @@ export function OnboardingComplete() {
   return (
     <StepContainer
       title="You're All Set!"
-      description="Welcome to Made Of Us. Your contribution helps build ethical AI that respects and compensates creators."
+      description="Welcome to Consented AI. Your contribution helps build ethical AI that respects and compensates creators."
     >
       <Card className="border-primary/20 bg-primary/5 rounded-2xl mb-6">
         <CardContent className="p-8 text-center">

@@ -4,11 +4,11 @@ import type { BillStatus } from "@/data/legal-landscape/types";
 
 const config: Record<
   BillStatus,
-  { variant: "success" | "purple" | "secondary" | "destructive"; label: string }
+  { variant: "success" | "primary" | "secondary" | "destructive"; label: string }
 > = {
   signed: { variant: "success", label: "Signed Into Law" },
   passed: { variant: "success", label: "Passed" },
-  committee: { variant: "purple", label: "In Committee" },
+  committee: { variant: "primary", label: "In Committee" },
   introduced: { variant: "secondary", label: "Introduced" },
   expired: { variant: "destructive", label: "Expired" },
 };

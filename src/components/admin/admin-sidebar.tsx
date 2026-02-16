@@ -58,7 +58,7 @@ const roleLabels: Record<AdminRole, string> = {
 const roleBadgeStyles: Record<AdminRole, string> = {
   reviewer: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   admin: "bg-primary/10 text-primary border-primary/20",
-  super_admin: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+  super_admin: "bg-purple-500/10 text-purple-600 border-purple-500/20",
 };
 
 interface AdminSidebarProps {
@@ -87,7 +87,7 @@ function SidebarContent({ displayName, role }: AdminSidebarProps) {
       <div className="px-6 py-5 border-b border-border/30 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <ShieldCheck className="w-5 h-5 text-primary" />
-          <span className="font-semibold text-foreground text-lg">madeofus</span>
+          <span className="font-semibold text-foreground text-lg">consented<span className="text-primary">ai</span></span>
           <span className="text-xs text-muted-foreground">admin</span>
         </Link>
         <AppSwitcher />
@@ -217,7 +217,7 @@ export function AdminMobileHeader(props: AdminSidebarProps) {
     <header className="lg:hidden sticky top-0 z-20 flex items-center justify-between px-4 py-3 border-b border-border/30 bg-background/80 backdrop-blur-sm">
       <Link href="/" className="flex items-center gap-2">
         <ShieldCheck className="w-5 h-5 text-primary" />
-        <span className="font-semibold text-foreground text-lg">madeofus</span>
+        <span className="font-semibold text-foreground text-lg">consented<span className="text-primary">ai</span></span>
         <span className="text-xs text-muted-foreground">admin</span>
       </Link>
       <Sheet open={open} onOpenChange={setOpen}>

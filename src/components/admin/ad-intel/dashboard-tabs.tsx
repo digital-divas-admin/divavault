@@ -61,7 +61,7 @@ export function DashboardTabs({ stats }: { stats: AdIntelStats }) {
               icon={Bot}
               value={stats.aiFacesFound}
               label="AI Faces Found"
-              iconClassName="text-purple-400"
+              iconClassName="text-purple-600"
               iconBgClassName="bg-purple-500/10"
             />
             <AdminStatCard

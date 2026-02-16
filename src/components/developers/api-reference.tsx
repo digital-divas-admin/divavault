@@ -738,7 +738,7 @@ const sectionComponents: Record<string, React.FC> = {
 /*  Full API reference as markdown (for copy / download)               */
 /* ------------------------------------------------------------------ */
 
-const FULL_API_MARKDOWN = `# Made Of Us — API Reference
+const FULL_API_MARKDOWN = `# Consented AI — API Reference
 
 ## Authentication
 

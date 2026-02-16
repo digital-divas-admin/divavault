@@ -96,7 +96,7 @@ export function PipelineStatusCard() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium">Pipeline Queue</CardTitle>
           {status.runningJobs > 0 && (
-            <Badge variant="purple" className="gap-1">
+            <Badge variant="primary" className="gap-1">
               <Loader2 className="h-3 w-3 animate-spin" />
               {status.runningJobs} running
             </Badge>

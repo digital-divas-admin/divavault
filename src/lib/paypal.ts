@@ -46,9 +46,9 @@ export async function createBatchPayout(
   request.requestBody({
     sender_batch_header: {
       sender_batch_id: senderBatchId,
-      email_subject: "You have a payment from Made Of Us",
+      email_subject: "You have a payment from Consented AI",
       email_message:
-        "You received a payment for your contributions to Made Of Us.",
+        "You received a payment for your contributions to Consented AI.",
     },
     items: items.map((item) => ({
       recipient_type: "EMAIL",

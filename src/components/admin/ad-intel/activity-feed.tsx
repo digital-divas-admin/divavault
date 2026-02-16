@@ -31,7 +31,7 @@ const EVENT_ICONS: Record<
   scan_triggered: { icon: Play, className: "text-blue-400" },
   ad_added: { icon: Plus, className: "text-blue-400" },
   face_searched: { icon: Search, className: "text-blue-400" },
-  config_changed: { icon: Settings, className: "text-purple-400" },
+  config_changed: { icon: Settings, className: "text-purple-600" },
   match_reviewed: { icon: CheckCircle2, className: "text-green-400" },
   stage_completed: { icon: Zap, className: "text-green-400" },
   error: { icon: AlertTriangle, className: "text-red-400" },

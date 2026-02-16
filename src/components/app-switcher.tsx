@@ -6,7 +6,7 @@ import { LayoutGrid } from "lucide-react";
 const apps = [
   {
     id: "madeofus",
-    name: "Made Of Us",
+    name: "Consented AI",
     description: "Contributor platform",
     href: "/",
     current: true,

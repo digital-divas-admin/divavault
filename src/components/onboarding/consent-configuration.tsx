@@ -65,7 +65,7 @@ const CORE_SECTIONS: CoreConsentSection[] = [
     plainIntro:
       "This is the core agreement. You're giving us permission to use your photos to train AI models that generate synthetic images.",
     items: [
-      "I grant Made Of Us and its affiliates a non-exclusive, worldwide, royalty-bearing license to use my contributed photos for the purpose of AI model training.",
+      "I grant Consented AI and its affiliates a non-exclusive, worldwide, royalty-bearing license to use my contributed photos for the purpose of AI model training.",
       "My photos may be used to train generative AI models that produce synthetic images.",
     ],
     checkboxLabel: "I agree to let my photos be used for AI model training",
@@ -109,7 +109,7 @@ const CORE_SECTIONS: CoreConsentSection[] = [
     plainIntro:
       "Your photos live in encrypted cloud storage that only our systems can access.",
     items: [
-      "I acknowledge that my photos will be stored in encrypted cloud storage operated by Made Of Us.",
+      "I acknowledge that my photos will be stored in encrypted cloud storage operated by Consented AI.",
       "I acknowledge the data retention practices described in the Privacy Policy.",
     ],
     checkboxLabel: "I acknowledge the privacy and data retention practices",
