@@ -84,23 +84,8 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  // Redirect logged-in users away from auth pages
-  const isAuthPage =
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/signup");
-
-  if (isAuthPage && user) {
-    // Check if onboarding is already complete
-    const { data: contributor } = await supabase
-      .from("contributors")
-      .select("onboarding_completed")
-      .eq("id", user.id)
-      .single();
-
-    const url = request.nextUrl.clone();
-    url.pathname = contributor?.onboarding_completed ? "/dashboard" : "/onboarding";
-    return NextResponse.redirect(url);
-  }
+  // Let logged-in users access auth pages (they may want to switch accounts).
+  // The login/signup forms handle post-auth routing to /dashboard.
 
   // Add security headers
   addSecurityHeaders(supabaseResponse, request);

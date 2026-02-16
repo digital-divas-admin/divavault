@@ -58,17 +58,8 @@ function LoginContent() {
       return;
     }
 
-    // Check if onboarding is already complete
-    const { data: contributor } = await supabase
-      .from("contributors")
-      .select("onboarding_completed")
-      .single();
-
-    if (contributor?.onboarding_completed) {
-      router.push("/dashboard");
-    } else {
-      router.push("/onboarding");
-    }
+    // Dashboard handles onboarding check — always route there after login
+    router.push("/dashboard");
   }
 
   return (
