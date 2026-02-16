@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 import { StepContainer } from "./step-container";
 import { QRHandoff } from "./qr-handoff";
@@ -25,77 +25,53 @@ function useIsMobile() {
 }
 
 export function IdentityVerification() {
-  const { sumsubStatus, setSumsubStatus, setStep } = useOnboardingStore();
+  const { verificationStatus, setVerificationStatus, setStep } = useOnboardingStore();
   const [loading, setLoading] = useState(false);
   const [showDesktopFlow, setShowDesktopFlow] = useState(false);
-  const sdkContainerRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
-  const launchSumsub = useCallback(async () => {
+  const launchVeriff = useCallback(async () => {
     setLoading(true);
-    setSumsubStatus("pending");
+    setVerificationStatus("pending");
 
     try {
-      // Fetch access token from our API
-      const res = await fetch("/api/sumsub/token", { method: "POST" });
+      // Create a Veriff session via our API
+      const res = await fetch("/api/veriff/session", { method: "POST" });
       if (!res.ok) {
-        throw new Error("Failed to get verification token");
+        throw new Error("Failed to create verification session");
       }
-      const { token } = await res.json();
+      const { sessionUrl } = await res.json();
 
-      // Dynamically import SumSub SDK to avoid SSR issues
-      const snsWebSdk = (await import("@sumsub/websdk")).default;
+      // Dynamically import Veriff InContext SDK to avoid SSR issues
+      const { createVeriffFrame, MESSAGES } = await import(
+        "@veriff/incontext-sdk"
+      );
 
-      const sdkInstance = snsWebSdk
-        .init(token, () => {
-          // Token expiration handler — refresh token
-          return fetch("/api/sumsub/token", { method: "POST" })
-            .then((r) => r.json())
-            .then((data) => data.token);
-        })
-        .withConf({
-          lang: "en",
-          theme: "light",
-        })
-        .withOptions({
-          addViewportTag: false,
-          adaptIframeHeight: true,
-        })
-        .on("idCheck.onError", (error) => {
-          console.error("SumSub SDK error:", error);
-          setSumsubStatus("red");
-          setLoading(false);
-        })
-        .on("idCheck.onApplicantLoaded", () => {
-          setLoading(false);
-        })
-        .on("idCheck.onApplicantSubmitted", () => {
-          // User submitted docs, waiting for review
-          setSumsubStatus("pending");
-        })
-        .on("idCheck.applicantReviewComplete", (payload) => {
-          if (payload.checkResult) {
-            setSumsubStatus("green");
-          } else {
-            setSumsubStatus("red");
+      createVeriffFrame({
+        url: sessionUrl,
+        onEvent: (msg: string) => {
+          if (msg === MESSAGES.STARTED) {
+            setLoading(false);
+          } else if (msg === MESSAGES.FINISHED) {
+            // User completed the flow — waiting for webhook decision
+            setVerificationStatus("pending");
+          } else if (msg === MESSAGES.CANCELED) {
+            // User cancelled — allow retry
+            setVerificationStatus(null as unknown as "pending");
+            // Reset to no status so user can start again
+            useOnboardingStore.setState({ verificationStatus: null });
           }
-          setLoading(false);
-        })
-        .build();
-
-      if (sdkContainerRef.current) {
-        sdkContainerRef.current.innerHTML = "";
-        sdkInstance.launch(sdkContainerRef.current);
-      }
+        },
+      });
     } catch (err) {
-      console.error("SumSub launch error:", err);
-      setSumsubStatus("red");
+      console.error("Veriff launch error:", err);
+      setVerificationStatus("red");
       setLoading(false);
     }
-  }, [setSumsubStatus]);
+  }, [setVerificationStatus]);
 
   // On desktop, show QR handoff first
-  const showQR = !isMobile && !showDesktopFlow && !sumsubStatus;
+  const showQR = !isMobile && !showDesktopFlow && !verificationStatus;
 
   return (
     <StepContainer
@@ -108,10 +84,10 @@ export function IdentityVerification() {
         </div>
       )}
 
-      {(isMobile || showDesktopFlow || sumsubStatus) && (
+      {(isMobile || showDesktopFlow || verificationStatus) && (
         <Card className="border-border/50 bg-card rounded-2xl mb-8">
           <CardContent className="p-5 sm:p-8 text-center">
-            {!sumsubStatus && !loading && (
+            {!verificationStatus && !loading && (
               <>
                 <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
                   <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-primary" />
@@ -120,9 +96,9 @@ export function IdentityVerification() {
                   Let&apos;s Verify It&apos;s Really You
                 </h3>
                 <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-                  We use Sumsub, a regulated identity verification provider, to
+                  We use Veriff, a regulated identity verification provider, to
                   confirm your identity. This takes about 2 minutes and requires a
-                  government-issued ID. Sumsub handles your ID data directly — we
+                  government-issued ID. Veriff handles your ID data directly — we
                   never see or store your ID document.
                 </p>
                 {!isMobile && (
@@ -131,24 +107,24 @@ export function IdentityVerification() {
                     <span>Continuing on desktop</span>
                   </div>
                 )}
-                <Button onClick={launchSumsub}>Start Verification</Button>
+                <Button onClick={launchVeriff}>Start Verification</Button>
                 {process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_DEV_BYPASS !== "false" && (
                   <div className="mt-4 pt-4 border-t border-dashed border-amber-300">
                     <button
                       onClick={async () => {
                         setLoading(true);
-                        setSumsubStatus("pending");
+                        setVerificationStatus("pending");
                         // Also update the DB so /api/onboarding/complete passes
                         const { createClient } = await import("@/lib/supabase/client");
                         const supabase = createClient();
                         const { data: { user } } = await supabase.auth.getUser();
                         if (user) {
                           await supabase.from("contributors").upsert(
-                            { id: user.id, email: user.email ?? "", sumsub_status: "green" },
+                            { id: user.id, email: user.email ?? "", verification_status: "green" },
                             { onConflict: "id" }
                           );
                         }
-                        setSumsubStatus("green");
+                        setVerificationStatus("green");
                         setLoading(false);
                       }}
                       className="text-xs text-amber-600 underline underline-offset-2 hover:text-amber-800"
@@ -160,7 +136,7 @@ export function IdentityVerification() {
               </>
             )}
 
-            {loading && !sumsubStatus && (
+            {loading && !verificationStatus && (
               <>
                 <Loader2 className="w-12 h-12 text-primary animate-spin mx-auto mb-6" />
                 <h3 className="font-[family-name:var(--font-heading)] text-lg font-semibold mb-2">
@@ -172,10 +148,7 @@ export function IdentityVerification() {
               </>
             )}
 
-            {/* SumSub SDK renders here */}
-            <div ref={sdkContainerRef} className="min-h-0" />
-
-            {sumsubStatus === "pending" && (
+            {verificationStatus === "pending" && (
               <>
                 <Loader2 className="w-12 h-12 text-primary animate-spin mx-auto mb-6" />
                 <h3 className="font-[family-name:var(--font-heading)] text-lg font-semibold mb-2">
@@ -183,12 +156,12 @@ export function IdentityVerification() {
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   This usually takes under a minute. Your ID data is processed
-                  securely by Sumsub and not stored on our servers.
+                  securely by Veriff and not stored on our servers.
                 </p>
               </>
             )}
 
-            {sumsubStatus === "green" && (
+            {verificationStatus === "green" && (
               <>
                 <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-6" />
                 <h3 className="font-[family-name:var(--font-heading)] text-lg font-semibold mb-2">
@@ -199,12 +172,12 @@ export function IdentityVerification() {
                 </Badge>
                 <p className="text-sm text-muted-foreground mt-3 max-w-md mx-auto">
                   Your identity is confirmed. Your ID document was processed by
-                  Sumsub and is not stored by Made Of Us.
+                  Veriff and is not stored by Made Of Us.
                 </p>
               </>
             )}
 
-            {sumsubStatus === "red" && (
+            {verificationStatus === "red" && (
               <>
                 <XCircle className="w-12 h-12 text-destructive mx-auto mb-6" />
                 <h3 className="font-[family-name:var(--font-heading)] text-lg font-semibold mb-2">
@@ -215,7 +188,7 @@ export function IdentityVerification() {
                   lighting issue. Your data from this attempt is not retained. You
                   can try again whenever you&apos;re ready.
                 </p>
-                <Button onClick={launchSumsub} variant="outline">
+                <Button onClick={launchVeriff} variant="outline">
                   Try Again
                 </Button>
               </>
@@ -227,7 +200,7 @@ export function IdentityVerification() {
       <div className="flex justify-end">
         <Button
           onClick={() => setStep(2)}
-          disabled={sumsubStatus !== "green"}
+          disabled={verificationStatus !== "green"}
         >
           Continue
           <ArrowRight className="ml-2 w-4 h-4" />

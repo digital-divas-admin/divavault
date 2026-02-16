@@ -59,7 +59,7 @@ export default async function AdminUserDetailPage({ params }: PageProps) {
                 {user.email}
               </div>
             </div>
-            <VerificationStatusBadge status={user.sumsub_status} />
+            <VerificationStatusBadge status={user.verification_status} />
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

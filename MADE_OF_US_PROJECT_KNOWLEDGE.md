@@ -20,7 +20,7 @@ The business model is tiered subscriptions (Free / Protected / Premium) with a f
 - **Auth + DB + Storage:** Supabase (PostgreSQL, Auth, Storage, RLS)
 - **Forms:** React Hook Form + Zod v4
 - **State:** Zustand with persist middleware (localStorage)
-- **Identity Verification:** SumSub Web SDK
+- **Identity Verification:** Veriff InContext SDK
 - **Camera:** getUserMedia API + canvas-based quality checks
 - **Deployment:** Render (render.yaml)
 
@@ -63,10 +63,10 @@ The business model is tiered subscriptions (Free / Protected / Premium) with a f
 Managed by Zustand store (`src/stores/onboarding-store.ts`), persisted to localStorage so users can resume.
 
 ### Step 1: Identity Verification
-- SumSub Web SDK for real KYC (ID check, liveness)
+- Veriff InContext SDK for real KYC (ID check, liveness)
 - QR handoff for desktop users to continue on phone
 - Dev bypass available for testing
-- Events: `idCheck.onApplicantSubmitted`, `idCheck.applicantReviewComplete`
+- Events: `MESSAGES.STARTED`, `MESSAGES.FINISHED`, `MESSAGES.CANCELED`
 
 ### Step 2: Profile Builder
 - Visual demographic pickers (color swatches, chips)
@@ -132,7 +132,7 @@ The registry is the infrastructure layer — a public system AI platforms can qu
 |-------|---------|
 | `registry_identities` | CID-indexed identities with status (claimed/verified/suspended/revoked) |
 | `registry_consent_events` | Hash-linked chain of consent mutations (grant/modify/restrict/revoke/reinstate) |
-| `registry_verifications` | KYC verification records (SumSub, selfie liveness) |
+| `registry_verifications` | KYC verification records (Veriff, selfie liveness) |
 | `registry_matches` | Detected matches with similarity scores and confidence tiers |
 | `registry_contacts` | Contact info for match notifications (email, webhook) |
 
@@ -260,11 +260,11 @@ Tracks AI likeness rights legislation across all 50 US states and federal level.
 
 ## Integrations
 
-### SumSub (Identity Verification)
-- Web SDK embedded in onboarding step 1
-- Webhook at `/api/sumsub-webhook` receives KYC results
-- HMAC-SHA256 signature verification
-- Status mapping: pending → green (passed) / red (failed) / retry
+### Veriff (Identity Verification)
+- InContext SDK embedded in onboarding step 1
+- Webhook at `/api/veriff-webhook` receives KYC decisions
+- HMAC-SHA256 signature verification via `x-hmac-signature` header
+- Status mapping: approved → green / declined/expired/abandoned → red / resubmission_requested → retry / review → pending
 
 ### Instagram (Photo Import)
 - OAuth flow for importing existing photos as fallback to camera capture
@@ -354,6 +354,6 @@ Hash-linked events form a tamper-proof audit trail. Current consent derived by r
 - **Face embedding pipeline** — Schema supports embeddings but pipeline not connected
 - **Instagram API in production** — Needs Meta app review for Basic Display product
 - **Instagram token encryption** — Stored unencrypted
-- **SumSub in production** — Dev bypass used; needs live credentials
+- **Veriff in production** — Dev bypass used; needs live credentials
 - **Public marketplace browsing** — Admin-only currently
 - **Payout execution** — PayPal webhook handler exists but batch initiation not implemented

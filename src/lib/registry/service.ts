@@ -30,22 +30,22 @@ async function sha256(input: string): Promise<string> {
 
 export async function createRegistryIdentity({
   contributorId,
-  sumsubApplicantId,
+  veriffSessionId,
   verifiedAt,
   metadata,
 }: {
   contributorId: string;
-  sumsubApplicantId?: string | null;
+  veriffSessionId?: string | null;
   verifiedAt: string;
   metadata?: Record<string, unknown>;
 }): Promise<RegistryIdentity> {
   const supabase = await createServiceClient();
   const cid = await generateCID(contributorId);
 
-  const hasSumsub = !!sumsubApplicantId;
+  const hasVeriff = !!veriffSessionId;
   const identityHash = await sha256(
-    hasSumsub
-      ? `${contributorId}:${sumsubApplicantId}`
+    hasVeriff
+      ? `${contributorId}:${veriffSessionId}`
       : `${contributorId}:onboarding`
   );
 
@@ -67,9 +67,9 @@ export async function createRegistryIdentity({
     .from("registry_verifications")
     .insert({
       cid,
-      method: hasSumsub ? "sumsub_full" : "onboarding_complete",
-      provider: hasSumsub ? "sumsub" : null,
-      provider_session_id: sumsubApplicantId || null,
+      method: hasVeriff ? "veriff_full" : "onboarding_complete",
+      provider: hasVeriff ? "veriff" : null,
+      provider_session_id: veriffSessionId || null,
       result: "passed",
     });
 

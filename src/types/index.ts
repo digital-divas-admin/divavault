@@ -2,8 +2,8 @@ export interface Contributor {
   id: string;
   full_name: string;
   email: string;
-  sumsub_status: "pending" | "green" | "red" | "retry";
-  sumsub_applicant_id: string | null;
+  verification_status: "pending" | "green" | "red" | "retry";
+  veriff_session_id: string | null;
   instagram_username: string | null;
   instagram_token: string | null;
   photo_count: number;

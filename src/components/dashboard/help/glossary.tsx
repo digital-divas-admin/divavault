@@ -40,7 +40,7 @@ const terms = [
   {
     term: "KYC (Know Your Customer)",
     definition:
-      "Identity verification required to ensure every member is a real person. Processed by Sumsub — we never store your ID documents.",
+      "Identity verification required to ensure every member is a real person. Processed by Veriff — we never store your ID documents.",
   },
   {
     term: "Consent",

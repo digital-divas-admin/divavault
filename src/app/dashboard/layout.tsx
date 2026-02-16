@@ -40,7 +40,7 @@ export default async function DashboardLayout({
 
   const sidebarProps = {
     userName: c.display_name || c.full_name || "Contributor",
-    verified: c.sumsub_status === "green",
+    verified: c.verification_status === "green",
     tier: (c.subscription_tier || "free") as SubscriptionTier,
     platformsMonitored: platformCount || 0,
   };

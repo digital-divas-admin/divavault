@@ -8,8 +8,8 @@ An AI likeness protection platform. Members upload photos and verify their ident
 - **Styling:** Tailwind CSS v4 + Shadcn/UI (new-york style)
 - **Auth + DB + Storage:** Supabase (`@supabase/ssr` for SSR pattern)
 - **Forms:** React Hook Form + Zod v4 + `@hookform/resolvers`
-- **State:** Zustand with `persist` middleware (localStorage, version 2)
-- **Identity Verification:** SumSub (`@sumsub/websdk`)
+- **State:** Zustand with `persist` middleware (localStorage, version 4)
+- **Identity Verification:** Veriff (`@veriff/js-sdk` + `@veriff/incontext-sdk`)
 - **Camera Capture:** `getUserMedia` API + canvas-based quality checks
 - **Deployment:** Render (via `render.yaml`) — not yet deployed; planned for future
 
@@ -38,8 +38,8 @@ src/
 │   ├── dashboard/page.tsx          # Post-onboarding (server component)
 │   └── api/
 │       ├── auth/signout/route.ts   # Sign out handler
-│       ├── sumsub/token/route.ts   # SumSub access token (HMAC-SHA256 signed)
-│       ├── sumsub-webhook/route.ts # SumSub KYC webhook (signature-verified)
+│       ├── veriff/session/route.ts  # Veriff session creation
+│       ├── veriff-webhook/route.ts # Veriff KYC webhook (HMAC-SHA256 verified)
 │       ├── onboarding/
 │       │   ├── profile/route.ts    # Save profile → contributor_attributes
 │       │   ├── consent/route.ts    # Save consent → contributor_consents (immutable)
@@ -55,7 +55,7 @@ src/
 │   ├── ui/                         # Shadcn/UI components
 │   ├── landing/                    # Landing page sections (9 total)
 │   └── onboarding/
-│       ├── identity-verification.tsx  # Step 1: Real SumSub SDK + dev bypass
+│       ├── identity-verification.tsx  # Step 1: Veriff InContext SDK + dev bypass
 │       ├── profile-builder.tsx        # Step 2: Visual demographic pickers
 │       ├── consent-configuration.tsx  # Step 3: Granular consent toggles + SHA-256 hash
 │       ├── guided-capture.tsx         # Step 4: Camera capture or fallback upload
@@ -83,7 +83,7 @@ src/
 │   ├── identity-match.ts           # Cosine similarity for face embeddings
 │   ├── consent-hash.ts             # SHA-256 consent hashing (Web Crypto API)
 │   ├── instagram.ts                # Instagram API helpers
-│   ├── sumsub.ts                   # SumSub webhook verification + status mapping
+│   ├── veriff.ts                    # Veriff webhook verification + status mapping
 │   ├── validators.ts               # Zod v4 schemas (signup, login, profile, consent)
 │   └── utils.ts                    # Shadcn cn() utility
 ├── stores/onboarding-store.ts      # Zustand store (persisted, version 2 with migration)
@@ -125,8 +125,8 @@ This project uses Zod v4 which has a different API from v3:
 - Use `{ message: "..." }` instead of `{ errorMap: () => ... }`
 
 ### Onboarding Flow (5 steps)
-5-step multi-step form managed by Zustand store (version 2 with persist migration):
-1. **Verify ID** — Real SumSub Web SDK (`@sumsub/websdk`), QR handoff for desktop→phone. Dev bypass available (`[DEV] Skip verification` button).
+5-step multi-step form managed by Zustand store (version 4 with persist migration):
+1. **Verify ID** — Veriff InContext SDK (`@veriff/incontext-sdk`), QR handoff for desktop→phone. Dev bypass available (`[DEV] Skip verification` button).
 2. **Your Profile** — Visual demographic pickers (color swatches, chips) → `contributor_attributes` table
 3. **Consent** — Core consents + granular usage categories (commercial/editorial/entertainment/e-learning), geo restrictions, content exclusions. SHA-256 consent hash → `contributor_consents` table (immutable records)
 4. **Photo Capture** — Guided camera with quality checks (brightness, sharpness, face detection) OR fallback upload (Instagram + manual, min 25 photos). QR handoff available when no camera. → `capture-uploads` bucket + `contributor_images` table
@@ -134,7 +134,7 @@ This project uses Zod v4 which has a different API from v3:
 
 State persists to localStorage so users can resume. On completion, user is redirected to `/dashboard`.
 
-**SumSub SDK events** use `idCheck.` prefix: `idCheck.onError`, `idCheck.onApplicantLoaded`, `idCheck.onApplicantSubmitted`, `idCheck.applicantReviewComplete`.
+**Veriff InContext SDK events**: `MESSAGES.STARTED` (flow loaded), `MESSAGES.FINISHED` (user completed, awaiting webhook decision), `MESSAGES.CANCELED` (user cancelled).
 
 **QR Handoff** includes the current step number in the signed token so the phone jumps directly to the right step.
 
@@ -154,9 +154,9 @@ Required in `.env.local`:
 NEXT_PUBLIC_SUPABASE_URL=        # Supabase project URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY=   # Supabase anon key
 SUPABASE_SERVICE_ROLE_KEY=       # Supabase service role key (server-only)
-SUMSUB_APP_TOKEN=                # SumSub API token
-SUMSUB_SECRET_KEY=               # SumSub API secret (also used for handoff token signing)
-SUMSUB_WEBHOOK_SECRET=           # SumSub webhook signing secret
+VERIFF_API_KEY=                  # Veriff API key (from Customer Portal)
+VERIFF_SHARED_SECRET=            # Veriff shared secret (HMAC signing for API + webhooks)
+HANDOFF_SECRET=                  # Secret for QR handoff token signing
 INSTAGRAM_CLIENT_ID=             # Meta/Instagram app client ID
 INSTAGRAM_CLIENT_SECRET=         # Meta/Instagram app client secret
 INSTAGRAM_REDIRECT_URI=          # Must match Meta app config
@@ -218,4 +218,4 @@ Returns a JSON array of result rows, or `[]` for DDL statements.
 - **Payments not implemented** — MVP focuses on signup + data collection only.
 - **Instagram API requires Meta app review** — For production, the Meta app needs Basic Display product review. Dev uses test users.
 - **Instagram tokens stored unencrypted** — Should add encryption for production.
-- **SumSub needs live credentials** — Dev bypass available; fill in `SUMSUB_APP_TOKEN` and `SUMSUB_SECRET_KEY` for production.
+- **Veriff needs live credentials** — Dev bypass available; fill in `VERIFF_API_KEY` and `VERIFF_SHARED_SECRET` for production.

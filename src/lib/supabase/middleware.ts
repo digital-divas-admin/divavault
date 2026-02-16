@@ -165,11 +165,8 @@ function addSecurityHeaders(response: NextResponse, request: NextRequest) {
       : "camera=(), microphone=(), geolocation=()"
   );
 
-  // CSP: allow Supabase, picsum (mock images), TF.js models, SumSub
-  // NOTE: 'unsafe-eval' is required by SumSub SDK (uses eval internally).
-  // 'unsafe-inline' is required by Next.js dev server for hot-reload and by SumSub SDK styles.
-  // TODO (production hardening): switch to nonce-based CSP when SumSub SDK supports it,
-  // and remove 'unsafe-eval' once a SumSub SDK update eliminates the requirement.
+  // CSP: allow Supabase, picsum (mock images), TF.js models, Veriff
+  // 'unsafe-inline' is required by Next.js dev server for hot-reload.
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const csp = [
     "default-src 'self'",
@@ -177,8 +174,8 @@ function addSecurityHeaders(response: NextResponse, request: NextRequest) {
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
     `font-src 'self' https://fonts.gstatic.com`,
     `img-src 'self' data: blob: ${supabaseUrl} https://picsum.photos https://fastly.picsum.photos https://*.cdninstagram.com`,
-    `connect-src 'self' ${supabaseUrl} https://api.instagram.com https://graph.instagram.com https://cdn.jsdelivr.net https://storage.googleapis.com https://tfhub.dev https://api.sumsub.com`,
-    `frame-src 'self' https://*.sumsub.com`,
+    `connect-src 'self' ${supabaseUrl} https://api.instagram.com https://graph.instagram.com https://cdn.jsdelivr.net https://storage.googleapis.com https://tfhub.dev https://stationapi.veriff.com https://magic.veriff.me`,
+    `frame-src 'self' https://*.veriff.com https://magic.veriff.me`,
     `worker-src 'self' blob:`,
     "frame-ancestors 'none'",
     "base-uri 'self'",

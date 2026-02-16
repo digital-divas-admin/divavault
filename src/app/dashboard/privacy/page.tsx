@@ -39,7 +39,7 @@ export default async function PrivacyPage() {
       <div className="grid gap-6">
         <DataInventory
           photoCount={uploads.length}
-          verified={contributor.sumsub_status === "green"}
+          verified={contributor.verification_status === "green"}
           consentGiven={contributor.consent_given}
           activityCount={activities.length}
         />

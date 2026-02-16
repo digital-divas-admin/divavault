@@ -11,7 +11,7 @@ import { GuidedCapture } from "@/components/onboarding/guided-capture";
 import { OnboardingComplete } from "@/components/onboarding/onboarding-complete";
 
 function OnboardingContent() {
-  const { currentStep, setStep, setSumsubStatus } = useOnboardingStore();
+  const { currentStep, setStep, setVerificationStatus } = useOnboardingStore();
   const searchParams = useSearchParams();
   const handoffProcessed = useRef(false);
   const [handoffError, setHandoffError] = useState<string | null>(null);
@@ -42,7 +42,7 @@ function OnboardingContent() {
           const data = await res.json();
           if (data.valid && data.step) {
             // Mark prior steps as done so we skip them
-            if (data.step >= 2) setSumsubStatus("green");
+            if (data.step >= 2) setVerificationStatus("green");
             setStep(data.step);
           }
         } else {
@@ -59,7 +59,7 @@ function OnboardingContent() {
     }
 
     validateHandoff(handoffToken);
-  }, [searchParams, setStep, setSumsubStatus]);
+  }, [searchParams, setStep, setVerificationStatus]);
 
   return (
     <div>

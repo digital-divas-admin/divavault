@@ -146,7 +146,7 @@ export function UserTable({ contributors, total, page, pageSize }: UserTableProp
                     )}
                   </TableCell>
                   <TableCell>
-                    <VerificationStatusBadge status={c.sumsub_status} />
+                    <VerificationStatusBadge status={c.verification_status} />
                   </TableCell>
                   <TableCell className="text-right">{c.submission_count}</TableCell>
                   <TableCell className="text-right">

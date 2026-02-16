@@ -790,7 +790,7 @@ export interface ContributorListItem {
   full_name: string;
   email: string;
   display_name: string | null;
-  sumsub_status: string;
+  verification_status: string;
   photo_count: number;
   onboarding_completed: boolean;
   suspended: boolean;
@@ -817,7 +817,7 @@ export async function getAllContributors({
 
   let query = supabase
     .from("contributors")
-    .select("id, full_name, email, display_name, sumsub_status, photo_count, onboarding_completed, suspended, flagged, created_at", { count: "exact" })
+    .select("id, full_name, email, display_name, verification_status, photo_count, onboarding_completed, suspended, flagged, created_at", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(from, to);
 
@@ -825,7 +825,7 @@ export async function getAllContributors({
     query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,display_name.ilike.%${search}%`);
   }
   if (verificationStatus && verificationStatus !== "all") {
-    query = query.eq("sumsub_status", verificationStatus);
+    query = query.eq("verification_status", verificationStatus);
   }
 
   const { data, count } = await query;
@@ -864,7 +864,7 @@ export async function getAllContributors({
       full_name: string;
       email: string;
       display_name: string | null;
-      sumsub_status: string;
+      verification_status: string;
       photo_count: number;
       onboarding_completed: boolean;
       suspended: boolean;
@@ -886,7 +886,7 @@ export interface ContributorDetail {
   full_name: string;
   email: string;
   display_name: string | null;
-  sumsub_status: string;
+  verification_status: string;
   instagram_username: string | null;
   photo_count: number;
   consent_given: boolean;
@@ -946,7 +946,7 @@ export async function getContributorAdmin(
     full_name: row.full_name as string,
     email: row.email as string,
     display_name: row.display_name as string | null,
-    sumsub_status: row.sumsub_status as string,
+    verification_status: row.verification_status as string,
     instagram_username: row.instagram_username as string | null,
     photo_count: row.photo_count as number,
     consent_given: row.consent_given as boolean,

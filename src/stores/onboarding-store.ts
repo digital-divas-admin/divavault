@@ -9,7 +9,7 @@ import type {
 interface OnboardingState {
   currentStep: number;
   // Step 1: Identity verification
-  sumsubStatus: "pending" | "green" | "red" | null;
+  verificationStatus: "pending" | "green" | "red" | null;
   // Step 2: Profile builder
   profileData: {
     hairColor: string | null;
@@ -52,7 +52,7 @@ interface OnboardingState {
 
   // Actions
   setStep: (step: number) => void;
-  setSumsubStatus: (status: "pending" | "green" | "red") => void;
+  setVerificationStatus: (status: "pending" | "green" | "red") => void;
   // Profile actions
   setProfileData: (data: Partial<OnboardingState["profileData"]>) => void;
   setProfileCompleted: (v: boolean) => void;
@@ -89,7 +89,7 @@ interface OnboardingState {
 
 const initialState = {
   currentStep: 1,
-  sumsubStatus: null as "pending" | "green" | "red" | null,
+  verificationStatus: null as "pending" | "green" | "red" | null,
   // Profile
   profileData: {
     hairColor: null as string | null,
@@ -136,7 +136,7 @@ export const useOnboardingStore = create<OnboardingState>()(
       ...initialState,
 
       setStep: (step) => set({ currentStep: step }),
-      setSumsubStatus: (status) => set({ sumsubStatus: status }),
+      setVerificationStatus: (status) => set({ verificationStatus: status }),
 
       // Profile
       setProfileData: (data) =>
@@ -216,14 +216,14 @@ export const useOnboardingStore = create<OnboardingState>()(
     }),
     {
       name: "madeofus-onboarding",
-      version: 3,
+      version: 4,
       migrate: (persistedState: unknown, version: number) => {
         if (!persistedState || typeof persistedState !== "object") return initialState;
         const state = persistedState as Record<string, unknown>;
         if (version < 2) {
           // Migrate from v0/v1 (old 3-step flow) to v2 (5-step flow)
           const oldStep = (state.currentStep as number) || 1;
-          const hadSumsub = state.sumsubStatus === "green";
+          const hadSumsub = (state.sumsubStatus ?? state.verificationStatus) === "green";
           const hadProfile = state.profileCompleted === true;
           const hadConsent = state.consentAge === true && state.consentAiTraining === true;
           const hadCapture = state.captureCompleted === true;
@@ -239,7 +239,7 @@ export const useOnboardingStore = create<OnboardingState>()(
             ...initialState,
             ...state,
             currentStep: newStep,
-            sumsubStatus: state.sumsubStatus ?? null,
+            verificationStatus: (state.sumsubStatus ?? state.verificationStatus ?? null) as string | null,
             consentAge: state.consentAge ?? false,
             consentAiTraining: state.consentAiTraining ?? false,
             consentLikeness: state.consentLikeness ?? false,
@@ -252,6 +252,12 @@ export const useOnboardingStore = create<OnboardingState>()(
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { trackType: _, ...rest } = state as Record<string, unknown> & { trackType?: unknown };
           return { ...initialState, ...rest };
+        }
+        if (version < 4) {
+          // v3→v4: rename sumsubStatus → verificationStatus
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { sumsubStatus, ...rest } = state as Record<string, unknown> & { sumsubStatus?: unknown };
+          return { ...initialState, ...rest, verificationStatus: (sumsubStatus ?? null) as string | null };
         }
         return state;
       },

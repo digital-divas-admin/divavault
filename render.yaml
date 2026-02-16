@@ -17,12 +17,13 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      # SumSub
-      - key: SUMSUB_APP_TOKEN
+      # Veriff
+      - key: VERIFF_API_KEY
         sync: false
-      - key: SUMSUB_SECRET_KEY
+      - key: VERIFF_SHARED_SECRET
         sync: false
-      - key: SUMSUB_WEBHOOK_SECRET
+      # Handoff token signing
+      - key: HANDOFF_SECRET
         sync: false
       # Instagram
       - key: INSTAGRAM_CLIENT_ID

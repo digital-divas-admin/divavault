@@ -35,7 +35,7 @@ export async function GET(
   const { data: contributor, error } = await supabase
     .from("contributors")
     .select(
-      "id, display_name, onboarding_completed, consent_given, opted_out, sumsub_status, profile_completed, capture_completed, created_at, updated_at"
+      "id, display_name, onboarding_completed, consent_given, opted_out, verification_status, profile_completed, capture_completed, created_at, updated_at"
     )
     .eq("id", id)
     .single();

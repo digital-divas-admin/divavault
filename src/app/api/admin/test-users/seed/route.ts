@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
         id: userId,
         full_name: name,
         email,
-        sumsub_status: "green",
+        verification_status: "green",
         profile_completed: true,
         consent_given: true,
         capture_completed: true,

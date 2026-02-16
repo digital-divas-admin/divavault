@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import crypto from "crypto";
 
-const HANDOFF_SECRET = process.env.SUMSUB_SECRET_KEY!; // Reuse existing secret
+const HANDOFF_SECRET = process.env.HANDOFF_SECRET || process.env.VERIFF_SHARED_SECRET!;
 
 export async function POST(request: Request) {
   const supabase = await createClient();

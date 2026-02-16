@@ -34,7 +34,7 @@ export function DataInventory({
     {
       icon: Shield,
       label: "Verification Status",
-      detail: verified ? "Identity verified via Sumsub" : "Verification pending",
+      detail: verified ? "Identity verified via Veriff" : "Verification pending",
     },
     {
       icon: FileText,
@@ -67,7 +67,7 @@ export function DataInventory({
         ))}
         <div className="pt-2 border-t border-border/30">
           <p className="text-xs text-secondary">
-            Your ID documents are processed by Sumsub and never stored by us.
+            Your ID documents are processed by Veriff and never stored by us.
           </p>
         </div>
       </CardContent>

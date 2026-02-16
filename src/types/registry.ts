@@ -9,7 +9,7 @@ export type ConsentEventType = "grant" | "modify" | "restrict" | "revoke" | "rei
 
 export type ConsentSource = "onboarding" | "dashboard" | "api" | "admin" | "system";
 
-export type VerificationMethod = "sumsub_full" | "selfie_liveness";
+export type VerificationMethod = "veriff_full" | "selfie_liveness";
 
 export type VerificationResult = "passed" | "failed" | "inconclusive" | "expired";
 

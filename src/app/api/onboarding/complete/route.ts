@@ -16,7 +16,7 @@ export async function POST() {
     // Verify all steps are complete before finalizing
     const { data: contributor, error: fetchErr } = await supabase
       .from("contributors")
-      .select("sumsub_status, profile_completed, consent_given, capture_completed, onboarding_completed")
+      .select("verification_status, profile_completed, consent_given, capture_completed, onboarding_completed")
       .eq("id", user.id)
       .single();
 
@@ -33,7 +33,7 @@ export async function POST() {
     }
 
     // Check step 1: Identity verified (green) or mocked
-    const idVerified = contributor.sumsub_status === "green";
+    const idVerified = contributor.verification_status === "green";
 
     // Check step 2: Profile completed
     const profileDone = contributor.profile_completed;
@@ -102,13 +102,13 @@ export async function POST() {
 
       const { data: fullContributor } = await supabase
         .from("contributors")
-        .select("sumsub_applicant_id")
+        .select("veriff_session_id")
         .eq("id", user.id)
         .single();
 
       const identity = await createRegistryIdentity({
         contributorId: user.id,
-        sumsubApplicantId: fullContributor?.sumsub_applicant_id ?? null,
+        veriffSessionId: fullContributor?.veriff_session_id ?? null,
         verifiedAt: new Date().toISOString(),
       });
 
