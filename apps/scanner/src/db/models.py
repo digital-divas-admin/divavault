@@ -1,7 +1,7 @@
 """SQLAlchemy 2.0 models mirroring the shared database schema.
 
-Adapted to the real column names in the Made Of Us database:
-- contributors.sumsub_status (not verification_status)
+Adapted to the real column names in the Consented AI database:
+- contributors.verification_status
 - contributors.full_name (not first_name/last_name)
 - contributor_images.file_path + bucket (not storage_url)
 - contributor_images.capture_step (not image_type)
@@ -40,7 +40,7 @@ class Contributor(Base):
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
     full_name: Mapped[str | None] = mapped_column(Text)
     email: Mapped[str | None] = mapped_column(Text)
-    sumsub_status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    verification_status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
     subscription_tier: Mapped[str] = mapped_column(Text, server_default=text("'free'"))
     instagram_username: Mapped[str | None] = mapped_column(Text)
     photo_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
