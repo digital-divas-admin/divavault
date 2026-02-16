@@ -16,6 +16,7 @@ export interface NotificationPreferences {
   email_match_alerts: boolean;
   email_scan_updates: boolean;
   email_takedown_updates: boolean;
+  email_optout_updates: boolean;
   email_bounty_matches: boolean;
   email_bounty_updates: boolean;
   updated_at: string;

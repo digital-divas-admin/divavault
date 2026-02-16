@@ -6,6 +6,7 @@ import {
   ShieldCheck,
   Target,
   ImageIcon,
+  ShieldOff,
   User,
   HelpCircle,
   Menu,
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/dashboard", label: "Protection Overview", icon: ShieldCheck, exact: true },
   { href: "/dashboard/matches", label: "Matches", icon: Target },
   { href: "/dashboard/your-data", label: "Your Data", icon: ImageIcon },
+  { href: "/dashboard/opt-outs", label: "AI Opt-Outs", icon: ShieldOff },
   { href: "/dashboard/account", label: "Account", icon: User },
   { href: "/dashboard/help", label: "Help & Support", icon: HelpCircle },
 ];

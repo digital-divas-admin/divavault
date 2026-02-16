@@ -94,6 +94,7 @@ export async function getNotificationPreferences(
     email_takedown_updates: true,
     email_bounty_matches: true,
     email_bounty_updates: true,
+    email_optout_updates: true,
     updated_at: new Date().toISOString(),
   };
 }

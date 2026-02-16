@@ -27,14 +27,14 @@ function getResend(): Resend | null {
 // Core send helper
 // ---------------------------------------------------------------------------
 
-interface SendEmailParams {
+export interface SendEmailParams {
   to: string;
   subject: string;
   html: string;
   text?: string;
 }
 
-async function sendEmail({ to, subject, html, text }: SendEmailParams) {
+export async function sendEmail({ to, subject, html, text }: SendEmailParams) {
   const resend = getResend();
   if (!resend) return null;
 
@@ -63,7 +63,7 @@ async function sendEmail({ to, subject, html, text }: SendEmailParams) {
 // Shared HTML wrapper
 // ---------------------------------------------------------------------------
 
-function wrapHtml(body: string): string {
+export function wrapHtml(body: string): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -259,5 +259,63 @@ export async function sendLegalUpdate(
       <a href="https://www.consentedai.com/legal-landscape" class="cta">View Full Details &rarr;</a>
     `),
     text: `Legal update for ${data.state}: ${data.headline}\n\n${data.summary}\n\nDetails: https://www.consentedai.com/legal-landscape`,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Opt-out email functions
+// ---------------------------------------------------------------------------
+
+export const OPTOUT_FROM_ADDRESS = "Consented AI Legal <legal@consentedai.com>";
+
+/** Send a formal opt-out notice email to an AI company. */
+export async function sendOptOutNotice({
+  to,
+  subject,
+  html,
+  text,
+}: SendEmailParams & { from?: string }) {
+  const resend = getResend();
+  if (!resend) return null;
+  try {
+    const { data, error } = await resend.emails.send({
+      from: OPTOUT_FROM_ADDRESS,
+      to,
+      subject,
+      html,
+      text,
+    });
+    if (error) {
+      console.error("[email] Opt-out send error:", error);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.error("[email] Opt-out unexpected error:", err);
+    return null;
+  }
+}
+
+/** Notify a user about an opt-out status change from a company. */
+export async function sendOptOutStatusUpdate(
+  to: string,
+  data: { companyName: string; status: string; details?: string }
+) {
+  const statusLabel =
+    data.status === "confirmed"
+      ? "confirmed your opt-out"
+      : data.status === "denied"
+        ? "denied your request"
+        : `responded (${data.status})`;
+  return sendEmail({
+    to,
+    subject: `Opt-out update: ${data.companyName} ${statusLabel}`,
+    html: wrapHtml(`
+      <h1>Opt-Out Update</h1>
+      <p><strong class="highlight">${data.companyName}</strong> has <strong>${statusLabel}</strong>.</p>
+      ${data.details ? `<div class="card"><p class="card-label">Details</p><p class="card-value">${data.details}</p></div>` : ""}
+      <a href="https://www.consentedai.com/dashboard/opt-outs" class="cta">View Details &rarr;</a>
+    `),
+    text: `Opt-out update: ${data.companyName} ${statusLabel}.${data.details ? `\n\nDetails: ${data.details}` : ""}\n\nView: https://www.consentedai.com/dashboard/opt-outs`,
   });
 }

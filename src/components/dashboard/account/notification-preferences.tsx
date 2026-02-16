@@ -52,6 +52,11 @@ export function NotificationPreferences({
       description: "Status changes on DMCA takedown requests",
     },
     {
+      key: "email_optout_updates" as const,
+      label: "Opt-Out Updates",
+      description: "Updates on your AI data opt-out requests",
+    },
+    {
       key: "email_photo_status" as const,
       label: "Photo Status Changes",
       description: "When photos are processed or flagged",
