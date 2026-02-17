@@ -20,12 +20,15 @@ from src.db.queries import (
     contributor_has_embeddings,
     get_contributor,
     get_pending_images,
+    get_pending_registry_selfies,
     get_pending_uploads,
     init_scan_schedule,
     insert_embedding,
     insert_match,
     update_image_embedding_status,
     update_primary_embedding,
+    update_registry_embedding,
+    update_registry_embedding_status,
 )
 from src.ingest.centroid import compute_centroid_embedding
 from src.utils.image_download import download_from_supabase, load_and_resize
@@ -100,6 +103,77 @@ async def process_pending_images() -> int:
     if processed > 0:
         log.info("ingest_batch_complete", processed=processed)
     return processed
+
+
+async def process_pending_registry_selfies() -> int:
+    """Process pending registry selfies into face embeddings. Returns count processed."""
+    processed = 0
+
+    async with async_session() as session:
+        selfies = await get_pending_registry_selfies(session, limit=50)
+        for identity in selfies:
+            try:
+                await _process_registry_selfie(session, identity)
+                processed += 1
+            except Exception as e:
+                log.error(
+                    "ingest_registry_selfie_error",
+                    cid=identity.cid,
+                    error=str(e),
+                )
+                await update_registry_embedding_status(
+                    session, identity.cid, "failed", f"unexpected_error: {str(e)[:200]}"
+                )
+            await session.commit()
+
+    if processed > 0:
+        log.info("registry_selfie_batch_complete", processed=processed)
+    return processed
+
+
+async def _process_registry_selfie(session, identity) -> None:
+    """Process a single registry selfie into a face embedding on registry_identities."""
+    if not identity.selfie_bucket or not identity.selfie_path:
+        await update_registry_embedding_status(
+            session, identity.cid, "failed", "missing_selfie_path"
+        )
+        return
+
+    path = await download_from_supabase(identity.selfie_bucket, identity.selfie_path)
+    if path is None:
+        await update_registry_embedding_status(
+            session, identity.cid, "failed", "download_failed"
+        )
+        return
+
+    try:
+        result = _detect_and_embed(path)
+        if result is None:
+            await update_registry_embedding_status(
+                session, identity.cid, "failed", "no_face_detected"
+            )
+            return
+        if result == "multiple_faces":
+            await update_registry_embedding_status(
+                session, identity.cid, "failed", "multiple_faces"
+            )
+            return
+
+        embedding, det_score = result
+        await update_registry_embedding(
+            session,
+            cid=identity.cid,
+            embedding=embedding,
+            detection_score=det_score,
+        )
+
+        log.info(
+            "registry_selfie_embedded",
+            cid=identity.cid,
+            detection_score=det_score,
+        )
+    finally:
+        path.unlink(missing_ok=True)
 
 
 async def _process_image(session, img: ContributorImage) -> None:

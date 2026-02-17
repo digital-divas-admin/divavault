@@ -28,11 +28,13 @@ from src.db.queries import (
     count_pending_face_detection,
     count_unmatched_face_embeddings,
     create_notification,
+    find_all_similar_embeddings,
     get_unmatched_face_embeddings,
     insert_discovered_face_embedding,
     insert_discovered_image,
     insert_evidence,
     insert_match,
+    insert_registry_match,
     find_phash_duplicate,
     get_contributor,
     get_scanner_metrics,
@@ -48,7 +50,7 @@ from src.discovery.reverse_image import TinEyeDiscovery
 from src.discovery.url_check import URLCheckDiscovery
 from src.evidence.capture import capture_screenshot, shutdown_browser
 from src.evidence.storage import upload_evidence
-from src.ingest.embeddings import process_pending_images
+from src.ingest.embeddings import process_pending_images, process_pending_registry_selfies
 from src.jobs.cleanup import run_cleanup
 from src.jobs.store import JobStore
 from src.matching.comparator import compare_against_contributor, compare_against_registry
@@ -169,13 +171,20 @@ async def run_scheduler(job_store: JobStore) -> None:
 
 
 async def _run_ingest() -> None:
-    """Process pending images into embeddings."""
+    """Process pending images into embeddings (contributor + registry selfies)."""
     try:
         processed = await process_pending_images()
         if processed > 0:
             log.info("ingest_tick", processed=processed)
     except Exception as e:
         log.error("ingest_error", error=str(e))
+
+    try:
+        registry_processed = await process_pending_registry_selfies()
+        if registry_processed > 0:
+            log.info("registry_ingest_tick", processed=registry_processed)
+    except Exception as e:
+        log.error("registry_ingest_error", error=str(e))
 
 
 async def _run_contributor_scans(job_store: JobStore) -> None:
@@ -542,17 +551,34 @@ async def _phase_matching(job_store: JobStore) -> None:
             else:
                 query_embedding = np.array(embedding_raw, dtype=np.float32)
 
-            # Compare against registry
+            # Compare against BOTH contributor embeddings AND registry identities
             async with async_session() as session:
-                all_matches = await compare_against_registry(
-                    session, query_embedding, primary_only=False
+                all_matches = await find_all_similar_embeddings(
+                    session, query_embedding, threshold=settings.match_threshold_low,
+                    primary_only=False,
                 )
                 for m in all_matches:
-                    result = await _handle_match(
-                        session, discovered_image_id, m, page_url, face_index
-                    )
-                    if result:
-                        total_matches += 1
+                    if m["source"] == "contributor":
+                        # Standard contributor match — existing flow
+                        contributor_match = {
+                            "contributor_id": m["contributor_id"],
+                            "embedding_id": m["embedding_id"],
+                            "similarity": m["similarity"],
+                        }
+                        result = await _handle_match(
+                            session, discovered_image_id, contributor_match,
+                            page_url, face_index,
+                        )
+                        if result:
+                            total_matches += 1
+                    elif m["source"] == "registry":
+                        # Registry (claim user) match — new flow
+                        result = await _handle_registry_match(
+                            session, discovered_image_id, m,
+                            page_url, face_index,
+                        )
+                        if result:
+                            total_matches += 1
                 await session.commit()
 
             processed_ids.append(embedding_id)
@@ -850,5 +876,62 @@ async def _handle_match(
                 "show_full_details": tier_config.get("show_full_details", False),
             },
         )
+
+    return True
+
+
+async def _handle_registry_match(
+    session,
+    discovered_image_id,
+    match_data: dict,
+    page_url: str | None,
+    face_index: int,
+) -> bool:
+    """Handle a match against a registry (claim) identity.
+
+    Simpler than _handle_match: no allowlist, no evidence capture, no notifications
+    (claim users have no contributor row for those features). Just stores the match.
+
+    Returns True if match was stored.
+    """
+    cid = match_data["registry_cid"]
+    similarity = match_data["similarity"]
+
+    confidence = get_confidence_tier(similarity)
+    if confidence is None:
+        return False
+
+    # Get source_url and platform from the discovered image
+    from sqlalchemy import select
+    from src.db.models import DiscoveredImage
+    disc = await session.execute(
+        select(DiscoveredImage.source_url, DiscoveredImage.platform)
+        .where(DiscoveredImage.id == discovered_image_id)
+    )
+    disc_row = disc.one_or_none()
+    source_url = disc_row[0] if disc_row else None
+    platform = disc_row[1] if disc_row else None
+
+    match = await insert_registry_match(
+        session,
+        cid=cid,
+        discovered_image_id=discovered_image_id,
+        similarity_score=similarity,
+        confidence_tier=confidence,
+        face_index=face_index,
+        source_url=source_url,
+        page_url=page_url,
+        platform=platform,
+    )
+    if match is None:
+        return False  # Dedup
+
+    log.info(
+        "registry_match_stored",
+        cid=cid,
+        similarity=round(similarity, 4),
+        confidence=confidence,
+        page_url=page_url,
+    )
 
     return True

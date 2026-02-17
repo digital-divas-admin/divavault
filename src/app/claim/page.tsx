@@ -71,6 +71,10 @@ export default function ClaimPage() {
             <p className="font-mono text-sm text-foreground break-all">{resultCid}</p>
           </div>
 
+          <Button asChild variant="outline" className="w-full">
+            <Link href={`/registry/${resultCid}`}>Check Your Status</Link>
+          </Button>
+
           {email && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Mail className="w-4 h-4" />

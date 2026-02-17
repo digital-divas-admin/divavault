@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { AppSwitcher } from "@/components/app-switcher";
+import { NotificationBell } from "@/components/dashboard/notification-bell";
 import { SignOutButton } from "@/components/auth/signout-button";
 import type { SubscriptionTier } from "@/types/protection";
 
@@ -65,7 +66,10 @@ function SidebarContent({ userName, verified, tier = "free", platformsMonitored 
           <ShieldCheck className="w-5 h-5 text-primary" />
           <span className="font-semibold text-foreground text-lg">consented<span className="text-primary">ai</span></span>
         </Link>
-        <AppSwitcher />
+        <div className="flex items-center gap-1">
+          <NotificationBell />
+          <AppSwitcher />
+        </div>
       </div>
 
       {/* User card */}

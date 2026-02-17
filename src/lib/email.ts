@@ -106,6 +106,7 @@ export function wrapHtml(body: string): string {
 
 /** Sent when a free claim is registered and user provided an email. */
 export async function sendClaimConfirmation(to: string, cid: string) {
+  const statusUrl = `https://www.consentedai.com/registry/${cid}`;
   return sendEmail({
     to,
     subject: "Your face is registered on the Consented Identity Registry",
@@ -116,10 +117,51 @@ export async function sendClaimConfirmation(to: string, cid: string) {
         <p class="card-label">Your Registry ID (CID)</p>
         <p class="card-value">${cid}</p>
       </div>
-      <p>Want automated DMCA takedowns when matches are found?</p>
-      <a href="https://www.consentedai.com/signup" class="cta">Get Full Protection &rarr;</a>
+      <p>You can check your status anytime:</p>
+      <a href="${statusUrl}" class="cta">Check Status &rarr;</a>
+      <p style="margin-top: 24px;">Want automated DMCA takedowns when matches are found?</p>
+      <a href="https://www.consentedai.com/signup" style="color: #DC2626; text-decoration: none; font-weight: 600;">Get Full Protection &rarr;</a>
     `),
-    text: `Your face is registered on the Consented Identity Registry.\n\nYour CID: ${cid}\n\nWe'll scan AI platforms and notify you if we find matches.\n\nGet full protection: https://www.consentedai.com/signup`,
+    text: `Your face is registered on the Consented Identity Registry.\n\nYour CID: ${cid}\n\nCheck your status: ${statusUrl}\n\nWe'll scan AI platforms and notify you if we find matches.\n\nGet full protection: https://www.consentedai.com/signup`,
+  });
+}
+
+/** Sent when a registry match is found for a claim user. */
+export async function sendRegistryMatchAlert(
+  to: string,
+  data: {
+    cid: string;
+    platform: string;
+    confidence: string;
+    statusUrl: string;
+  }
+) {
+  const confidenceClass =
+    data.confidence === "high"
+      ? "danger"
+      : data.confidence === "medium"
+        ? "warning"
+        : "";
+  return sendEmail({
+    to,
+    subject: `Match detected — your face was found on ${data.platform}`,
+    html: wrapHtml(`
+      <h1>Match Detected</h1>
+      <p>We found a potential use of your likeness on <strong class="highlight">${data.platform}</strong>.</p>
+      <div class="card">
+        <p class="card-label">Confidence</p>
+        <p class="card-value ${confidenceClass}">${data.confidence.toUpperCase()}</p>
+      </div>
+      <div class="card">
+        <p class="card-label">Registry ID</p>
+        <p class="card-value">${data.cid}</p>
+      </div>
+      <p>Check your registry status for details:</p>
+      <a href="${data.statusUrl}" class="cta">View Status &rarr;</a>
+      <p style="margin-top: 24px;">Want evidence screenshots, AI detection, and automated DMCA takedowns?</p>
+      <a href="https://www.consentedai.com/signup" style="color: #DC2626; text-decoration: none; font-weight: 600;">Get Full Protection &rarr;</a>
+    `),
+    text: `Match detected on ${data.platform} (${data.confidence} confidence).\n\nYour CID: ${data.cid}\n\nCheck status: ${data.statusUrl}\n\nGet full protection: https://www.consentedai.com/signup`,
   });
 }
 

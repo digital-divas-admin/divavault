@@ -18,6 +18,8 @@ from src.db.models import (
     Evidence,
     Match,
     PlatformCrawlSchedule,
+    RegistryIdentity,
+    RegistryMatch,
     ScanJob,
     ScannerNotification,
     ScanSchedule,
@@ -843,6 +845,160 @@ async def cleanup_old_discovered_face_embeddings(
     return result.rowcount
 
 
+# --- Registry queries ---
+
+
+async def get_pending_registry_selfies(
+    session: AsyncSession, limit: int = 50
+) -> list[RegistryIdentity]:
+    """Get registry identities with pending selfies ready for embedding."""
+    result = await session.execute(
+        select(RegistryIdentity)
+        .where(
+            and_(
+                RegistryIdentity.embedding_status == "pending",
+                RegistryIdentity.selfie_bucket.isnot(None),
+                RegistryIdentity.selfie_path.isnot(None),
+                RegistryIdentity.status.in_(["claimed", "verified"]),
+            )
+        )
+        .order_by(RegistryIdentity.created_at)
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def update_registry_embedding(
+    session: AsyncSession,
+    cid: str,
+    embedding: np.ndarray,
+    detection_score: float,
+) -> None:
+    """Store face embedding + detection score on a registry identity."""
+    await session.execute(
+        update(RegistryIdentity)
+        .where(RegistryIdentity.cid == cid)
+        .values(
+            face_embedding=embedding.tolist(),
+            detection_score=detection_score,
+            embedding_status="processed",
+            embedding_error=None,
+        )
+    )
+
+
+async def update_registry_embedding_status(
+    session: AsyncSession,
+    cid: str,
+    status: str,
+    error: str | None = None,
+) -> None:
+    """Update embedding_status on a registry identity."""
+    await session.execute(
+        update(RegistryIdentity)
+        .where(RegistryIdentity.cid == cid)
+        .values(embedding_status=status, embedding_error=error)
+    )
+
+
+async def insert_registry_match(
+    session: AsyncSession,
+    cid: str,
+    discovered_image_id: UUID,
+    similarity_score: float,
+    confidence_tier: str,
+    face_index: int = 0,
+    source_url: str | None = None,
+    page_url: str | None = None,
+    platform: str | None = None,
+) -> RegistryMatch | None:
+    """Insert a registry match (dedup via cid + discovered_image_id + face_index)."""
+    stmt = (
+        insert(RegistryMatch)
+        .values(
+            cid=cid,
+            discovered_image_id=discovered_image_id,
+            source_url=source_url,
+            page_url=page_url,
+            platform=platform,
+            similarity_score=similarity_score,
+            confidence_tier=confidence_tier,
+            face_index=face_index,
+        )
+        .on_conflict_do_nothing()
+        .returning(RegistryMatch)
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def find_all_similar_embeddings(
+    session: AsyncSession,
+    query_embedding: np.ndarray,
+    threshold: float = 0.50,
+    limit: int = 5,
+    primary_only: bool = False,
+) -> list[dict]:
+    """Find similar embeddings across BOTH contributor_embeddings AND registry_identities.
+
+    Returns dicts with source='contributor' or source='registry' to route match handling.
+    """
+    embedding_str = "[" + ",".join(str(x) for x in query_embedding.tolist()) + "]"
+
+    primary_filter = "AND ce.is_primary = true" if primary_only else ""
+
+    result = await session.execute(
+        text(f"""
+            (
+                SELECT ce.contributor_id::text AS identity_id,
+                       ce.id AS embedding_id,
+                       1 - (ce.embedding <=> CAST(:embedding AS vector(512))) AS similarity,
+                       'contributor' AS source
+                FROM contributor_embeddings ce
+                JOIN contributors c ON c.id = ce.contributor_id
+                WHERE 1 - (ce.embedding <=> CAST(:embedding AS vector(512))) > :threshold
+                  AND c.opted_out = false
+                  AND c.suspended = false
+                  {primary_filter}
+            )
+            UNION ALL
+            (
+                SELECT ri.cid AS identity_id,
+                       NULL::uuid AS embedding_id,
+                       1 - (ri.face_embedding <=> CAST(:embedding AS vector(512))) AS similarity,
+                       'registry' AS source
+                FROM registry_identities ri
+                WHERE ri.face_embedding IS NOT NULL
+                  AND ri.embedding_status = 'processed'
+                  AND ri.status IN ('claimed', 'verified')
+                  AND 1 - (ri.face_embedding <=> CAST(:embedding AS vector(512))) > :threshold
+            )
+            ORDER BY similarity DESC
+            LIMIT :limit
+        """),
+        {
+            "embedding": embedding_str,
+            "threshold": threshold,
+            "limit": limit,
+        },
+    )
+    rows = result.fetchall()
+    results = []
+    for row in rows:
+        entry = {
+            "identity_id": row[0],
+            "embedding_id": row[1],
+            "similarity": row[2],
+            "source": row[3],
+        }
+        if row[3] == "contributor":
+            entry["contributor_id"] = UUID(row[0])
+        else:
+            entry["registry_cid"] = row[0]
+        results.append(entry)
+    return results
+
+
 # --- Metrics queries ---
 
 
@@ -948,5 +1104,25 @@ async def get_scanner_metrics(session: AsyncSession) -> dict:
     row = r.first()
     metrics["contributors_in_registry"] = row[0]
     metrics["total_embeddings"] = row[1]
+
+    # Registry (claim user) stats
+    r = await session.execute(
+        text("""
+            SELECT count(*) FROM registry_identities
+            WHERE embedding_status = 'pending' AND selfie_bucket IS NOT NULL
+        """)
+    )
+    metrics["registry_selfies_pending"] = r.scalar_one()
+
+    r = await session.execute(
+        text("SELECT count(*) FROM registry_identities WHERE face_embedding IS NOT NULL")
+    )
+    metrics["registry_identities_with_embedding"] = r.scalar_one()
+
+    r = await session.execute(
+        text("SELECT count(*) FROM registry_matches WHERE discovered_at > :since"),
+        {"since": day_ago},
+    )
+    metrics["registry_matches_24h"] = r.scalar_one()
 
     return metrics

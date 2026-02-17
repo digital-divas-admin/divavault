@@ -68,6 +68,21 @@ export async function POST(request: Request) {
       );
     }
 
+    // Store selfie location on identity so the scanner can find and process it
+    const { error: updateError } = await supabase
+      .from("registry_identities")
+      .update({
+        selfie_bucket: "claim-selfies",
+        selfie_path: `${identity.cid}/${timestamp}.jpg`,
+        embedding_status: "pending",
+      })
+      .eq("cid", identity.cid);
+
+    if (updateError) {
+      console.error("Selfie path update error:", updateError.message);
+      // Non-fatal: claim still succeeds, scanner will just skip this identity
+    }
+
     // Add contact email if provided + send confirmation
     if (email) {
       await addRegistryContact(identity.cid, email);

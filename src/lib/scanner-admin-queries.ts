@@ -21,6 +21,10 @@ export interface ScannerStats {
   takedownsPending: number;
   takedownsSubmitted: number;
   takedownsResolved: number;
+  // Registry
+  registrySelfiesPending: number;
+  registryWithEmbedding: number;
+  registryMatches24h: number;
   // System
   discoveredImages: number;
   scheduledScans: number;
@@ -56,6 +60,10 @@ export async function getScannerStats(): Promise<ScannerStats> {
     { count: takedownsPending },
     { count: takedownsSubmitted },
     { count: takedownsResolved },
+    // Registry
+    { count: registrySelfiesPending },
+    { count: registryWithEmbedding },
+    { count: registryMatches24h },
     // System
     { count: discoveredImages },
     { count: scheduledScans },
@@ -129,6 +137,19 @@ export async function getScannerStats(): Promise<ScannerStats> {
       .from("takedowns")
       .select("*", { count: "exact", head: true })
       .eq("status", "resolved"),
+    // Registry
+    supabase
+      .from("registry_identities")
+      .select("*", { count: "exact", head: true })
+      .eq("embedding_status", "pending"),
+    supabase
+      .from("registry_identities")
+      .select("*", { count: "exact", head: true })
+      .not("face_embedding", "is", null),
+    supabase
+      .from("registry_matches")
+      .select("*", { count: "exact", head: true })
+      .gte("discovered_at", twentyFourHoursAgo),
     // System
     supabase
       .from("discovered_images")
@@ -163,6 +184,9 @@ export async function getScannerStats(): Promise<ScannerStats> {
     takedownsPending: takedownsPending || 0,
     takedownsSubmitted: takedownsSubmitted || 0,
     takedownsResolved: takedownsResolved || 0,
+    registrySelfiesPending: registrySelfiesPending || 0,
+    registryWithEmbedding: registryWithEmbedding || 0,
+    registryMatches24h: registryMatches24h || 0,
     discoveredImages: discoveredImages || 0,
     scheduledScans: scheduledScans || 0,
     crawlSchedules: crawlSchedules || 0,

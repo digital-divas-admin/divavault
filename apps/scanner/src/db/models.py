@@ -261,6 +261,49 @@ class ScanSchedule(Base):
     priority: Mapped[int] = mapped_column(Integer, server_default=text("0"))
 
 
+class RegistryIdentity(Base):
+    """Registry identity — claim/registry users (no auth.users row)."""
+    __tablename__ = "registry_identities"
+
+    cid: Mapped[str] = mapped_column(Text, primary_key=True)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'claimed'"))
+    face_embedding = Column(Vector(512), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(Text, server_default=text("'buffalo_sc'"))
+    identity_hash: Mapped[str] = mapped_column(Text)
+    selfie_bucket: Mapped[str | None] = mapped_column(Text)
+    selfie_path: Mapped[str | None] = mapped_column(Text)
+    embedding_status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    embedding_error: Mapped[str | None] = mapped_column(Text)
+    detection_score: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    extra_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB)
+
+
+class RegistryMatch(Base):
+    """Match between a discovered image and a registry identity (claim user)."""
+    __tablename__ = "registry_matches"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    cid: Mapped[str] = mapped_column(Text, nullable=False)
+    discovered_image_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("discovered_images.id", ondelete="SET NULL"))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    page_url: Mapped[str | None] = mapped_column(Text)
+    platform: Mapped[str | None] = mapped_column(Text)
+    similarity_score: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence_tier: Mapped[str] = mapped_column(Text, nullable=False)
+    face_index: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    match_status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    is_ai_generated: Mapped[bool | None] = mapped_column(Boolean)
+    ai_detection_score: Mapped[float | None] = mapped_column(Float)
+    evidence_hash: Mapped[str | None] = mapped_column(Text)
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    extra_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB)
+
+
 class PlatformCrawlSchedule(Base):
     __tablename__ = "platform_crawl_schedule"
 

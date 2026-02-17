@@ -19,6 +19,7 @@ import {
   Image,
   CalendarClock,
   Globe,
+  Crosshair,
 } from "lucide-react";
 
 export default async function ScannerDashboardPage() {
@@ -166,6 +167,36 @@ export default async function ScannerDashboardPage() {
             label="Resolved"
             iconClassName="text-green-400"
             iconBgClassName="bg-green-500/10"
+          />
+        </div>
+      </div>
+
+      {/* Registry */}
+      <div>
+        <h2 className="text-sm font-medium text-muted-foreground mb-3">
+          Registry
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <AdminStatCard
+            icon={Clock}
+            value={stats.registrySelfiesPending}
+            label="Selfies Pending"
+            iconClassName="text-yellow-400"
+            iconBgClassName="bg-yellow-500/10"
+          />
+          <AdminStatCard
+            icon={ShieldCheck}
+            value={stats.registryWithEmbedding}
+            label="Identities Protected"
+            iconClassName="text-green-400"
+            iconBgClassName="bg-green-500/10"
+          />
+          <AdminStatCard
+            icon={Crosshair}
+            value={stats.registryMatches24h}
+            label="Registry Matches 24h"
+            iconClassName="text-primary"
+            iconBgClassName="bg-primary/10"
           />
         </div>
       </div>
