@@ -185,9 +185,14 @@ class CivitAIMapper(BasePlatformMapper):
         limiter,
         rule: dict,
     ) -> int:
-        """Probe a single section to get its total content count."""
+        """Probe a single section to get its total content count.
+
+        CivitAI uses cursor-based pagination and no longer returns totalItems.
+        We request limit=100 and estimate total from items returned + pagination.
+        """
         query_type = rule["query_type"]
         params = dict(rule["params"])
+        params["limit"] = 100  # Override to get a meaningful count
 
         url = CIVITAI_MODELS_URL if query_type == "models" else CIVITAI_IMAGES_URL
 
@@ -198,4 +203,10 @@ class CivitAIMapper(BasePlatformMapper):
                 return 0
             data = await resp.json()
 
-        return data.get("metadata", {}).get("totalItems", 0)
+        items_count = len(data.get("items", []))
+        has_more = "nextCursor" in data.get("metadata", {})
+
+        if has_more and items_count >= 100:
+            # More than one page — estimate conservatively (10x first page)
+            return items_count * 10
+        return items_count
