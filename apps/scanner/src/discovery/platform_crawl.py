@@ -73,7 +73,8 @@ class CivitAICrawl(BaseDiscoverySource):
             # 2. Targeted image searches (query-based, cursor-resumed per term)
             try:
                 search_results, search_cursors = await self._fetch_image_searches(
-                    session, limiter, context.search_cursors
+                    session, limiter, context.search_cursors,
+                    search_terms=context.search_terms if context.search_terms else None,
                 )
                 results.extend(search_results)
             except CircuitOpenError:
@@ -85,7 +86,8 @@ class CivitAICrawl(BaseDiscoverySource):
             model_cursors: dict[str, str | None] | None = None
             try:
                 lora_results, model_cursors = await self._fetch_lora_models_by_tags(
-                    session, limiter, context.model_cursors
+                    session, limiter, context.model_cursors,
+                    tags=context.search_terms if context.search_terms else None,
                 )
                 results.extend(lora_results)
             except CircuitOpenError:
@@ -94,7 +96,8 @@ class CivitAICrawl(BaseDiscoverySource):
                 log.error("civitai_lora_error", error=str(e))
 
         # Compute tag exhaustion stats
-        tags_total = len(LORA_HUMAN_TAGS)
+        effective_tag_count = len(context.search_terms) if context.search_terms else len(LORA_HUMAN_TAGS)
+        tags_total = effective_tag_count
         tags_exhausted_count = 0
         if model_cursors:
             tags_exhausted_count = sum(1 for c in model_cursors.values() if c is None)
@@ -163,6 +166,7 @@ class CivitAICrawl(BaseDiscoverySource):
         session: aiohttp.ClientSession,
         limiter,
         incoming_cursors: dict[str, str] | None = None,
+        search_terms: list[str] | None = None,
     ) -> tuple[list[DiscoveredImageResult], dict[str, str | None]]:
         """Search CivitAI images with face-targeted queries, paginated per term.
 
@@ -175,8 +179,9 @@ class CivitAICrawl(BaseDiscoverySource):
         pages_per_term = settings.civitai_max_pages
         saved = incoming_cursors or {}
         updated_cursors: dict[str, str | None] = {}
+        terms = search_terms if search_terms else DEFAULT_IMAGE_SEARCH_TERMS
 
-        for term in DEFAULT_IMAGE_SEARCH_TERMS:
+        for term in terms:
             cursor: str | None = saved.get(term)
             term_count = 0
 
@@ -392,6 +397,7 @@ class CivitAICrawl(BaseDiscoverySource):
         session: aiohttp.ClientSession,
         limiter,
         incoming_cursors: dict[str, str] | None = None,
+        tags: list[str] | None = None,
     ) -> tuple[list[DiscoveredImageResult], dict[str, str | None]]:
         """Crawl LoRA models per human-relevant tag, paginated with cursor resume.
 
@@ -402,8 +408,9 @@ class CivitAICrawl(BaseDiscoverySource):
         updated_cursors: dict[str, str | None] = {}
         all_results: list[DiscoveredImageResult] = []
         max_pages = settings.civitai_model_pages_per_tag
+        effective_tags = tags if tags else LORA_HUMAN_TAGS
 
-        for tag in LORA_HUMAN_TAGS:
+        for tag in effective_tags:
             cursor: str | None = saved.get(tag)
             tag_count = 0
 

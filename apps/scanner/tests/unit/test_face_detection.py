@@ -16,31 +16,32 @@ class TestDetectFaces:
         path = tmp_path / "blank.jpg"
         cv2.imwrite(str(path), img)
 
-        mock_model = MagicMock()
-        mock_model.get.return_value = []
+        mock_provider = MagicMock()
+        mock_provider.detect.return_value = []
 
-        with patch("src.matching.detector.get_model", return_value=mock_model):
+        with patch("src.providers.get_face_detection_provider", return_value=mock_provider):
             faces = detect_faces(path)
             assert len(faces) == 0
 
     def test_face_detected(self, tmp_path):
         """Image with a face should return DetectedFace objects."""
         import cv2
-        from src.matching.detector import detect_faces
+        from src.matching.detector import detect_faces, DetectedFace
 
         img = np.zeros((200, 200, 3), dtype=np.uint8)
         path = tmp_path / "face.jpg"
         cv2.imwrite(str(path), img)
 
-        mock_face = MagicMock()
-        mock_face.bbox = np.array([10, 10, 100, 100])
-        mock_face.det_score = 0.95
-        mock_face.normed_embedding = np.random.randn(512).astype(np.float32)
+        expected_face = DetectedFace(
+            bbox=(10, 10, 100, 100),
+            detection_score=0.95,
+            aligned_face=np.random.randn(512).astype(np.float32),
+        )
 
-        mock_model = MagicMock()
-        mock_model.get.return_value = [mock_face]
+        mock_provider = MagicMock()
+        mock_provider.detect.return_value = [expected_face]
 
-        with patch("src.matching.detector.get_model", return_value=mock_model):
+        with patch("src.providers.get_face_detection_provider", return_value=mock_provider):
             faces = detect_faces(path)
             assert len(faces) == 1
             assert faces[0].detection_score == 0.95

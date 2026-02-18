@@ -1,16 +1,12 @@
-"""Face detection on discovered images using the shared InsightFace model."""
+"""Face detection on discovered images.
+
+Thin wrapper around the active FaceDetectionProvider.
+"""
 
 from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
 import numpy as np
-
-from src.ingest.embeddings import get_model
-from src.utils.image_download import load_and_resize
-from src.utils.logging import get_logger
-
-log = get_logger("detector")
 
 
 @dataclass
@@ -31,29 +27,9 @@ def detect_faces(image_path: Path) -> list[DetectedFace]:
     Returns:
         List of DetectedFace objects. Empty list if no faces found or image unreadable.
     """
-    img = load_and_resize(image_path)
-    if img is None:
-        return []
+    from src.providers import get_face_detection_provider
 
-    try:
-        model = get_model()
-        faces = model.get(img)
-    except Exception as e:
-        log.error("face_detection_error", path=str(image_path), error=str(e))
-        return []
-
-    results = []
-    for face in faces:
-        bbox = face.bbox.astype(int)
-        results.append(
-            DetectedFace(
-                bbox=(int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])),
-                detection_score=float(face.det_score),
-                aligned_face=face.normed_embedding,  # Pre-computed aligned embedding
-            )
-        )
-
-    return results
+    return get_face_detection_provider().detect(image_path)
 
 
 def get_face_count(image_path: Path) -> tuple[bool, int]:

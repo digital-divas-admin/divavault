@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # InsightFace
     insightface_model: str = "buffalo_sc"
 
+    # Provider selection
+    face_detection_provider: str = "insightface"
+    ai_detection_provider: str = "hive"
+    match_scoring_provider: str = "static"
+
     # Ad Intelligence
     meta_ad_library_access_token: str = ""
     shutterstock_api_key: str = ""
@@ -61,6 +66,12 @@ class Settings(BaseSettings):
     adobe_stock_api_key: str = ""
     anthropic_api_key: str = ""
     ad_intel_enabled: bool = False
+
+    # ML Intelligence
+    auto_apply_low_risk: bool = False
+
+    # Taxonomy mapper
+    mapper_interval_hours: int = 168  # Weekly (7 days)
 
     # Logging
     log_level: str = "INFO"

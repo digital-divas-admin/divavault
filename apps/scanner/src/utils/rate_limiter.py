@@ -56,6 +56,8 @@ RATE_LIMITERS: dict[str, RateLimiter] = {
     "getty": RateLimiter(rate=3.0, max_tokens=15.0),              # 3 req/sec, burst of 15
     "adobe_stock": RateLimiter(rate=3.0, max_tokens=15.0),        # 3 req/sec, burst of 15
     "anthropic": RateLimiter(rate=5.0, max_tokens=20.0),          # 5 req/sec, burst of 20
+    "civitai_mapper": RateLimiter(rate=2.0, max_tokens=5.0),     # 2 req/sec (mapper only)
+    "deviantart_mapper": RateLimiter(rate=2.0, max_tokens=5.0),  # 2 req/sec (mapper only)
 }
 
 

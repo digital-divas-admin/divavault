@@ -64,12 +64,17 @@ from src.matching.confidence import (
 from src.matching.detector import detect_faces
 from src.matching.embedder import get_face_embedding
 from src.utils.image_download import cleanup_old_temp_files, download_image
+from src.intelligence.observer import observer
 from src.utils.logging import get_logger
 
 log = get_logger("scheduler")
 
 # Shutdown flag
 shutdown_requested = False
+
+# ML intelligence singletons (lazy-init)
+_recommender = None
+_applier = None
 
 
 def handle_shutdown(signum, frame):
@@ -119,8 +124,20 @@ async def run_scheduler(job_store: JobStore) -> None:
             if shutdown_requested:
                 break
 
+            # b2. Platform taxonomy mapping (weekly, before crawls)
+            await _run_taxonomy_mapping()
+
+            if shutdown_requested:
+                break
+
             # c. Platform crawls
             await _run_platform_crawls(job_store)
+
+            if shutdown_requested:
+                break
+
+            # d. Honeypot detection check
+            await _check_honeypot_detections()
 
             if shutdown_requested:
                 break
@@ -132,6 +149,12 @@ async def run_scheduler(job_store: JobStore) -> None:
                     await run_ad_intel_tick(job_store)
                 except Exception as e:
                     log.error("ad_intel_tick_error", error=str(e))
+
+            if shutdown_requested:
+                break
+
+            # f. ML Intelligence tick
+            await _run_ml_intelligence()
 
             if shutdown_requested:
                 break
@@ -185,6 +208,31 @@ async def _run_ingest() -> None:
             log.info("registry_ingest_tick", processed=registry_processed)
     except Exception as e:
         log.error("registry_ingest_error", error=str(e))
+
+
+async def _run_taxonomy_mapping() -> None:
+    """Run platform taxonomy mapping if due. Never blocks pipeline."""
+    from src.intelligence.mapper.orchestrator import get_latest_map_time, run_mapper
+
+    for platform in ["civitai", "deviantart"]:
+        try:
+            last_map = await get_latest_map_time(platform)
+            if last_map is not None:
+                from datetime import datetime, timezone
+                age_hours = (datetime.now(timezone.utc) - last_map).total_seconds() / 3600
+                if age_hours < settings.mapper_interval_hours:
+                    log.info("mapper_skip_fresh", platform=platform, age_hours=round(age_hours, 1))
+                    continue
+
+            log.info("mapper_running", platform=platform)
+            result = await run_mapper(platform)
+            log.info(
+                "mapper_done",
+                platform=platform,
+                sections=result.sections_discovered,
+            )
+        except Exception as e:
+            log.error("mapper_error", platform=platform, error=str(e))
 
 
 async def _run_contributor_scans(job_store: JobStore) -> None:
@@ -279,9 +327,73 @@ async def _execute_contributor_scan(job_store, scan) -> None:
             images_processed, matches_found,
         )
 
+        try:
+            await observer.emit("scan_completed", "contributor", str(scan.contributor_id), {
+                "scan_type": scan.scan_type,
+                "images_processed": images_processed,
+                "matches_found": matches_found,
+            })
+        except Exception:
+            pass
+
     except Exception as e:
         await job_store.mark_scan_failed(job_id, str(e)[:500])
         raise
+
+
+async def _check_honeypot_detections() -> None:
+    """Check honeypot items for new detections. Never blocks pipeline."""
+    try:
+        from src.seeding.seed_manager import seed_manager
+        report = await seed_manager.check_honeypot_detection()
+        if report["total_planted"] > 0:
+            log.info(
+                "honeypot_check",
+                total=report["total_planted"],
+                detected=report["total_detected"],
+                newly_detected=report["newly_detected"],
+                rate=report["detection_rate"],
+            )
+            try:
+                await observer.emit("honeypot_check", "pipeline", "honeypot", {
+                    "total_planted": report["total_planted"],
+                    "total_detected": report["total_detected"],
+                    "detection_rate": report["detection_rate"],
+                })
+            except Exception:
+                pass
+    except Exception as e:
+        log.error("honeypot_check_error", error=str(e))
+
+
+async def _run_ml_intelligence() -> None:
+    """Run ML analyzers and apply approved recommendations. Never blocks pipeline."""
+    global _recommender, _applier
+    try:
+        from src.intelligence.analyzers.threshold import ThresholdOptimizer
+        from src.intelligence.analyzers.sections import SectionRanker
+        from src.intelligence.analyzers.search_terms import SearchTermScorer
+        from src.intelligence.analyzers.scheduling import CrawlScheduler
+        from src.intelligence.analyzers.false_positives import FalsePositiveFilter
+        from src.intelligence.analyzers.sources import SourceIntelligence
+        from src.intelligence.recommender import Recommender
+        from src.intelligence.applier import Applier
+
+        if _recommender is None:
+            _recommender = Recommender([
+                ThresholdOptimizer(),
+                SectionRanker(),
+                SearchTermScorer(),
+                CrawlScheduler(),
+                FalsePositiveFilter(),
+                SourceIntelligence(),
+            ])
+            _applier = Applier()
+
+        await _recommender.tick()
+        await _applier.apply_approved()
+    except Exception as e:
+        log.error("ml_intelligence_error", error=str(e))
 
 
 async def _run_platform_crawls(job_store: JobStore) -> None:
@@ -335,10 +447,25 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
         await session.commit()
 
     try:
+        # Check mapper-enabled search terms for this platform
+        from src.intelligence.mapper.orchestrator import get_enabled_search_terms, update_section_stats
+        mapper_terms = await get_enabled_search_terms(crawl.platform)
+
+        if mapper_terms is not None and len(mapper_terms) == 0:
+            # Profiles exist but no sections enabled — skip crawl
+            log.info("crawl_skipped_no_enabled_sections", platform=crawl.platform)
+            await job_store.update_crawl_phase(crawl.platform, None)
+            async with async_session() as session:
+                from src.db.queries import update_scan_job
+                await update_scan_job(session, job_id, status="completed", images_processed=0, matches_found=0)
+                await session.commit()
+            return
+
         search_terms_data = crawl.search_terms or {}
+        effective_terms = mapper_terms if mapper_terms is not None else list(search_terms_data.get("terms", []))
         context = DiscoveryContext(
             platform=crawl.platform,
-            search_terms=list(search_terms_data.get("terms", [])),
+            search_terms=effective_terms if effective_terms else None,
             cursor=crawl.cursor,
             search_cursors=search_terms_data.get("search_cursors"),
             model_cursors=search_terms_data.get("model_cursors"),
@@ -370,6 +497,14 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
             total_discovered=len(discovery_result.images),
             new_inserted=new_count,
         )
+
+        try:
+            await observer.emit("crawl_completed", "platform", crawl.platform, {
+                "total_discovered": len(discovery_result.images),
+                "new_inserted": new_count,
+            })
+        except Exception:
+            pass
 
         # Update crawl schedule with persisted cursors
         new_search_terms = dict(crawl.search_terms or {})
@@ -412,6 +547,17 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
                 tags_exhausted=discovery_result.tags_exhausted,
             )
             await session.commit()
+
+        # Update mapper section stats if mapper is active
+        if mapper_terms is not None:
+            try:
+                await update_section_stats(
+                    crawl.platform,
+                    total_scanned=len(discovery_result.images),
+                    total_faces=0,  # faces detected in phase 2, not here
+                )
+            except Exception as e:
+                log.error("mapper_stats_update_error", platform=crawl.platform, error=str(e))
 
         # Mark job complete
         async with async_session() as session:
@@ -490,6 +636,16 @@ async def _phase_face_detection(job_store: JobStore, pending: int) -> None:
                     break
             else:
                 log.info("phase_face_detection_complete", output=result.stdout[-200:])
+
+        try:
+            await observer.emit("faces_detected", "pipeline", "face_detection", {
+                "pending": pending,
+                "chunk_size": chunk_size,
+                "max_chunks": max_chunks,
+                "returncode": result.returncode,
+            })
+        except Exception:
+            pass
 
     except subprocess.TimeoutExpired:
         log.warning("phase_face_detection_timeout", timeout_seconds=timeout * max_chunks)
@@ -594,6 +750,14 @@ async def _phase_matching(job_store: JobStore) -> None:
             embeddings_processed=len(processed_ids),
             matches_found=total_matches,
         )
+
+        try:
+            await observer.emit("matching_completed", "pipeline", "matching", {
+                "embeddings_processed": len(processed_ids),
+                "matches_found": total_matches,
+            })
+        except Exception:
+            pass
 
     except Exception as e:
         log.error("phase_matching_error", error=str(e))
@@ -810,6 +974,17 @@ async def _handle_match(
     )
     if match is None:
         return False  # Dedup
+
+    try:
+        await observer.emit("match_found", "match", str(match.id), {
+            "contributor_id": str(contributor_id),
+            "similarity": round(similarity, 4),
+            "confidence": confidence,
+            "platform": page_url,
+            "is_known_account": is_known,
+        })
+    except Exception:
+        pass
 
     if is_known:
         await update_match(

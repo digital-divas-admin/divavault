@@ -4,7 +4,6 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.config import settings
 from src.db.queries import get_known_accounts
 from src.utils.logging import get_logger
 from src.utils.url_parser import check_allowlist
@@ -18,13 +17,9 @@ def get_confidence_tier(similarity: float) -> str | None:
     Returns:
         'low', 'medium', 'high', or None if below minimum threshold.
     """
-    if similarity >= settings.match_threshold_high:
-        return "high"
-    elif similarity >= settings.match_threshold_medium:
-        return "medium"
-    elif similarity >= settings.match_threshold_low:
-        return "low"
-    return None
+    from src.providers import get_match_scoring_provider
+
+    return get_match_scoring_provider().score(similarity)
 
 
 async def check_known_account(

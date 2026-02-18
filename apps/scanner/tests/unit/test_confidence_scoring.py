@@ -13,7 +13,7 @@ from src.matching.confidence import (
 
 class TestConfidenceTier:
     def test_high_confidence(self):
-        with patch("src.matching.confidence.settings") as mock:
+        with patch("src.providers.match_scoring.static.settings") as mock:
             mock.match_threshold_high = 0.85
             mock.match_threshold_medium = 0.65
             mock.match_threshold_low = 0.50
@@ -21,7 +21,7 @@ class TestConfidenceTier:
             assert get_confidence_tier(0.85) == "high"
 
     def test_medium_confidence(self):
-        with patch("src.matching.confidence.settings") as mock:
+        with patch("src.providers.match_scoring.static.settings") as mock:
             mock.match_threshold_high = 0.85
             mock.match_threshold_medium = 0.65
             mock.match_threshold_low = 0.50
@@ -29,7 +29,7 @@ class TestConfidenceTier:
             assert get_confidence_tier(0.65) == "medium"
 
     def test_low_confidence(self):
-        with patch("src.matching.confidence.settings") as mock:
+        with patch("src.providers.match_scoring.static.settings") as mock:
             mock.match_threshold_high = 0.85
             mock.match_threshold_medium = 0.65
             mock.match_threshold_low = 0.50
@@ -37,7 +37,7 @@ class TestConfidenceTier:
             assert get_confidence_tier(0.50) == "low"
 
     def test_below_threshold(self):
-        with patch("src.matching.confidence.settings") as mock:
+        with patch("src.providers.match_scoring.static.settings") as mock:
             mock.match_threshold_high = 0.85
             mock.match_threshold_medium = 0.65
             mock.match_threshold_low = 0.50

@@ -1126,3 +1126,64 @@ async def get_scanner_metrics(session: AsyncSession) -> dict:
     metrics["registry_matches_24h"] = r.scalar_one()
 
     return metrics
+
+
+# --- ML metrics queries ---
+
+
+async def get_test_user_stats(session: AsyncSession) -> dict:
+    """Get test user aggregate stats for the health endpoint."""
+    stats: dict = {}
+
+    r = await session.execute(
+        text("""
+            SELECT
+              count(*) FILTER (WHERE test_user_type = 'seeded') AS seeded,
+              count(*) FILTER (WHERE test_user_type = 'honeypot') AS honeypots,
+              count(*) FILTER (WHERE test_user_type = 'synthetic') AS synthetic
+            FROM contributors WHERE is_test_user = true
+        """)
+    )
+    row = r.first()
+    stats["seeded"] = row[0] if row else 0
+    stats["honeypots"] = row[1] if row else 0
+    stats["synthetic"] = row[2] if row else 0
+
+    r = await session.execute(
+        text("""
+            SELECT
+              count(*) AS total,
+              count(*) FILTER (WHERE detected = true) AS detected
+            FROM test_honeypot_items
+        """)
+    )
+    row = r.first()
+    total = row[0] if row else 0
+    detected = row[1] if row else 0
+    stats["honeypot_detection_rate"] = round(detected / total, 4) if total > 0 else None
+
+    return stats
+
+
+async def get_ml_metrics(session: AsyncSession) -> dict:
+    """Get ML observer metrics for the health endpoint."""
+    day_ago = datetime.now(timezone.utc) - timedelta(hours=24)
+    metrics = {}
+
+    r = await session.execute(
+        text("SELECT count(*) FROM ml_feedback_signals")
+    )
+    metrics["signals_total"] = r.scalar_one()
+
+    r = await session.execute(
+        text("SELECT count(*) FROM ml_feedback_signals WHERE created_at > :since"),
+        {"since": day_ago},
+    )
+    metrics["signals_24h"] = r.scalar_one()
+
+    r = await session.execute(
+        text("SELECT count(*) FROM ml_recommendations WHERE status = 'pending'")
+    )
+    metrics["pending_recommendations"] = r.scalar_one()
+
+    return metrics

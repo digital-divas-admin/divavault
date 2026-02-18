@@ -49,6 +49,8 @@ class Contributor(Base):
     opted_out: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     suspended: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     flagged: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    is_test_user: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    test_user_type: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
@@ -302,6 +304,139 @@ class RegistryMatch(Base):
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     extra_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB)
+
+
+# --- ML tables (training data collection) ---
+
+
+class MLFeedbackSignal(Base):
+    __tablename__ = "ml_feedback_signals"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    signal_type: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_type: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_id: Mapped[str] = mapped_column(Text, nullable=False)
+    context: Mapped[dict | None] = mapped_column(JSONB, server_default=text("'{}'"))
+    actor: Mapped[str] = mapped_column(Text, server_default=text("'system'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class MLSectionProfile(Base):
+    __tablename__ = "ml_section_profiles"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    section_key: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    profile: Mapped[dict | None] = mapped_column(JSONB, server_default=text("'{}'"))
+    confidence: Mapped[float | None] = mapped_column(Float, server_default=text("0.0"))
+    sample_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    last_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    # Taxonomy mapper columns
+    platform: Mapped[str | None] = mapped_column(Text)
+    section_id: Mapped[str | None] = mapped_column(Text)
+    section_name: Mapped[str | None] = mapped_column(Text)
+    total_content: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    scan_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    human_override: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    ai_recommendation: Mapped[str] = mapped_column(Text, server_default=text("'unknown'"))
+    ml_priority: Mapped[float] = mapped_column(Float, server_default=text("0.5"))
+    total_scanned: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    total_faces: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    face_rate: Mapped[float] = mapped_column(Float, server_default=text("0.0"))
+    last_crawl_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Section ranker output
+    ai_reason: Mapped[str | None] = mapped_column(Text)
+    ml_risk_level: Mapped[str] = mapped_column(Text, server_default=text("'none'"))
+
+
+class MLRecommendation(Base):
+    __tablename__ = "ml_recommendations"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    recommendation_type: Mapped[str] = mapped_column(Text, nullable=False)
+    target_entity: Mapped[str] = mapped_column(Text, nullable=False)
+    target_id: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict | None] = mapped_column(JSONB, server_default=text("'{}'"))
+    confidence: Mapped[float | None] = mapped_column(Float, server_default=text("0.0"))
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    reviewed_by: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    # Analyzer output columns
+    target_platform: Mapped[str | None] = mapped_column(Text)
+    reasoning: Mapped[str | None] = mapped_column(Text)
+    expected_impact: Mapped[str | None] = mapped_column(Text)
+    risk_level: Mapped[str] = mapped_column(Text, server_default=text("'low'"))
+    supporting_data: Mapped[dict | None] = mapped_column(JSONB, server_default=text("'{}'"))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MLModelState(Base):
+    __tablename__ = "ml_model_state"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    model_name: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    parameters: Mapped[dict | None] = mapped_column(JSONB, server_default=text("'{}'"))
+    metrics: Mapped[dict | None] = mapped_column(JSONB, server_default=text("'{}'"))
+    training_signals: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    trained_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class MLPlatformMap(Base):
+    __tablename__ = "ml_platform_maps"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    taxonomy: Mapped[dict | None] = mapped_column(JSONB, server_default=text("'{}'"))
+    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    sections_discovered: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+
+class TestHoneypotItem(Base):
+    __tablename__ = "test_honeypot_items"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    contributor_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("contributors.id", ondelete="CASCADE"))
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    planted_url: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(Text, nullable=False)
+    generation_method: Mapped[str | None] = mapped_column(Text)
+    difficulty: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_similarity_min: Mapped[float | None] = mapped_column(Float, server_default=text("0.70"))
+    expected_similarity_max: Mapped[float | None] = mapped_column(Float, server_default=text("0.95"))
+    detected: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    detected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    detected_match_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("matches.id"))
+    detected_similarity: Mapped[float | None] = mapped_column(Float)
+    planted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class MLHostileAccount(Base):
+    __tablename__ = "ml_hostile_accounts"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    account_handle: Mapped[str] = mapped_column(Text, nullable=False)
+    match_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    flagged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    evidence: Mapped[dict | None] = mapped_column(JSONB, server_default=text("'{}'"))
+
+
+class MLSuppressionRule(Base):
+    __tablename__ = "ml_suppression_rules"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    contributor_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("contributors.id", ondelete="CASCADE"))
+    platform: Mapped[str | None] = mapped_column(Text)
+    face_embedding_hash: Mapped[str | None] = mapped_column(Text)
+    dismissal_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    suppressed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    reason: Mapped[str | None] = mapped_column(Text)
 
 
 class PlatformCrawlSchedule(Base):

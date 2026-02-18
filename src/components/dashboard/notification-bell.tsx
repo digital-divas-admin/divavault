@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, Target, ShieldCheck, FileWarning, Check } from "lucide-react";
 
@@ -51,6 +51,7 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({});
   const ref = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -85,6 +86,24 @@ export function NotificationBell() {
       document.addEventListener("mousedown", handleClickOutside);
       return () =>
         document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [open]);
+
+  // Position popup to stay within viewport
+  useEffect(() => {
+    if (open && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const pw = Math.min(320, vw - 32);
+      // Try right-aligned to bell, then clamp within viewport
+      let left = rect.right - pw;
+      if (left < 16) left = 16;
+      if (left + pw > vw - 16) left = vw - pw - 16;
+      setPopupStyle({
+        left: `${left - rect.left}px`,
+        right: "auto",
+        width: `${pw}px`,
+      });
     }
   }, [open]);
 
@@ -140,7 +159,10 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 rounded-lg border border-border/30 bg-card shadow-lg z-50">
+        <div
+          className="absolute top-full mt-2 rounded-lg border border-border/30 bg-card shadow-lg z-50"
+          style={popupStyle}
+        >
           {/* Header */}
           <div className="p-3 border-b border-border/20 flex items-center justify-between">
             <p className="text-sm font-medium text-foreground">

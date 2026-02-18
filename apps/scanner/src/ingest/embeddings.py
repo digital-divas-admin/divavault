@@ -8,9 +8,7 @@ embedding, and stores results in contributor_embeddings.
 from pathlib import Path
 from uuid import UUID
 
-import cv2
 import numpy as np
-from insightface.app import FaceAnalysis
 
 from src.config import TIER_CONFIG, settings
 from src.db.connection import async_session
@@ -36,26 +34,26 @@ from src.utils.logging import get_logger
 
 log = get_logger("ingest")
 
-# Module-level model reference (loaded once in main.py, set via init_model)
-_face_app: FaceAnalysis | None = None
+def init_model(model_name: str | None = None) -> object:
+    """Initialize the face detection model. Call once on startup.
+
+    Delegates to the active FaceDetectionProvider.
+    """
+    from src.providers import get_face_detection_provider
+
+    provider = get_face_detection_provider()
+    provider.init_model(model_name)
+    return provider.get_model()
 
 
-def init_model(model_name: str | None = None) -> FaceAnalysis:
-    """Initialize InsightFace model. Call once on startup."""
-    global _face_app
-    name = model_name or settings.insightface_model
-    log.info("loading_insightface_model", model=name)
-    _face_app = FaceAnalysis(name=name, providers=["CPUExecutionProvider"])
-    _face_app.prepare(ctx_id=0, det_size=(640, 640))
-    log.info("insightface_model_loaded", model=name)
-    return _face_app
+def get_model() -> object:
+    """Get the loaded face detection model.
 
+    Delegates to the active FaceDetectionProvider.
+    """
+    from src.providers import get_face_detection_provider
 
-def get_model() -> FaceAnalysis:
-    """Get the loaded InsightFace model."""
-    if _face_app is None:
-        raise RuntimeError("InsightFace model not initialized. Call init_model() first.")
-    return _face_app
+    return get_face_detection_provider().get_model()
 
 
 async def process_pending_images() -> int:

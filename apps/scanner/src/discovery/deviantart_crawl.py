@@ -55,6 +55,7 @@ class DeviantArtCrawl(BaseDiscoverySource):
         limiter = get_limiter("deviantart")
         saved_cursors = context.search_cursors or {}
         updated_cursors: dict[str, str | None] = {}
+        effective_tags = context.search_terms if context.search_terms else ALL_TAGS
 
         async with aiohttp.ClientSession(
             headers={"User-Agent": "MadeOfUs-Scanner/1.0"},
@@ -64,9 +65,9 @@ class DeviantArtCrawl(BaseDiscoverySource):
                 await self._ensure_token(session)
             except Exception as e:
                 log.error("deviantart_token_error", error=str(e))
-                return DiscoveryResult(images=[], tags_total=len(ALL_TAGS))
+                return DiscoveryResult(images=[], tags_total=len(effective_tags))
 
-            for tag in ALL_TAGS:
+            for tag in effective_tags:
                 start_offset = saved_cursors.get(tag)
                 try:
                     tag_results, final_offset = await self._fetch_tag_pages(
@@ -87,13 +88,13 @@ class DeviantArtCrawl(BaseDiscoverySource):
         log.info(
             "deviantart_crawl_complete",
             results_found=len(results),
-            tags_total=len(ALL_TAGS),
+            tags_total=len(effective_tags),
             tags_exhausted=tags_exhausted,
         )
         return DiscoveryResult(
             images=results,
             search_cursors=updated_cursors,
-            tags_total=len(ALL_TAGS),
+            tags_total=len(effective_tags),
             tags_exhausted=tags_exhausted,
         )
 

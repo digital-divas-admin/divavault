@@ -25,10 +25,18 @@ async def test_health_endpoint_returns_json():
         "total_embeddings": 0,
     }
 
+    mock_test_user_stats = {
+        "seeded": 0,
+        "honeypots": 0,
+        "synthetic": 0,
+        "honeypot_detection_rate": None,
+    }
+
     with (
         patch("src.main.init_model"),
         patch("src.main.run_scheduler", new_callable=AsyncMock),
         patch("src.main.get_scanner_metrics", new_callable=AsyncMock, return_value=mock_metrics),
+        patch("src.main.get_test_user_stats", new_callable=AsyncMock, return_value=mock_test_user_stats),
         patch("src.main.dispose_engine", new_callable=AsyncMock),
         patch("src.main.shutdown_browser", new_callable=AsyncMock),
     ):
@@ -43,6 +51,7 @@ async def test_health_endpoint_returns_json():
         assert data["status"] == "running"
         assert "uptime_seconds" in data
         assert "metrics" in data
+        assert "test_users" in data
 
 
 @pytest.mark.asyncio
