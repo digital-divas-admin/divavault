@@ -159,12 +159,16 @@ class DeviantArtMapper(BasePlatformMapper):
         limiter,
         rule: dict,
     ) -> int:
-        """Probe a single section by querying its primary tag to estimate content count."""
+        """Probe a single section by querying its primary tag to estimate content count.
+
+        DeviantArt browse/tags returns results array + has_more flag.
+        We request limit=24 (max page) and estimate from items + pagination.
+        """
         tag = rule["probe_tag"]
         params = {
             "tag": tag,
             "offset": 0,
-            "limit": 1,
+            "limit": 24,
             "mature_content": "true",
         }
         headers = {"Authorization": f"Bearer {self._token}"}
@@ -182,4 +186,16 @@ class DeviantArtMapper(BasePlatformMapper):
 
             data = await resp.json()
 
-        return data.get("estimated_total", 0)
+        # Try estimated_total first (may exist on some endpoints)
+        estimated = data.get("estimated_total")
+        if estimated and estimated > 0:
+            return estimated
+
+        # Fall back to counting items + has_more pagination
+        items_count = len(data.get("results", []))
+        has_more = data.get("has_more", False)
+
+        if has_more and items_count >= 24:
+            # More than one page — estimate conservatively
+            return items_count * 20
+        return items_count
