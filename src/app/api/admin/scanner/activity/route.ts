@@ -19,9 +19,13 @@ export async function GET() {
 
   const service = await createServiceClient();
 
+  // Exclude noisy internal signals (per-analyzer events, etc.)
+  const EXCLUDED_SIGNALS = ["analyzer_completed", "analyzer_skipped", "ml_cycle_started"];
+
   const { data, error } = await service
     .from("ml_feedback_signals")
     .select("*")
+    .not("signal_type", "in", `(${EXCLUDED_SIGNALS.join(",")})`)
     .order("created_at", { ascending: false })
     .limit(20);
 

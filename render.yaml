@@ -44,6 +44,9 @@ services:
         sync: false
       - key: CASTMI_CLIENT_SECRET
         sync: false
+      # Scanner service
+      - key: SCANNER_SERVICE_URL
+        sync: false
       # Resend (transactional email)
       - key: RESEND_API_KEY
         sync: false

@@ -37,6 +37,16 @@ export const changeTierSchema = z.object({
   }),
 });
 
+export const autoHoneypotSchema = z.object({
+  count: z
+    .number()
+    .int({ message: "Count must be an integer" })
+    .min(1, { message: "Count must be at least 1" })
+    .max(100, { message: "Count must be at most 100" }),
+  platform: z.string().min(1).optional(),
+});
+
+export type AutoHoneypotData = z.infer<typeof autoHoneypotSchema>;
 export type ResetEmbeddingsData = z.infer<typeof resetEmbeddingsSchema>;
 export type TriggerScanData = z.infer<typeof triggerScanSchema>;
 export type SeedTestDataData = z.infer<typeof seedTestDataSchema>;

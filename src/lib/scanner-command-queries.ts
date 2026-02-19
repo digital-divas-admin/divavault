@@ -275,17 +275,28 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     .filter((p) => (p as PlatformInfo).enabled)
     .map((p) => (p as PlatformInfo).platform);
 
-  const sparklineResults = await Promise.all(
-    enabledPlatforms.map((platform) =>
-      supabase
-        .from("scan_jobs")
-        .select("images_processed")
-        .eq("source_name", platform)
-        .eq("status", "completed")
-        .order("completed_at", { ascending: false })
-        .limit(7)
-    )
-  );
+  const [sparklineResults, platformCountResults] = await Promise.all([
+    Promise.all(
+      enabledPlatforms.map((platform) =>
+        supabase
+          .from("scan_jobs")
+          .select("images_processed")
+          .eq("source_name", platform)
+          .eq("status", "completed")
+          .order("completed_at", { ascending: false })
+          .limit(7)
+      )
+    ),
+    // Real per-platform discovered_images counts (replaces stale denormalized counter)
+    Promise.all(
+      enabledPlatforms.map((platform) =>
+        supabase
+          .from("discovered_images")
+          .select("*", { count: "exact", head: true })
+          .eq("platform", platform)
+      )
+    ),
+  ]);
 
   const platformSparklines: Record<string, number[]> = {};
   enabledPlatforms.forEach((platform, i) => {
@@ -295,6 +306,19 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
       .reverse();
   });
 
+  // Override stale total_images_discovered with real counts
+  const platformCountMap: Record<string, number> = {};
+  enabledPlatforms.forEach((platform, i) => {
+    platformCountMap[platform] = platformCountResults[i].count || 0;
+  });
+  const platforms = (platformsRaw || []).map((p) => {
+    const pi = p as PlatformInfo;
+    if (platformCountMap[pi.platform] !== undefined) {
+      return { ...pi, total_images_discovered: platformCountMap[pi.platform] };
+    }
+    return pi;
+  }) as PlatformInfo[];
+
   return {
     funnel: {
       discovered: discoveredCount || 0,
@@ -303,7 +327,7 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
       matched: matchedCount || 0,
       confirmed: confirmedCount || 0,
     },
-    platforms: (platformsRaw || []) as PlatformInfo[],
+    platforms,
     sections: (sectionsRaw || []) as SectionProfile[],
     recommendations: (recsRaw || []) as Recommendation[],
     appliedRecs: (appliedRecsRaw || []) as Recommendation[],

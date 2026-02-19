@@ -1,7 +1,8 @@
 """Anomaly Detector: identifies unusual patterns that may indicate emerging threats.
 
 Schedule: every 2 hours
-Minimum signals: 20
+Minimum signals: 200
+Requires: 7+ days of baseline data before firing alerts
 Detects: volume spikes, face rate shifts, match surges, model drift, new clusters
 """
 
@@ -32,9 +33,14 @@ class AnomalyDetector(BaseAnalyzer):
         return 2.0
 
     def get_minimum_signals(self) -> int:
-        return 20
+        return 200
 
     async def analyze(self) -> list[dict]:
+        # Baseline maturity guard: require at least 7 days of data
+        if not await self._has_baseline_maturity():
+            log.info("anomaly_skipped_no_baseline", reason="less than 7 days of data")
+            return []
+
         alerts = []
         alerts.extend(await self._detect_volume_spikes())
         alerts.extend(await self._detect_face_rate_shift())
@@ -45,6 +51,38 @@ class AnomalyDetector(BaseAnalyzer):
             log.info("anomalies_detected", count=len(alerts))
 
         return alerts
+
+    async def _has_baseline_maturity(self) -> bool:
+        """Check if we have at least 7 days of discovered_images data."""
+        async with async_session() as session:
+            result = await session.execute(
+                text("""
+                    SELECT min(discovered_at)
+                    FROM discovered_images
+                """)
+            )
+            earliest = result.scalar_one()
+        if earliest is None:
+            return False
+        age = datetime.now(timezone.utc) - earliest
+        return age >= timedelta(days=7)
+
+    async def _has_platform_maturity(self, platform: str) -> bool:
+        """Check if a specific platform has at least 7 days of crawl data."""
+        async with async_session() as session:
+            result = await session.execute(
+                text("""
+                    SELECT min(discovered_at)
+                    FROM discovered_images
+                    WHERE platform = :platform
+                """),
+                {"platform": platform},
+            )
+            earliest = result.scalar_one()
+        if earliest is None:
+            return False
+        age = datetime.now(timezone.utc) - earliest
+        return age >= timedelta(days=7)
 
     async def _detect_volume_spikes(self) -> list[dict]:
         """Detect tags/sections with 5x normal content volume in last 24h."""
@@ -209,6 +247,12 @@ class AnomalyDetector(BaseAnalyzer):
 
         for row in rows:
             page_url, platform, match_count, contributor_count = row
+
+            # Per-platform maturity: skip if platform has < 7 days of data
+            if platform and not await self._has_platform_maturity(platform):
+                log.info("match_surge_skipped_immature_platform", platform=platform)
+                continue
+
             # Extract account/username from URL if possible
             account = self._extract_account(page_url, platform)
 

@@ -41,16 +41,58 @@ interface CommandTabProps {
 const SIGNAL_ICONS: Record<string, { icon: typeof Activity; label: string }> = {
   match_confirmed: { icon: CheckCircle2, label: "Match confirmed" },
   match_rejected: { icon: XCircle, label: "Match rejected" },
+  match_found: { icon: Target, label: "New match" },
   section_toggle: { icon: Zap, label: "Section toggled" },
   recommendation_approved: { icon: CheckCircle2, label: "Rec approved" },
   recommendation_dismissed: { icon: XCircle, label: "Rec dismissed" },
   threshold_adjusted: { icon: BarChart3, label: "Threshold adjusted" },
   model_retrained: { icon: Brain, label: "Model retrained" },
   crawl_completed: { icon: Globe, label: "Crawl completed" },
+  matching_completed: { icon: Fingerprint, label: "Matching finished" },
+  ml_cycle_completed: { icon: Brain, label: "ML cycle completed" },
 };
 
 function getSignalDisplay(signalType: string) {
   return SIGNAL_ICONS[signalType] || { icon: Activity, label: signalType.replace(/_/g, " ") };
+}
+
+/** Build a human-readable description from signal type + context JSONB. */
+function getSignalDescription(item: any): string | null {
+  const ctx = item.context || {};
+  const entityId = item.entity_id || "";
+
+  switch (item.signal_type) {
+    case "crawl_completed": {
+      const platform = entityId || ctx.platform || "";
+      const count = ctx.total_discovered ?? ctx.images_discovered;
+      const parts = [platform && platform.charAt(0).toUpperCase() + platform.slice(1), "crawl completed"];
+      if (count != null) parts.push(`\u2014 ${Number(count).toLocaleString()} images`);
+      return parts.filter(Boolean).join(" ");
+    }
+    case "matching_completed": {
+      const found = ctx.matches_found ?? ctx.new_matches;
+      if (found != null) return `Matching finished \u2014 ${found} new match${found === 1 ? "" : "es"}`;
+      return "Matching finished";
+    }
+    case "match_found": {
+      const platform = ctx.platform || entityId || "";
+      const confidence = ctx.confidence ?? ctx.similarity;
+      const parts = ["New match"];
+      if (platform) parts.push(`on ${platform}`);
+      if (confidence != null) parts.push(`(${Math.round(confidence * 100)}% confidence)`);
+      return parts.join(" ");
+    }
+    case "ml_cycle_completed": {
+      const analyzers = ctx.analyzers_run;
+      const recs = ctx.recommendations_generated;
+      const parts = ["ML cycle completed"];
+      if (analyzers != null) parts.push(`\u2014 ${analyzers} analyzers`);
+      if (recs != null && recs > 0) parts.push(`, ${recs} rec${recs === 1 ? "" : "s"}`);
+      return parts.join("");
+    }
+    default:
+      return null;
+  }
 }
 
 function timeAgo(dateStr: string): string {
@@ -451,6 +493,7 @@ function ActivityFeed({ activity }: { activity: any[] | null }) {
       {activity.map((item: any) => {
         const display = getSignalDisplay(item.signal_type);
         const Icon = display.icon;
+        const description = getSignalDescription(item);
         return (
           <div
             key={item.id}
@@ -459,7 +502,7 @@ function ActivityFeed({ activity }: { activity: any[] | null }) {
             <Icon className="h-3 w-3 text-muted-foreground mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-[11px] text-foreground truncate">
-                {display.label}
+                {description || display.label}
               </p>
               <p className="text-[10px] text-muted-foreground">
                 {timeAgo(item.created_at)}

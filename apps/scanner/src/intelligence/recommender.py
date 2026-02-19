@@ -29,6 +29,9 @@ class Recommender:
         """Called from main scheduler loop. Runs due analyzers."""
         now = datetime.now(timezone.utc)
 
+        total_analyzers_run = 0
+        total_recs_generated = 0
+
         for analyzer in self._analyzers:
             name = analyzer.get_name()
             hours = analyzer.get_schedule_hours()
@@ -56,21 +59,27 @@ class Recommender:
                 for rec in recommendations:
                     await self._insert_recommendation(rec)
                 self._last_run[name] = now
+                total_analyzers_run += 1
+                total_recs_generated += len(recommendations)
                 log.info(
                     "analyzer_completed",
                     analyzer=name,
                     recommendations=len(recommendations),
                 )
-                try:
-                    await observer.emit("analyzer_completed", "analyzer", name, {
-                        "recommendations": len(recommendations),
-                        "signals_used": signal_count,
-                    })
-                except Exception:
-                    pass
             except Exception as e:
                 log.error("analyzer_failed", analyzer=name, error=str(e))
                 # NEVER re-raise — analyzer failures don't block scanner
+
+        # Emit single summary signal for the entire ML cycle (instead of per-analyzer)
+        if total_analyzers_run > 0:
+            try:
+                await observer.emit("ml_cycle_completed", "recommender", "ml_cycle", {
+                    "analyzers_run": total_analyzers_run,
+                    "recommendations_generated": total_recs_generated,
+                    "signals_available": signal_count,
+                })
+            except Exception:
+                pass
 
         # Phase 5C: check for synthetic cleanup opportunity (once per day)
         await self._check_synthetic_cleanup(now)

@@ -68,6 +68,7 @@ export function HoneypotTable({ items }: HoneypotTableProps) {
           <tr className="border-b border-border/30 text-muted-foreground text-xs">
             <th className="py-2 px-3 text-left">Platform</th>
             <th className="py-2 px-3 text-left">Content Type</th>
+            <th className="py-2 px-3 text-left">Source URL</th>
             <th className="py-2 px-3 text-center">Difficulty</th>
             <th className="py-2 px-3 text-center">Status</th>
             <th className="py-2 px-3 text-right">Similarity</th>
@@ -85,6 +86,21 @@ export function HoneypotTable({ items }: HoneypotTableProps) {
               </td>
               <td className="py-2 px-3 text-muted-foreground">
                 {item.content_type}
+              </td>
+              <td className="py-2 px-3 max-w-[200px]">
+                {item.planted_url ? (
+                  <a
+                    href={item.planted_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-300 truncate block text-xs"
+                    title={item.planted_url}
+                  >
+                    {item.planted_url}
+                  </a>
+                ) : (
+                  <span className="text-muted-foreground text-xs">—</span>
+                )}
               </td>
               <td className="py-2 px-3 text-center">
                 <DifficultyBadge difficulty={item.difficulty} />

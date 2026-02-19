@@ -48,6 +48,11 @@ class SeedHoneypotRequest(BaseModel):
     expected_similarity_range: tuple[float, float] = (0.70, 0.95)
 
 
+class AutoHoneypotRequest(BaseModel):
+    count: int = 20
+    platform: str | None = None
+
+
 class SeedSyntheticRequest(BaseModel):
     base_contributor_ids: list[str]
     count: int = 500
@@ -82,6 +87,14 @@ async def create_honeypot_item(body: SeedHoneypotRequest):
         expected_similarity_range=body.expected_similarity_range,
     )
     return result
+
+
+@router.post("/seed/auto-honeypot", dependencies=[Depends(verify_service_key)])
+async def create_auto_honeypots(body: AutoHoneypotRequest):
+    """Pick random crawled face embeddings and create honeypot test contributors."""
+    if body.count < 1 or body.count > 100:
+        raise HTTPException(status_code=400, detail="Count must be 1-100")
+    return await seed_manager.create_auto_honeypots(count=body.count, platform=body.platform)
 
 
 @router.post("/seed/synthetic", dependencies=[Depends(verify_service_key)])

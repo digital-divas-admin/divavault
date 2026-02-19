@@ -432,6 +432,122 @@ class SeedManager:
 
         return {"created": created}
 
+    async def create_auto_honeypots(self, count: int = 20, platform: str | None = None) -> dict:
+        """Pick random face embeddings from already-crawled images and create honeypot test contributors.
+
+        Copies discovered face embeddings into contributor_embeddings so the
+        matching pipeline should detect them back with ~1.0 similarity.
+
+        Args:
+            count: Number of honeypots to create (max 100).
+            platform: Optional platform filter (e.g. 'civitai', 'deviantart').
+
+        Returns:
+            Dict with generated count, honeypot_ids, and contributor_ids.
+        """
+        async with async_session() as session:
+            # 1. Query random discovered face embeddings with source info
+            result = await session.execute(
+                text("""
+                    SELECT dfe.id, dfe.embedding::text, dfe.detection_score,
+                           di.source_url, di.page_url, di.platform
+                    FROM discovered_face_embeddings dfe
+                    JOIN discovered_images di ON di.id = dfe.discovered_image_id
+                    WHERE di.has_face = true
+                      AND (:platform IS NULL OR di.platform = :platform)
+                    ORDER BY random()
+                    LIMIT :count
+                """),
+                {"platform": platform, "count": count},
+            )
+            rows = result.all()
+
+        if not rows:
+            log.warning("no_discovered_faces_for_honeypot", platform=platform)
+            return {"generated": 0, "honeypot_ids": [], "contributor_ids": []}
+
+        honeypot_ids = []
+        contributor_ids = []
+
+        async with async_session() as session:
+            for row in rows:
+                dfe_id, emb_str, detection_score, source_url, page_url, row_platform = row
+
+                # Parse embedding string → numpy array
+                embedding = np.array(
+                    [float(x) for x in emb_str.strip("[]").split(",")],
+                    dtype=np.float32,
+                )
+
+                contributor_id = uuid.uuid4()
+                honeypot_email = f"honeypot-auto-{contributor_id}@test.consentedai.com"
+
+                # Create test contributor
+                contributor = Contributor(
+                    id=contributor_id,
+                    full_name=f"Auto Honeypot ({row_platform})",
+                    email=honeypot_email,
+                    verification_status="approved",
+                    subscription_tier="premium",
+                    consent_given=True,
+                    onboarding_completed=True,
+                    is_test_user=True,
+                    test_user_type="honeypot",
+                )
+                session.add(contributor)
+                await session.flush()
+
+                # Copy embedding into contributor_embeddings
+                embedding_row = ContributorEmbedding(
+                    contributor_id=contributor_id,
+                    embedding=embedding.tolist(),
+                    detection_score=detection_score or 0.99,
+                    is_primary=True,
+                    embedding_type="single",
+                )
+                session.add(embedding_row)
+
+                # Create honeypot item
+                planted_url = source_url or page_url or ""
+                item = TestHoneypotItem(
+                    contributor_id=contributor_id,
+                    platform=row_platform,
+                    planted_url=planted_url,
+                    content_type="image",
+                    generation_method="auto_embedding_copy",
+                    difficulty="easy",
+                    expected_similarity_min=0.98,
+                    expected_similarity_max=1.0,
+                )
+                session.add(item)
+                await session.flush()
+
+                honeypot_ids.append(str(item.id))
+                contributor_ids.append(str(contributor_id))
+
+            await session.commit()
+
+        generated = len(honeypot_ids)
+        log.info(
+            "auto_honeypots_created",
+            count=generated,
+            platform=platform,
+        )
+
+        try:
+            await observer.emit("auto_honeypots_created", "pipeline", "seed_manager", {
+                "count": generated,
+                "platform": platform,
+            })
+        except Exception:
+            pass
+
+        return {
+            "generated": generated,
+            "honeypot_ids": honeypot_ids,
+            "contributor_ids": contributor_ids,
+        }
+
     async def cleanup_synthetic(self) -> dict:
         """Delete all synthetic test contributors.
 
