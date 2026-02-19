@@ -176,7 +176,7 @@ async def run_scheduler(job_store: JobStore) -> None:
             )
 
         except Exception as e:
-            log.error("scheduler_tick_error", error=str(e))
+            log.error("scheduler_tick_error", error=repr(e))
 
         # Wait for next tick
         elapsed = time.monotonic() - tick_start
@@ -212,9 +212,9 @@ async def _run_ingest() -> None:
 
 async def _run_taxonomy_mapping() -> None:
     """Run platform taxonomy mapping if due. Never blocks pipeline."""
-    from src.intelligence.mapper.orchestrator import get_latest_map_time, run_mapper
+    from src.intelligence.mapper.orchestrator import get_latest_map_time, run_mapper, MAPPERS
 
-    for platform in ["civitai", "deviantart"]:
+    for platform in MAPPERS.keys():
         try:
             last_map = await get_latest_map_time(platform)
             if last_map is not None:
@@ -376,6 +376,7 @@ async def _run_ml_intelligence() -> None:
         from src.intelligence.analyzers.scheduling import CrawlScheduler
         from src.intelligence.analyzers.false_positives import FalsePositiveFilter
         from src.intelligence.analyzers.sources import SourceIntelligence
+        from src.intelligence.analyzers.anomalies import AnomalyDetector
         from src.intelligence.recommender import Recommender
         from src.intelligence.applier import Applier
 
@@ -387,53 +388,82 @@ async def _run_ml_intelligence() -> None:
                 CrawlScheduler(),
                 FalsePositiveFilter(),
                 SourceIntelligence(),
+                AnomalyDetector(),
             ])
             _applier = Applier()
 
         await _recommender.tick()
         await _applier.apply_approved()
+        await _applier.check_outcomes()
     except Exception as e:
         log.error("ml_intelligence_error", error=str(e))
 
 
 async def _run_platform_crawls(job_store: JobStore) -> None:
-    """Three-phase platform crawl dispatch.
+    """Concurrent platform crawl dispatch.
 
-    Priority: Detection > Matching > Crawl (process existing before discovering more).
-    Each tick runs ONE phase to keep the scheduler responsive.
+    Runs up to three workstreams in parallel:
+      1. Face detection  (CPU-bound subprocess)
+      2. Matching         (DB-bound)
+      3. Platform crawls  (I/O-bound HTTP, all platforms in parallel)
+
+    These are naturally independent — crawling writes to discovered_images,
+    detection reads pending rows and writes face data, matching reads face
+    embeddings. No conflicts.
     """
-    # Phase 2: Face detection — process images already in DB
+    import asyncio
+
+    tasks: list[asyncio.Task] = []
+
+    # Face detection
     async with async_session() as session:
         pending_detection = await count_pending_face_detection(session)
-
     if pending_detection > 0:
         log.info("phase_dispatch", phase="detecting", pending=pending_detection)
-        await _phase_face_detection(job_store, pending_detection)
-        return
+        tasks.append(asyncio.create_task(
+            _phase_face_detection(job_store, pending_detection)
+        ))
 
-    # Phase 3: Matching — match face embeddings against registry
+    # Matching
     async with async_session() as session:
         pending_matching = await count_unmatched_face_embeddings(session)
-
     if pending_matching > 0:
         log.info("phase_dispatch", phase="matching", pending=pending_matching)
-        await _phase_matching(job_store)
-        return
+        tasks.append(asyncio.create_task(
+            _phase_matching(job_store)
+        ))
 
-    # Phase 1: Crawl — discover new images (only when no pending work)
+    # Platform crawls — all due platforms in parallel
     due_crawls = await job_store.get_due_platform_crawls()
     for crawl in due_crawls:
         if shutdown_requested:
             break
         log.info("phase_dispatch", phase="crawling", platform=crawl.platform)
-        try:
-            await _phase_crawl_and_insert(job_store, crawl)
-        except Exception as e:
-            log.error("platform_crawl_error", platform=crawl.platform, error=str(e))
+        tasks.append(asyncio.create_task(
+            _safe_crawl(job_store, crawl)
+        ))
+
+    if tasks:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                log.error("parallel_phase_error", index=i, error=repr(result))
+
+
+async def _safe_crawl(job_store: JobStore, crawl) -> None:
+    """Wrapper for crawl with error handling (used in gather)."""
+    try:
+        await _phase_crawl_and_insert(job_store, crawl)
+    except Exception as e:
+        log.error("platform_crawl_error", platform=crawl.platform, error=repr(e))
 
 
 async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
-    """Phase 1: Run site-specific scraper, batch INSERT discovered images."""
+    """Phase 1: Run site-specific scraper, batch INSERT discovered images.
+
+    Dispatches to INLINE or DEFERRED strategy based on the scraper's
+    detection strategy. No platform-specific branching here.
+    """
     scraper = PLATFORM_SCRAPERS.get(crawl.platform)
     if not scraper:
         log.warning("unknown_platform", platform=crawl.platform)
@@ -447,12 +477,12 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
         await session.commit()
 
     try:
-        # Check mapper-enabled search terms for this platform
-        from src.intelligence.mapper.orchestrator import get_enabled_search_terms, update_section_stats
-        mapper_terms = await get_enabled_search_terms(crawl.platform)
+        from src.intelligence.mapper.orchestrator import get_search_config, update_section_stats
 
-        if mapper_terms is not None and len(mapper_terms) == 0:
-            # Profiles exist but no sections enabled — skip crawl
+        config = await get_search_config(crawl.platform)
+
+        # Skip if profiles exist but nothing enabled
+        if config.effective_terms is not None and len(config.effective_terms) == 0:
             log.info("crawl_skipped_no_enabled_sections", platform=crawl.platform)
             await job_store.update_crawl_phase(crawl.platform, None)
             async with async_session() as session:
@@ -461,100 +491,73 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
                 await session.commit()
             return
 
+        if config.damage_breakdown:
+            log.info(
+                "prioritized_config",
+                platform=crawl.platform,
+                total_tags=len(config.effective_terms or []),
+                **config.damage_breakdown,
+            )
+
+        # Build context
         search_terms_data = crawl.search_terms or {}
-        effective_terms = mapper_terms if mapper_terms is not None else list(search_terms_data.get("terms", []))
+        effective_terms = (
+            config.effective_terms
+            if config.effective_terms is not None
+            else list(search_terms_data.get("terms", []))
+        )
         context = DiscoveryContext(
             platform=crawl.platform,
             search_terms=effective_terms if effective_terms else None,
             cursor=crawl.cursor,
             search_cursors=search_terms_data.get("search_cursors"),
             model_cursors=search_terms_data.get("model_cursors"),
+            tag_depths=config.tag_depths,
         )
 
-        discovery_result = await scraper.discover(context)
+        # Strategy dispatch
+        from src.discovery.base import DetectionStrategy
 
-        # Batch insert all discovered images (URL dedup at DB level)
-        images_for_insert = [
-            {
-                "source_url": disc.source_url,
-                "page_url": disc.page_url,
-                "page_title": disc.page_title,
-                "image_stored_url": disc.image_stored_url,
-            }
-            for disc in discovery_result.images
-        ]
-        new_count = 0
-        if images_for_insert:
-            async with async_session() as session:
-                new_count = await batch_insert_discovered_images(
-                    session, images_for_insert, crawl.platform
-                )
-                await session.commit()
+        if scraper.get_detection_strategy() == DetectionStrategy.INLINE:
+            total_images, new_count, result_cursors, result_tags = await _crawl_inline(
+                scraper, context, crawl.platform
+            )
+        else:
+            total_images, new_count, result_cursors, result_tags = await _crawl_deferred(
+                scraper, context, crawl.platform
+            )
 
         log.info(
             "phase_crawl_complete",
             platform=crawl.platform,
-            total_discovered=len(discovery_result.images),
+            strategy=scraper.get_detection_strategy().value,
+            total_discovered=total_images,
             new_inserted=new_count,
         )
 
         try:
             await observer.emit("crawl_completed", "platform", crawl.platform, {
-                "total_discovered": len(discovery_result.images),
+                "total_discovered": total_images,
                 "new_inserted": new_count,
+                "strategy": scraper.get_detection_strategy().value,
             })
         except Exception:
             pass
 
-        # Update crawl schedule with persisted cursors
-        new_search_terms = dict(crawl.search_terms or {})
-        if discovery_result.next_cursor is not None:
-            new_search_terms["cursor"] = discovery_result.next_cursor
-        elif "cursor" in new_search_terms:
-            del new_search_terms["cursor"]
+        # Persist cursors
+        await _persist_crawl_state(
+            job_store, crawl, result_cursors, config, total_images, new_count,
+            result_tags[0], result_tags[1],
+        )
 
-        if discovery_result.search_cursors:
-            active_cursors = {
-                k: v for k, v in discovery_result.search_cursors.items() if v is not None
-            }
-            if active_cursors:
-                new_search_terms["search_cursors"] = active_cursors
-            elif "search_cursors" in new_search_terms:
-                del new_search_terms["search_cursors"]
-        elif "search_cursors" in new_search_terms:
-            del new_search_terms["search_cursors"]
-
-        if discovery_result.model_cursors:
-            active_model_cursors = {
-                k: v for k, v in discovery_result.model_cursors.items() if v is not None
-            }
-            if active_model_cursors:
-                new_search_terms["model_cursors"] = active_model_cursors
-            elif "model_cursors" in new_search_terms:
-                del new_search_terms["model_cursors"]
-        elif "model_cursors" in new_search_terms:
-            del new_search_terms["model_cursors"]
-
-        await job_store.mark_crawl_complete(crawl.platform, new_search_terms)
-
-        # Update coverage stats
-        async with async_session() as session:
-            await update_crawl_coverage(
-                session,
-                platform=crawl.platform,
-                total_images=new_count,
-                tags_total=discovery_result.tags_total,
-                tags_exhausted=discovery_result.tags_exhausted,
-            )
-            await session.commit()
-
-        # Update mapper section stats if mapper is active
-        if mapper_terms is not None:
+        # Update mapper section stats
+        if config.mapper_active:
             try:
+                total_faces = result_cursors.get("_faces_found", 0) if isinstance(result_cursors, dict) else 0
                 await update_section_stats(
                     crawl.platform,
-                    total_scanned=len(discovery_result.images),
-                    total_faces=0,  # faces detected in phase 2, not here
+                    total_scanned=total_images,
+                    total_faces=total_faces,
                 )
             except Exception as e:
                 log.error("mapper_stats_update_error", platform=crawl.platform, error=str(e))
@@ -565,7 +568,7 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
             await update_scan_job(
                 session, job_id,
                 status="completed",
-                images_processed=len(discovery_result.images),
+                images_processed=total_images,
                 matches_found=0,
             )
             await session.commit()
@@ -581,6 +584,162 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
         raise
 
 
+# Lazy-loaded InsightFace model singleton for inline detection
+_face_model = None
+_face_model_lock = asyncio.Lock()
+
+
+async def _get_face_model():
+    """Lazy-load InsightFace model (thread-safe singleton)."""
+    global _face_model
+    if _face_model is not None:
+        return _face_model
+    async with _face_model_lock:
+        if _face_model is not None:
+            return _face_model
+        log.info("loading_insightface_model")
+        from src.ingest.embeddings import init_model
+        _face_model = init_model()
+        log.info("insightface_model_loaded")
+        return _face_model
+
+
+async def _crawl_inline(
+    scraper, context: DiscoveryContext, platform: str
+) -> tuple[int, int, dict, tuple[int, int]]:
+    """Inline strategy: crawl + detect faces in one pass.
+
+    Returns (total_images, new_count, cursors_dict, (tags_total, tags_exhausted)).
+    """
+    face_model = await _get_face_model()
+    result = await scraper.discover_with_detection(context, face_model)
+
+    # Insert pre-detected images with embeddings
+    from src.db.queries import insert_inline_detected_image
+    new_count = 0
+
+    for img in result.images:
+        faces_data = [
+            {
+                "face_index": f.face_index,
+                "embedding": f.embedding.tolist() if hasattr(f.embedding, "tolist") else list(f.embedding),
+                "detection_score": f.detection_score,
+            }
+            for f in img.faces
+        ]
+        async with async_session() as session:
+            inserted = await insert_inline_detected_image(
+                session=session,
+                source_url=img.source_url,
+                page_url=img.page_url,
+                page_title=img.page_title,
+                platform=platform,
+                has_face=img.has_face,
+                face_count=img.face_count,
+                faces=faces_data,
+            )
+            await session.commit()
+        if inserted:
+            new_count += 1
+
+    # Build cursors dict for persistence
+    cursors_dict = {}
+    if result.search_cursors:
+        cursors_dict["search_cursors"] = {
+            k: v for k, v in result.search_cursors.items() if v is not None
+        }
+    cursors_dict["_faces_found"] = result.faces_found
+
+    return (
+        len(result.images),
+        new_count,
+        cursors_dict,
+        (result.tags_total, result.tags_exhausted),
+    )
+
+
+async def _crawl_deferred(
+    scraper, context: DiscoveryContext, platform: str
+) -> tuple[int, int, dict, tuple[int, int]]:
+    """Deferred strategy: crawl only, detect faces in Phase 2 subprocess.
+
+    Returns (total_images, new_count, cursors_dict, (tags_total, tags_exhausted)).
+    """
+    discovery_result = await scraper.discover(context)
+
+    # Batch insert discovered images (URL dedup at DB level)
+    images_for_insert = [
+        {
+            "source_url": disc.source_url,
+            "page_url": disc.page_url,
+            "page_title": disc.page_title,
+            "image_stored_url": disc.image_stored_url,
+        }
+        for disc in discovery_result.images
+    ]
+    new_count = 0
+    if images_for_insert:
+        async with async_session() as session:
+            new_count = await batch_insert_discovered_images(
+                session, images_for_insert, platform
+            )
+            await session.commit()
+
+    # Build cursors dict for persistence
+    cursors_dict = {}
+    if discovery_result.next_cursor is not None:
+        cursors_dict["cursor"] = discovery_result.next_cursor
+    if discovery_result.search_cursors:
+        active = {k: v for k, v in discovery_result.search_cursors.items() if v is not None}
+        if active:
+            cursors_dict["search_cursors"] = active
+    if discovery_result.model_cursors:
+        active = {k: v for k, v in discovery_result.model_cursors.items() if v is not None}
+        if active:
+            cursors_dict["model_cursors"] = active
+
+    return (
+        len(discovery_result.images),
+        new_count,
+        cursors_dict,
+        (discovery_result.tags_total, discovery_result.tags_exhausted),
+    )
+
+
+async def _persist_crawl_state(
+    job_store: JobStore,
+    crawl,
+    result_cursors: dict,
+    config,
+    total_images: int,
+    new_count: int,
+    tags_total: int = 0,
+    tags_exhausted: int = 0,
+) -> None:
+    """Persist cursor state and coverage stats after a crawl completes."""
+    new_search_terms = dict(crawl.search_terms or {})
+
+    # Merge cursor data (skip internal keys starting with _)
+    for key in ("cursor", "search_cursors", "model_cursors"):
+        if key in result_cursors:
+            new_search_terms[key] = result_cursors[key]
+        elif key in new_search_terms:
+            del new_search_terms[key]
+
+    await job_store.mark_crawl_complete(crawl.platform, new_search_terms)
+
+    # Update coverage stats
+    async with async_session() as session:
+        await update_crawl_coverage(
+            session,
+            platform=crawl.platform,
+            total_images=new_count,
+            tags_total=tags_total,
+            tags_exhausted=tags_exhausted,
+        )
+        await session.commit()
+
+
 async def _phase_face_detection(job_store: JobStore, pending: int) -> None:
     """Phase 2: Run face detection in subprocess (memory-isolated).
 
@@ -588,17 +747,6 @@ async def _phase_face_detection(job_store: JobStore, pending: int) -> None:
     Processes up to max_chunks * chunk_size images per tick.
     Fully resumable via WHERE has_face IS NULL.
     """
-    # Update phase on all enabled platforms
-    async with async_session() as session:
-        from src.db.models import PlatformCrawlSchedule
-        from sqlalchemy import update as sa_update
-        await session.execute(
-            sa_update(PlatformCrawlSchedule)
-            .where(PlatformCrawlSchedule.enabled == True)  # noqa: E712
-            .values(crawl_phase="detecting")
-        )
-        await session.commit()
-
     chunk_size = settings.face_detection_chunk_size
     max_chunks = settings.face_detection_max_chunks
     timeout = settings.face_detection_timeout
@@ -670,17 +818,6 @@ async def _phase_matching(job_store: JobStore) -> None:
     Fetches a batch of unmatched embeddings, runs compare_against_registry for each,
     handles matches (evidence, AI detection, notifications), and marks as matched.
     """
-    # Update phase
-    async with async_session() as session:
-        from src.db.models import PlatformCrawlSchedule
-        from sqlalchemy import update as sa_update
-        await session.execute(
-            sa_update(PlatformCrawlSchedule)
-            .where(PlatformCrawlSchedule.enabled == True)  # noqa: E712
-            .values(crawl_phase="matching")
-        )
-        await session.commit()
-
     batch_size = settings.matching_batch_size
     total_matches = 0
     processed_ids = []

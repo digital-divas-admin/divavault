@@ -23,7 +23,7 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import BIT, JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import ARRAY, BIT, JSONB, UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -344,6 +344,8 @@ class MLSectionProfile(Base):
     total_faces: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     face_rate: Mapped[float] = mapped_column(Float, server_default=text("0.0"))
     last_crawl_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Tags from platform mapper
+    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
     # Section ranker output
     ai_reason: Mapped[str | None] = mapped_column(Text)
     ml_risk_level: Mapped[str] = mapped_column(Text, server_default=text("'none'"))

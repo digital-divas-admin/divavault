@@ -100,3 +100,19 @@ class BasePlatformMapper(ABC):
     def get_platform(self) -> str:
         """Return the platform identifier."""
         ...
+
+    async def discover_sections(self) -> list[Section]:
+        """Discover NEW sections not in the hardcoded taxonomy.
+
+        Platforms override this to:
+        - Query trending/popular tags or categories
+        - Scan platform-provided tag listings or search suggestions
+        - Check related/similar tags to known high-risk ones
+
+        Returns a list of newly discovered sections. These will be auto-created
+        in ml_section_profiles with scan_enabled=false and ml_priority=0.5,
+        then evaluated by the section ranker on the next run.
+
+        Default: returns empty list (no dynamic discovery).
+        """
+        return []

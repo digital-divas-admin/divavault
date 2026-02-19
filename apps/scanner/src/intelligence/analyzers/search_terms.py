@@ -16,6 +16,7 @@ from src.db.connection import async_session
 from src.db.models import (
     DiscoveredImage,
     MLFeedbackSignal,
+    MLSectionProfile,
     Match,
     PlatformCrawlSchedule,
 )
@@ -72,10 +73,14 @@ class SearchTermScorer(BaseAnalyzer):
         # 5. Extract discriminative terms from confirmed match page titles
         recommendations.extend(await self._recommend_additions(platform_terms))
 
+        # 6. Recommend new sections for high-scoring terms not in existing sections
+        recommendations.extend(await self._recommend_section_discoveries(platform_terms))
+
         log.info(
             "search_term_scorer_complete",
             removals=sum(1 for r in recommendations if r["rec_type"] == "search_term_remove"),
             additions=sum(1 for r in recommendations if r["rec_type"] == "search_term_add"),
+            discoveries=sum(1 for r in recommendations if r["rec_type"] == "section_discovery"),
         )
 
         return recommendations
@@ -317,6 +322,108 @@ class SearchTermScorer(BaseAnalyzer):
                         "platform": platform,
                         "tfidf_score": round(score, 4),
                         "confirmed_titles_with_term": sum(1 for t in confirmed_titles if term.lower() in t.lower()),
+                        "total_confirmed_titles": len(confirmed_titles),
+                    },
+                })
+
+        return recommendations
+
+    async def _recommend_section_discoveries(self, platform_terms: dict[str, list[str]]) -> list[dict]:
+        """Recommend creating new mapper sections for TF-IDF terms not in any existing section.
+
+        When a discriminative term is found that doesn't map to any existing
+        ml_section_profiles section, recommend creating one. This closes the
+        feedback loop: confirmed matches → TF-IDF → new sections → probed → ranked → crawled.
+        """
+        # Get discriminative terms from confirmed match page titles
+        async with async_session() as session:
+            result = await session.execute(
+                text("""
+                    SELECT di.page_title, di.platform
+                    FROM matches m
+                    JOIN discovered_images di ON m.discovered_image_id = di.id
+                    WHERE m.status IN ('reviewed', 'actionable', 'dmca_filed')
+                      AND di.page_title IS NOT NULL
+                      AND di.page_title != ''
+                """)
+            )
+            confirmed_rows = result.fetchall()
+
+        if len(confirmed_rows) < 10:
+            return []
+
+        async with async_session() as session:
+            result = await session.execute(
+                text("""
+                    SELECT di.page_title, di.platform
+                    FROM discovered_images di
+                    WHERE di.page_title IS NOT NULL
+                      AND di.page_title != ''
+                    ORDER BY di.discovered_at DESC
+                    LIMIT 10000
+                """)
+            )
+            all_rows = result.fetchall()
+
+        if len(all_rows) < 20:
+            return []
+
+        # Load all existing section keys
+        async with async_session() as session:
+            result = await session.execute(
+                select(MLSectionProfile.section_key, MLSectionProfile.platform)
+            )
+            existing_sections = {(row[0], row[1]) for row in result.all()}
+
+        recommendations = []
+        platforms = set(row[1] for row in confirmed_rows if row[1])
+
+        for platform in platforms:
+            confirmed_titles = [row[0] for row in confirmed_rows if row[1] == platform]
+            all_titles = [row[0] for row in all_rows if row[1] == platform]
+
+            if len(confirmed_titles) < 5 or len(all_titles) < 10:
+                continue
+
+            existing_terms = set(t.lower() for t in platform_terms.get(platform, []))
+            existing_section_keys = {k for k, p in existing_sections if p == platform}
+
+            new_terms = self._extract_discriminative_terms(
+                confirmed_titles, all_titles, existing_terms
+            )
+
+            for term, score in new_terms[:MAX_NEW_TERMS]:
+                # Check if this term already matches an existing section
+                term_lower = term.lower().replace(" ", "_")
+                if term_lower in existing_section_keys:
+                    continue
+
+                recommendations.append({
+                    "rec_type": "section_discovery",
+                    "target_platform": platform,
+                    "target_entity": term_lower,
+                    "current_value": {"existing_sections": len(existing_section_keys)},
+                    "proposed_value": {
+                        "action": "create_section",
+                        "section_key": term_lower,
+                        "section_name": term.title(),
+                        "tags": [term.lower().replace(" ", "")],
+                    },
+                    "reasoning": (
+                        f"Term '{term}' is highly discriminative for confirmed matches on {platform} "
+                        f"(TF-IDF score: {score:.3f}) but has no corresponding section in the taxonomy. "
+                        f"Creating a section will enable focused crawling and tracking."
+                    ),
+                    "expected_impact": f"New section enables targeted crawling; TF-IDF score {score:.3f}",
+                    "confidence": min(0.75, score),
+                    "risk_level": "low",
+                    "supporting_data": {
+                        "term": term,
+                        "platform": platform,
+                        "tfidf_score": round(score, 4),
+                        "confirmed_titles_with_term": sum(
+                            1 for t in confirmed_titles if term.lower() in t.lower()
+                        ),
                         "total_confirmed_titles": len(confirmed_titles),
                     },
                 })

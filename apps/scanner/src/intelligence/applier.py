@@ -405,3 +405,166 @@ class Applier:
             await session.commit()
 
         log.info("synthetic_cleanup_applied", deleted_count=len(deleted_ids))
+
+    async def check_outcomes(self) -> None:
+        """Check outcomes of recommendations applied 7+ days ago.
+
+        Compares section metrics before/after to measure recommendation impact.
+        """
+        async with async_session() as session:
+            result = await session.execute(
+                text("""
+                    SELECT id, recommendation_type, target_platform, target_entity,
+                           applied_at, payload, supporting_data
+                    FROM ml_recommendations
+                    WHERE status IN ('applied', 'auto_applied')
+                      AND applied_at IS NOT NULL
+                      AND applied_at < now() - interval '7 days'
+                      AND outcome_checked_at IS NULL
+                    LIMIT 20
+                """)
+            )
+            recs = result.fetchall()
+
+        if not recs:
+            return
+
+        log.info("outcome_check_start", count=len(recs))
+
+        for rec in recs:
+            rec_id, rec_type, platform, entity, applied_at, payload, supporting_data = rec
+            try:
+                outcome = await self._measure_outcome(rec_type, platform, entity, applied_at, supporting_data or {})
+
+                async with async_session() as session:
+                    await session.execute(
+                        text("""
+                            UPDATE ml_recommendations
+                            SET outcome_checked_at = now(),
+                                outcome_metrics = CAST(:metrics AS jsonb)
+                            WHERE id = :id
+                        """),
+                        {"id": str(rec_id), "metrics": json.dumps(outcome)},
+                    )
+                    await session.commit()
+
+                # Emit outcome signal for section ranker feedback
+                try:
+                    await observer.emit("recommendation_outcome", "recommendation", str(rec_id), {
+                        "rec_type": rec_type,
+                        "platform": platform,
+                        "entity": entity,
+                        "outcome": outcome,
+                    })
+                except Exception:
+                    pass
+
+                log.info("outcome_checked", rec_id=str(rec_id), outcome=outcome.get("verdict", "unknown"))
+            except Exception as e:
+                log.error("outcome_check_error", rec_id=str(rec_id), error=str(e))
+
+    async def _measure_outcome(
+        self,
+        rec_type: str,
+        platform: str | None,
+        entity: str | None,
+        applied_at,
+        supporting_data: dict,
+    ) -> dict:
+        """Measure the outcome of an applied recommendation.
+
+        Returns dict with before/after metrics and a verdict.
+        """
+        if rec_type == "section_toggle" and entity and platform:
+            return await self._measure_section_toggle_outcome(platform, entity, supporting_data)
+        elif rec_type in ("search_term_add", "search_term_remove") and platform:
+            return await self._measure_term_outcome(platform, applied_at, supporting_data)
+        elif rec_type == "threshold_change":
+            return await self._measure_threshold_outcome(applied_at)
+        else:
+            return {"verdict": "not_measurable", "reason": f"No outcome metric for {rec_type}"}
+
+    async def _measure_section_toggle_outcome(self, platform: str, entity: str, supporting_data: dict) -> dict:
+        """Measure face_rate and match_rate change after section toggle."""
+        async with async_session() as session:
+            result = await session.execute(
+                text("""
+                    SELECT total_scanned, total_faces, face_rate
+                    FROM ml_section_profiles
+                    WHERE section_key = :entity AND platform = :platform
+                """),
+                {"entity": entity, "platform": platform},
+            )
+            row = result.fetchone()
+
+        if not row:
+            return {"verdict": "not_measurable", "reason": "section_not_found"}
+
+        current_face_rate = row[2] or 0.0
+        before_face_rate = (supporting_data or {}).get("face_rate_before", 0.0)
+
+        delta = current_face_rate - before_face_rate
+        verdict = "improved" if delta > 0.05 else ("neutral" if abs(delta) <= 0.05 else "negative")
+
+        return {
+            "verdict": verdict,
+            "face_rate_before": before_face_rate,
+            "face_rate_after": current_face_rate,
+            "face_rate_delta": round(delta, 4),
+            "total_scanned": row[0],
+            "total_faces": row[1],
+        }
+
+    async def _measure_term_outcome(self, platform: str, applied_at, supporting_data: dict) -> dict:
+        """Measure match count change after term add/remove."""
+        async with async_session() as session:
+            result = await session.execute(
+                text("""
+                    SELECT count(*) FROM matches m
+                    JOIN discovered_images di ON m.discovered_image_id = di.id
+                    WHERE di.platform = :platform
+                      AND m.created_at > :since
+                """),
+                {"platform": platform, "since": applied_at},
+            )
+            matches_after = result.scalar_one() or 0
+
+        matches_before = supporting_data.get("confirmed_matches", 0)
+        verdict = "improved" if matches_after > matches_before else ("neutral" if matches_after == matches_before else "negative")
+
+        return {
+            "verdict": verdict,
+            "matches_before_period": matches_before,
+            "matches_after_period": matches_after,
+        }
+
+    async def _measure_threshold_outcome(self, applied_at) -> dict:
+        """Measure false positive rate change after threshold change."""
+        async with async_session() as session:
+            result = await session.execute(
+                text("""
+                    SELECT
+                        count(*) FILTER (WHERE status IN ('reviewed', 'actionable', 'dmca_filed')) as confirmed,
+                        count(*) FILTER (WHERE status = 'dismissed') as dismissed,
+                        count(*) as total
+                    FROM matches
+                    WHERE created_at > :since
+                """),
+                {"since": applied_at},
+            )
+            row = result.fetchone()
+
+        if not row or row[2] == 0:
+            return {"verdict": "not_measurable", "reason": "no_matches_since_applied"}
+
+        fp_rate = row[1] / row[2] if row[2] > 0 else 0
+        precision = row[0] / row[2] if row[2] > 0 else 0
+
+        return {
+            "verdict": "improved" if precision > 0.8 else ("neutral" if precision > 0.5 else "negative"),
+            "confirmed": row[0],
+            "dismissed": row[1],
+            "total": row[2],
+            "false_positive_rate": round(fp_rate, 4),
+            "precision": round(precision, 4),
+        }

@@ -628,6 +628,75 @@ async def cleanup_read_notifications(
     return result.rowcount
 
 
+# --- Inline detection queries ---
+
+
+async def insert_inline_detected_image(
+    session: AsyncSession,
+    source_url: str,
+    page_url: str | None,
+    page_title: str | None,
+    platform: str,
+    has_face: bool,
+    face_count: int,
+    faces: list[dict],
+) -> bool:
+    """Insert a discovered image with face detection results and embeddings atomically.
+
+    Used by the INLINE detection strategy (DeviantArt) where images are downloaded
+    and analyzed during the crawl. Deduplicates by source_url.
+
+    Each face dict should have: face_index, embedding (np.ndarray), detection_score.
+    Returns True if a new row was created.
+    """
+    result = await session.execute(
+        text("""
+            INSERT INTO discovered_images
+                (source_url, page_url, page_title, platform, has_face, face_count)
+            VALUES
+                (:source_url, :page_url, :page_title, :platform, :has_face, :face_count)
+            ON CONFLICT (md5(source_url)) DO NOTHING
+            RETURNING id
+        """),
+        {
+            "source_url": source_url,
+            "page_url": page_url,
+            "page_title": page_title[:200] if page_title else None,
+            "has_face": has_face,
+            "face_count": face_count,
+            "platform": platform,
+        },
+    )
+    row = result.fetchone()
+    if row is None:
+        return False  # URL dedup
+
+    image_id = row[0]
+
+    # Insert face embeddings
+    for face in faces:
+        embedding = face["embedding"]
+        if isinstance(embedding, np.ndarray):
+            embedding = embedding.tolist()
+        await session.execute(
+            text("""
+                INSERT INTO discovered_face_embeddings
+                    (discovered_image_id, face_index, embedding, detection_score)
+                VALUES
+                    (:image_id, :face_index, CAST(:embedding AS vector(512)), :score)
+                ON CONFLICT (discovered_image_id, face_index) DO NOTHING
+            """),
+            {
+                "image_id": image_id,
+                "face_index": face["face_index"],
+                "embedding": "[" + ",".join(str(x) for x in embedding) + "]",
+                "score": face.get("detection_score"),
+            },
+        )
+
+    return True
+
+
 # --- Discovered face embedding queries ---
 
 
@@ -699,18 +768,27 @@ async def batch_insert_discovered_images(
     session: AsyncSession,
     images: list[dict],
     platform: str,
-    batch_size: int = 500,
+    batch_size: int = 2000,
 ) -> int:
     """Batch insert discovered images with URL dedup. Returns count of new rows.
 
     Each dict in images should have: source_url, page_url (optional), page_title (optional),
     image_stored_url (optional).
-    Uses ON CONFLICT (md5(source_url)) DO NOTHING for dedup.
+    Deduplicates in-memory first (by source_url), then uses ON CONFLICT DO NOTHING at DB level.
     """
+    # In-memory dedup — skip duplicate URLs within this batch
+    seen_urls: set[str] = set()
+    unique_images: list[dict] = []
+    for img in images:
+        url = img["source_url"]
+        if url not in seen_urls:
+            seen_urls.add(url)
+            unique_images.append(img)
+
     total_inserted = 0
 
-    for i in range(0, len(images), batch_size):
-        chunk = images[i : i + batch_size]
+    for i in range(0, len(unique_images), batch_size):
+        chunk = unique_images[i : i + batch_size]
         values = [
             {
                 "source_url": img["source_url"],

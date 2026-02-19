@@ -40,8 +40,8 @@ class Settings(BaseSettings):
     matching_batch_size: int = 500          # face embeddings per match batch
 
     # CivitAI crawl
-    civitai_max_pages: int = 1000  # pages per term per tick (100 images/page)
-    civitai_model_pages_per_tag: int = 100  # pages per tag per tick (100 models/page)
+    civitai_max_pages: int = 50  # pages per term per tick (100 images/page)
+    civitai_model_pages_per_tag: int = 10  # pages per tag per tick (100 models/page)
     civitai_nsfw_filter: str = "None"  # "None", "Soft", "Mature", "X", or "" for all
     civitai_backfill_days: int = 30  # how far back to search during backfill
 
@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     deviantart_client_id: str = ""
     deviantart_client_secret: str = ""
     deviantart_max_pages: int = 50  # pages per tag per tick (24 images/page)
+    deviantart_high_damage_pages: int = 1000  # nude, sexual, deepfake, celebfakes (~24K images/tag via HTML)
+    deviantart_medium_damage_pages: int = 100  # person-focused: beauty, model, girl, portrait (~2.4K/tag)
+    deviantart_low_damage_pages: int = 10  # generic: art, photography, stock, CGI (~240/tag)
+    deviantart_concurrency: int = 5  # concurrent tag fetches (5 for 16GB RAM with inline detection)
+
+    # Proxy for web scraping (used by DeviantArt, CivitAI, etc.)
+    # Format: http://user:pass@host:port or http://host:port
+    # Supports rotating proxy services (ScraperAPI, Bright Data, SmartProxy, etc.)
+    proxy_url: str = ""
 
     # InsightFace
     insightface_model: str = "buffalo_sc"

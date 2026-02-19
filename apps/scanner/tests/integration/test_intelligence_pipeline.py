@@ -359,14 +359,15 @@ class TestSchedulerIntegration:
 
             await _run_ml_intelligence()
 
-            # Recommender should be initialized with 6 analyzers
+            # Recommender should be initialized with 7 analyzers
             args = MockRecommender.call_args[0][0]
-            assert len(args) == 6
+            assert len(args) == 7
             analyzer_types = [type(a).__name__ for a in args]
             assert "ThresholdOptimizer" in analyzer_types
             assert "SectionRanker" in analyzer_types
             assert "FalsePositiveFilter" in analyzer_types
             assert "SourceIntelligence" in analyzer_types
+            assert "AnomalyDetector" in analyzer_types
 
             mock_rec.tick.assert_called_once()
             mock_app.apply_approved.assert_called_once()
