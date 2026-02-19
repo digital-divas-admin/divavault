@@ -164,6 +164,9 @@ async def run_scheduler(job_store: JobStore) -> None:
             if now - last_cleanup > 3600:
                 await run_cleanup()
                 cleanup_old_temp_files()
+                recovered = await job_store.recover_stale(max_age_minutes=30)
+                if recovered > 0:
+                    log.info("stale_jobs_recovered", count=recovered)
                 last_cleanup = now
 
             # Log metrics periodically
@@ -568,7 +571,7 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
             await update_scan_job(
                 session, job_id,
                 status="completed",
-                images_processed=total_images,
+                images_processed=new_count,
                 matches_found=0,
             )
             await session.commit()

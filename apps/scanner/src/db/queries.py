@@ -205,7 +205,7 @@ async def update_scan_schedule_after_run(
 
 
 async def get_due_crawls(session: AsyncSession) -> list[PlatformCrawlSchedule]:
-    """Get platform_crawl_schedule rows that are due."""
+    """Get platform_crawl_schedule rows that are due and not already running."""
     now = datetime.now(timezone.utc)
     result = await session.execute(
         select(PlatformCrawlSchedule)
@@ -213,6 +213,7 @@ async def get_due_crawls(session: AsyncSession) -> list[PlatformCrawlSchedule]:
             and_(
                 PlatformCrawlSchedule.enabled == True,  # noqa: E712
                 PlatformCrawlSchedule.next_crawl_at <= now,
+                PlatformCrawlSchedule.crawl_phase.is_(None),  # not already running
             )
         )
     )
@@ -230,13 +231,8 @@ async def update_crawl_schedule_after_run(
     if search_terms is not None:
         values["search_terms"] = search_terms
 
-    # Read current interval to compute next_crawl_at
-    result = await session.execute(
-        select(PlatformCrawlSchedule.crawl_interval_hours)
-        .where(PlatformCrawlSchedule.platform == platform)
-    )
-    interval = result.scalar_one_or_none() or 24
-    values["next_crawl_at"] = now + timedelta(hours=interval)
+    # Manual-only mode: don't auto-reschedule, require manual trigger
+    values["next_crawl_at"] = datetime(9999, 1, 1, tzinfo=timezone.utc)
 
     await session.execute(
         update(PlatformCrawlSchedule)

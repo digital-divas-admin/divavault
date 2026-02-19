@@ -17,6 +17,8 @@ import {
   Zap,
   BarChart3,
   FlaskConical,
+  Play,
+  Loader2,
 } from "lucide-react";
 import {
   AreaChart,
@@ -225,7 +227,21 @@ function PlatformCards({
   data: CommandCenterData;
   onSwitchTab: CommandTabProps["onSwitchTab"];
 }) {
+  const [triggering, setTriggering] = useState<Record<string, boolean>>({});
   const enabledPlatforms = data.platforms.filter((p) => p.enabled);
+
+  async function handleTrigger(platform: string) {
+    setTriggering((prev) => ({ ...prev, [platform]: true }));
+    try {
+      await fetch("/api/admin/scanner/trigger-crawl", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform }),
+      });
+    } finally {
+      setTriggering((prev) => ({ ...prev, [platform]: false }));
+    }
+  }
 
   if (enabledPlatforms.length === 0) {
     return (
@@ -250,6 +266,8 @@ function PlatformCards({
           const sectionCount = data.sections.filter(
             (s) => s.platform === platform.platform
           ).length;
+          const isCrawling = !!platform.crawl_phase;
+          const isTriggering = triggering[platform.platform];
 
           return (
             <Card
@@ -264,15 +282,34 @@ function PlatformCards({
                   <span className="font-medium text-sm capitalize">
                     {platform.platform}
                   </span>
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                      platform.crawl_phase === "active"
-                        ? "bg-green-500/10 text-green-400"
-                        : "bg-yellow-500/10 text-yellow-400"
-                    }`}
-                  >
-                    {platform.crawl_phase || "idle"}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!isCrawling && !isTriggering) {
+                          handleTrigger(platform.platform);
+                        }
+                      }}
+                      disabled={isCrawling || isTriggering}
+                      className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={isCrawling ? "Crawl in progress" : "Start crawl"}
+                    >
+                      {isCrawling || isTriggering ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Play className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                        isCrawling
+                          ? "bg-green-500/10 text-green-400"
+                          : "bg-yellow-500/10 text-yellow-400"
+                      }`}
+                    >
+                      {platform.crawl_phase || "idle"}
+                    </span>
+                  </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center mb-3">
                   <div>
