@@ -3,6 +3,7 @@
 Auth: x-service-key header checked against settings.supabase_service_role_key.
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -421,3 +422,118 @@ async def get_signal_stats():
         "last_24h": last_24h,
         "last_7d": last_7d,
     }
+
+
+# --- Scout Endpoints ---
+
+
+class DismissRequest(BaseModel):
+    reason: str | None = None
+
+
+@router.post("/scout/run", dependencies=[Depends(verify_service_key)])
+async def trigger_scout_run(background_tasks: Request):
+    """Trigger a scout run in the background."""
+    from src.scout import ScoutRunner
+
+    runner = ScoutRunner()
+    # Run in background task
+    loop = asyncio.get_event_loop()
+    task = loop.create_task(runner.run())
+
+    return {"status": "started", "message": "Scout run triggered in background"}
+
+
+@router.get("/scout/discoveries", dependencies=[Depends(verify_service_key)])
+async def get_scout_discoveries(status: str | None = Query(None)):
+    """List scout discoveries, optionally filtered by status."""
+    from src.scout.queries import list_discoveries
+    return await list_discoveries(status=status)
+
+
+@router.post("/scout/discoveries/{disc_id}/approve", dependencies=[Depends(verify_service_key)])
+async def approve_scout_discovery(disc_id: str = Path(...)):
+    """Approve a scout discovery."""
+    from src.scout.queries import approve_discovery
+    try:
+        return await approve_discovery(disc_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/scout/discoveries/{disc_id}/dismiss", dependencies=[Depends(verify_service_key)])
+async def dismiss_scout_discovery(disc_id: str = Path(...), body: DismissRequest = DismissRequest()):
+    """Dismiss a scout discovery with optional reason."""
+    from src.scout.queries import dismiss_discovery
+    try:
+        return await dismiss_discovery(disc_id, reason=body.reason)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/scout/runs", dependencies=[Depends(verify_service_key)])
+async def get_scout_runs():
+    """List recent scout runs."""
+    from src.scout.queries import list_runs
+    return await list_runs()
+
+
+@router.get("/scout/keywords", dependencies=[Depends(verify_service_key)])
+async def get_scout_keywords():
+    """List all scout keywords."""
+    from src.scout.queries import list_keywords
+    return await list_keywords()
+
+
+class AddKeywordRequest(BaseModel):
+    category: str
+    keyword: str
+    weight: float = 0.1
+    use_for: str = "assess"
+
+
+@router.post("/scout/keywords", dependencies=[Depends(verify_service_key)])
+async def add_scout_keyword(body: AddKeywordRequest):
+    """Add a new scout keyword."""
+    from src.scout.queries import add_keyword
+    try:
+        return await add_keyword(
+            category=body.category,
+            keyword=body.keyword,
+            weight=body.weight,
+            use_for=body.use_for,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class UpdateKeywordRequest(BaseModel):
+    weight: float | None = None
+    enabled: bool | None = None
+    use_for: str | None = None
+
+
+@router.patch("/scout/keywords/{keyword_id}", dependencies=[Depends(verify_service_key)])
+async def update_scout_keyword(keyword_id: str = Path(...), body: UpdateKeywordRequest = UpdateKeywordRequest()):
+    """Update a scout keyword."""
+    from src.scout.queries import update_keyword
+    try:
+        return await update_keyword(
+            keyword_id=keyword_id,
+            weight=body.weight,
+            enabled=body.enabled,
+            use_for=body.use_for,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.delete("/scout/keywords/{keyword_id}", dependencies=[Depends(verify_service_key)])
+async def delete_scout_keyword(keyword_id: str = Path(...)):
+    """Delete a scout keyword."""
+    from src.scout.queries import delete_keyword
+    try:
+        await delete_keyword(keyword_id)
+        return {"success": True}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

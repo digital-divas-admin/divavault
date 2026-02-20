@@ -454,3 +454,56 @@ class PlatformCrawlSchedule(Base):
     total_images_discovered: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     tags_total: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     tags_exhausted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+
+# --- Scout tables (platform discovery) ---
+
+
+class ScoutDiscovery(Base):
+    __tablename__ = "scout_discoveries"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    domain: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    source_query: Mapped[str | None] = mapped_column(Text)
+    source_metadata: Mapped[dict | None] = mapped_column(JSONB, server_default=text("'{}'"))
+    risk_score: Mapped[float] = mapped_column(Float, server_default=text("0.0"))
+    risk_factors: Mapped[dict | None] = mapped_column(JSONB, server_default=text("'{}'"))
+    assessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    assessment_error: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), nullable=False)
+    reviewed_by: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dismiss_reason: Mapped[str | None] = mapped_column(Text)
+    promoted_platform: Mapped[str | None] = mapped_column(Text)
+    promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class ScoutRun(Base):
+    __tablename__ = "scout_runs"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(Text, server_default=text("'running'"))
+    domains_found: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    domains_new: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    extra_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, server_default=text("'{}'"))
+
+
+class ScoutKeyword(Base):
+    __tablename__ = "scout_keywords"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    category: Mapped[str] = mapped_column(Text, nullable=False)
+    keyword: Mapped[str] = mapped_column(Text, nullable=False)
+    weight: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("0.1"))
+    use_for: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'assess'"))
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))

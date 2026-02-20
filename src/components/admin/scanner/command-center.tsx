@@ -8,11 +8,13 @@ import { CommandTab } from "./command-tab";
 import { CrawlMapTab } from "./crawl-map-tab";
 import { MLIntelligenceTab } from "./ml-intelligence-tab";
 import { TestUsersTab } from "./test-users-tab";
+import { ScoutTab } from "./scout-tab";
 import {
   LayoutDashboard,
   Map,
   Brain,
   FlaskConical,
+  Radar,
 } from "lucide-react";
 
 const TABS = [
@@ -20,6 +22,7 @@ const TABS = [
   { id: "crawl-map", label: "Crawl Map", icon: Map },
   { id: "ml-intelligence", label: "ML Intelligence", icon: Brain },
   { id: "test-users", label: "Test Users", icon: FlaskConical },
+  { id: "scout", label: "Scout", icon: Radar },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -121,6 +124,13 @@ export function CommandCenter({ initialData }: CommandCenterProps) {
         <TestUsersTab
           testUserSummary={initialData.testUserSummary}
           honeypotItems={initialData.honeypotItems}
+        />
+      )}
+      {activeTab === "scout" && (
+        <ScoutTab
+          discoveries={initialData.scoutDiscoveries}
+          runs={initialData.scoutRuns}
+          keywords={initialData.scoutKeywords}
         />
       )}
     </div>

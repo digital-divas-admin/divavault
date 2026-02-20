@@ -138,6 +138,47 @@ export interface CrossPlatformRisk {
   }[];
 }
 
+export interface ScoutDiscovery {
+  id: string;
+  domain: string;
+  url: string;
+  name: string | null;
+  description: string | null;
+  source: string;
+  source_query: string | null;
+  risk_score: number;
+  risk_factors: Record<string, { matched: string[]; score: number }> | null;
+  assessed_at: string | null;
+  assessment_error: string | null;
+  status: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  dismiss_reason: string | null;
+  promoted_platform: string | null;
+  promoted_at: string | null;
+  discovered_at: string | null;
+}
+
+export interface ScoutRun {
+  id: string;
+  source: string;
+  started_at: string | null;
+  completed_at: string | null;
+  status: string;
+  domains_found: number;
+  domains_new: number;
+  error_message: string | null;
+}
+
+export interface ScoutKeyword {
+  id: string;
+  category: string;
+  keyword: string;
+  weight: number;
+  use_for: string;
+  enabled: boolean;
+}
+
 export interface CommandCenterData {
   funnel: {
     discovered: number;
@@ -155,6 +196,9 @@ export interface CommandCenterData {
   modelState: ModelStateEntry[];
   signalStats: { signal_type: string; count: number }[];
   platformSparklines: Record<string, number[]>;
+  scoutDiscoveries: ScoutDiscovery[];
+  scoutRuns: ScoutRun[];
+  scoutKeywords: ScoutKeyword[];
 }
 
 // --- Main Query ---
@@ -185,6 +229,12 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     { data: modelStateRaw },
     // Signal stats (raw — we group in JS)
     { data: signalsRaw },
+    // Scout discoveries
+    { data: scoutDiscoveriesRaw },
+    // Scout runs
+    { data: scoutRunsRaw },
+    // Scout keywords
+    { data: scoutKeywordsRaw },
   ] = await Promise.all([
     // Funnel
     supabase
@@ -248,6 +298,24 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     supabase
       .from("ml_feedback_signals")
       .select("signal_type"),
+    // Scout discoveries
+    supabase
+      .from("scout_discoveries")
+      .select("*")
+      .order("risk_score", { ascending: false })
+      .limit(100),
+    // Scout runs
+    supabase
+      .from("scout_runs")
+      .select("*")
+      .order("started_at", { ascending: false })
+      .limit(20),
+    // Scout keywords
+    supabase
+      .from("scout_keywords")
+      .select("*")
+      .order("category")
+      .order("keyword"),
   ]);
 
   // Group test users by type
@@ -336,6 +404,9 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     modelState: (modelStateRaw || []) as ModelStateEntry[],
     signalStats,
     platformSparklines,
+    scoutDiscoveries: (scoutDiscoveriesRaw || []) as ScoutDiscovery[],
+    scoutRuns: (scoutRunsRaw || []) as ScoutRun[],
+    scoutKeywords: (scoutKeywordsRaw || []) as ScoutKeyword[],
   };
 }
 

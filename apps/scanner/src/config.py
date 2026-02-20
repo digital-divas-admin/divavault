@@ -82,6 +82,16 @@ class Settings(BaseSettings):
     # Taxonomy mapper
     mapper_interval_hours: int = 168  # Weekly (7 days)
 
+    # Scout — platform discovery
+    scout_common_crawl_enabled: bool = True
+    scout_link_harvest_enabled: bool = True
+    scout_google_cse_enabled: bool = False  # requires API key
+    scout_reddit_enabled: bool = True
+    google_cse_api_key: str = ""
+    google_cse_cx: str = ""  # custom search engine ID
+    scout_max_results_per_source: int = 50
+    scout_assessment_timeout: int = 15  # seconds per URL
+
     # Logging
     log_level: str = "INFO"
 

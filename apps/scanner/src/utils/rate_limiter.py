@@ -58,6 +58,10 @@ RATE_LIMITERS: dict[str, RateLimiter] = {
     "anthropic": RateLimiter(rate=5.0, max_tokens=20.0),          # 5 req/sec, burst of 20
     "civitai_mapper": RateLimiter(rate=2.0, max_tokens=5.0),     # 2 req/sec (mapper only)
     "deviantart_mapper": RateLimiter(rate=2.0, max_tokens=5.0),  # 2 req/sec (mapper only)
+    "common_crawl": RateLimiter(rate=1.0, max_tokens=3.0),    # 1 req/sec, gentle on free API
+    "reddit": RateLimiter(rate=1.0, max_tokens=5.0),           # 1 req/sec, Reddit rate limit
+    "google_cse": RateLimiter(rate=1.0, max_tokens=5.0),       # 1 req/sec
+    "scout_assess": RateLimiter(rate=5.0, max_tokens=20.0),    # 5 req/sec for assessment HTTP GETs
 }
 
 
