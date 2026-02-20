@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/admin-queries";
-
-const SCANNER_URL = process.env.SCANNER_SERVICE_URL || "http://localhost:8000";
-
-async function getServiceKey() {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-}
 
 export async function PATCH(
   request: NextRequest,
@@ -24,29 +18,28 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+  const updates: Record<string, unknown> = {};
+  if (body.weight !== undefined) updates.weight = body.weight;
+  if (body.enabled !== undefined) updates.enabled = body.enabled;
+  if (body.use_for !== undefined) updates.use_for = body.use_for;
 
-    const res = await fetch(`${SCANNER_URL}/admin/scout/keywords/${id}`, {
-      method: "PATCH",
-      signal: controller.signal,
-      headers: {
-        "x-service-key": await getServiceKey(),
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    clearTimeout(timeout);
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      return NextResponse.json({ error: data.detail || `Scanner returned ${res.status}` }, { status: res.status });
-    }
-    return NextResponse.json(await res.json());
-  } catch {
-    return NextResponse.json({ error: "Scanner unreachable" }, { status: 503 });
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
+
+  const service = await createServiceClient();
+
+  const { data, error } = await service
+    .from("scout_keywords")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json(data);
 }
 
 export async function DELETE(
@@ -60,24 +53,15 @@ export async function DELETE(
   if (!role) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
+  const service = await createServiceClient();
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+  const { error } = await service
+    .from("scout_keywords")
+    .delete()
+    .eq("id", id);
 
-    const res = await fetch(`${SCANNER_URL}/admin/scout/keywords/${id}`, {
-      method: "DELETE",
-      signal: controller.signal,
-      headers: { "x-service-key": await getServiceKey() },
-    });
-    clearTimeout(timeout);
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      return NextResponse.json({ error: data.detail || `Scanner returned ${res.status}` }, { status: res.status });
-    }
-    return NextResponse.json(await res.json());
-  } catch {
-    return NextResponse.json({ error: "Scanner unreachable" }, { status: 503 });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  return NextResponse.json({ success: true });
 }

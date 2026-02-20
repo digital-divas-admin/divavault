@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/admin-queries";
-
-const SCANNER_URL = process.env.SCANNER_SERVICE_URL || "http://localhost:8000";
-
-async function getServiceKey() {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-}
 
 export async function GET() {
   const supabase = await createClient();
@@ -15,23 +9,18 @@ export async function GET() {
   const role = await requireAdmin(user.id, "admin");
   if (!role) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+  const service = await createServiceClient();
 
-    const res = await fetch(`${SCANNER_URL}/admin/scout/keywords`, {
-      signal: controller.signal,
-      headers: { "x-service-key": await getServiceKey() },
-    });
-    clearTimeout(timeout);
+  const { data, error } = await service
+    .from("scout_keywords")
+    .select("*")
+    .order("category")
+    .order("keyword");
 
-    if (!res.ok) {
-      return NextResponse.json({ error: `Scanner returned ${res.status}` }, { status: res.status });
-    }
-    return NextResponse.json(await res.json());
-  } catch {
-    return NextResponse.json({ error: "Scanner unreachable" }, { status: 503 });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  return NextResponse.json(data);
 }
 
 export async function POST(request: NextRequest) {
@@ -46,27 +35,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+  const { category, keyword, weight, use_for } = body as {
+    category?: string;
+    keyword?: string;
+    weight?: number;
+    use_for?: string;
+  };
 
-    const res = await fetch(`${SCANNER_URL}/admin/scout/keywords`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "x-service-key": await getServiceKey(),
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    clearTimeout(timeout);
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      return NextResponse.json({ error: data.detail || `Scanner returned ${res.status}` }, { status: res.status });
-    }
-    return NextResponse.json(await res.json());
-  } catch {
-    return NextResponse.json({ error: "Scanner unreachable" }, { status: 503 });
+  if (!category || !keyword) {
+    return NextResponse.json({ error: "category and keyword are required" }, { status: 400 });
   }
+
+  const service = await createServiceClient();
+
+  const { data, error } = await service
+    .from("scout_keywords")
+    .insert({
+      category,
+      keyword,
+      weight: weight ?? 0.1,
+      use_for: use_for ?? "assess",
+    })
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json(data);
 }
