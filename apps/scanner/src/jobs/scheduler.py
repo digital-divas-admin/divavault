@@ -553,15 +553,10 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
             result_tags[0], result_tags[1],
         )
 
-        # Update mapper section stats
+        # Update mapper section stats (recomputed from DB, not passed totals)
         if config.mapper_active:
             try:
-                total_faces = result_cursors.get("_faces_found", 0) if isinstance(result_cursors, dict) else 0
-                await update_section_stats(
-                    crawl.platform,
-                    total_scanned=total_images,
-                    total_faces=total_faces,
-                )
+                await update_section_stats(crawl.platform)
             except Exception as e:
                 log.error("mapper_stats_update_error", platform=crawl.platform, error=str(e))
 
@@ -640,6 +635,8 @@ async def _crawl_inline(
                 has_face=img.has_face,
                 face_count=img.face_count,
                 faces=faces_data,
+                image_stored_url=img.image_stored_url,
+                search_term=img.search_term,
             )
             await session.commit()
         if inserted:
@@ -677,6 +674,7 @@ async def _crawl_deferred(
             "page_url": disc.page_url,
             "page_title": disc.page_title,
             "image_stored_url": disc.image_stored_url,
+            "search_term": disc.search_term,
         }
         for disc in discovery_result.images
     ]
@@ -797,6 +795,23 @@ async def _phase_face_detection(job_store: JobStore, pending: int) -> None:
             })
         except Exception:
             pass
+
+        # Refresh section stats after detection so face counts are up-to-date
+        if result.returncode == 0:
+            try:
+                from sqlalchemy import select as sa_select
+                from src.db.models import PlatformCrawlSchedule as PCS
+                from src.intelligence.mapper.orchestrator import update_section_stats
+                async with async_session() as session:
+                    platforms = (await session.execute(
+                        sa_select(PCS.platform)
+                        .where(PCS.enabled == True)  # noqa: E712
+                    )).scalars().all()
+                for plat in platforms:
+                    await update_section_stats(plat)
+                log.info("post_detection_stats_refreshed", platforms=len(platforms))
+            except Exception as e:
+                log.error("post_detection_stats_error", error=str(e))
 
     except subprocess.TimeoutExpired:
         log.warning("phase_face_detection_timeout", timeout_seconds=timeout * max_chunks)

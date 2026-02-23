@@ -20,7 +20,6 @@ from uuid import uuid4
 
 import aiohttp
 import numpy as np
-
 from src.config import settings
 from src.discovery.base import (
     BaseDiscoverySource,
@@ -32,6 +31,7 @@ from src.discovery.base import (
     InlineDetectedImage,
     InlineDiscoveryResult,
 )
+from src.utils.image_download import upload_thumbnail
 from src.utils.logging import get_logger
 from src.utils.rate_limiter import get_limiter
 from src.utils.retry import CircuitOpenError, retry_async, with_circuit_breaker
@@ -51,9 +51,9 @@ NS = {
 
 # Browser User-Agent — DeviantArt blocks requests without one
 USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/131.0.0.0 Safari/537.36"
+    "Chrome/133.0.0.0 Safari/537.36"
 )
 
 # Regex for extracting paired (deviation_link, image_url) from HTML tag pages.
@@ -79,7 +79,6 @@ ALL_TAGS: list[str] = sorted({tag for tags in _DA_SECTION_TERMS.values() for tag
 
 # Early-stop: if this fraction of a page's images are already processed, stop the tag
 DEDUP_STOP_RATIO = 0.8
-
 
 class DeviantArtCrawl(BaseDiscoverySource):
     """Platform crawl for DeviantArt — hybrid RSS + HTML tag scraping."""
@@ -177,10 +176,13 @@ class DeviantArtCrawl(BaseDiscoverySource):
                 )
                 return {row[0] for row in result.fetchall()}
 
+        thumb_sem = asyncio.Semaphore(10)
+
         async def _process_page(
             http_session: aiohttp.ClientSession,
             page_results: list[DiscoveredImageResult],
             known: set[str],
+            tag: str | None = None,
         ) -> tuple[list[InlineDetectedImage], dict]:
             ps = {"downloaded": 0, "failures": 0, "faces": 0, "dedup": 0}
             to_process = []
@@ -198,7 +200,8 @@ class DeviantArtCrawl(BaseDiscoverySource):
             paths = await asyncio.gather(*dl_tasks)
 
             loop = asyncio.get_event_loop()
-            detected: list[InlineDetectedImage] = []
+            # Phase 1: Run face detection, collect (image_data, path) pairs
+            pending_uploads: list[tuple[InlineDetectedImage, Path]] = []
 
             for img, path in zip(to_process, paths):
                 if path is None:
@@ -224,20 +227,50 @@ class DeviantArtCrawl(BaseDiscoverySource):
                     if has_face:
                         ps["faces"] += len(faces_raw)
 
-                    detected.append(
-                        InlineDetectedImage(
-                            source_url=img.source_url,
-                            page_url=img.page_url,
-                            page_title=img.page_title,
-                            has_face=has_face,
-                            face_count=len(faces_raw),
-                            faces=face_list,
-                        )
+                    detected_img = InlineDetectedImage(
+                        source_url=img.source_url,
+                        page_url=img.page_url,
+                        page_title=img.page_title,
+                        has_face=has_face,
+                        face_count=len(faces_raw),
+                        faces=face_list,
+                        image_stored_url=None,
+                        search_term=tag,
                     )
+                    pending_uploads.append((detected_img, path))
                 except Exception as e:
                     log.error("inline_detect_error", error=str(e))
+                    path.unlink(missing_ok=True)
+
+            if not pending_uploads:
+                return [], ps
+
+            # Phase 2: Upload thumbnails concurrently (semaphore caps in-flight)
+            async def _upload_and_cleanup(
+                det_img: InlineDetectedImage, path: Path
+            ) -> InlineDetectedImage:
+                try:
+                    async with thumb_sem:
+                        stored_url = await upload_thumbnail(path, platform="deviantart", http_session=http_session)
+                    det_img.image_stored_url = stored_url
+                except Exception as e:
+                    log.warning("thumbnail_concurrent_error", error=str(e))
                 finally:
                     path.unlink(missing_ok=True)
+                return det_img
+
+            upload_tasks = [
+                _upload_and_cleanup(det_img, path)
+                for det_img, path in pending_uploads
+            ]
+            results = await asyncio.gather(*upload_tasks, return_exceptions=True)
+
+            detected: list[InlineDetectedImage] = []
+            for r in results:
+                if isinstance(r, Exception):
+                    log.error("thumbnail_upload_exception", error=repr(r))
+                else:
+                    detected.append(r)
 
             return detected, ps
 
@@ -294,7 +327,7 @@ class DeviantArtCrawl(BaseDiscoverySource):
                         known = await _get_known_urls(page_urls)
 
                         # Download + detect + collect
-                        detected, ps = await _process_page(http_session, page_results, known)
+                        detected, ps = await _process_page(http_session, page_results, known, tag=tag)
 
                         async with images_lock:
                             all_images.extend(detected)

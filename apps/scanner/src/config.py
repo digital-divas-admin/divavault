@@ -40,19 +40,19 @@ class Settings(BaseSettings):
     matching_batch_size: int = 500          # face embeddings per match batch
 
     # CivitAI crawl
-    civitai_max_pages: int = 50  # pages per term per tick (100 images/page)
-    civitai_model_pages_per_tag: int = 10  # pages per tag per tick (100 models/page)
+    civitai_max_pages: int = 1  # pages per term per tick (100 images/page) — set low for test run
+    civitai_model_pages_per_tag: int = 1  # pages per tag per tick (100 models/page)
     civitai_nsfw_filter: str = "None"  # "None", "Soft", "Mature", "X", or "" for all
     civitai_backfill_days: int = 30  # how far back to search during backfill
 
     # DeviantArt crawl
     deviantart_client_id: str = ""
     deviantart_client_secret: str = ""
-    deviantart_max_pages: int = 50  # pages per tag per tick (24 images/page)
-    deviantart_high_damage_pages: int = 1000  # nude, sexual, deepfake, celebfakes (~24K images/tag via HTML)
-    deviantart_medium_damage_pages: int = 100  # person-focused: beauty, model, girl, portrait (~2.4K/tag)
-    deviantart_low_damage_pages: int = 10  # generic: art, photography, stock, CGI (~240/tag)
-    deviantart_concurrency: int = 5  # concurrent tag fetches (5 for 16GB RAM with inline detection)
+    deviantart_max_pages: int = 2  # pages per tag per tick (24 images/page) — set low for test run
+    deviantart_high_damage_pages: int = 2  # nude, sexual, deepfake, celebfakes
+    deviantart_medium_damage_pages: int = 1  # person-focused: beauty, model, girl, portrait
+    deviantart_low_damage_pages: int = 1  # generic: art, photography, stock, CGI
+    deviantart_concurrency: int = 10  # concurrent tag fetches (ScraperAPI supports 50 concurrent)
 
     # Proxy for web scraping (used by DeviantArt, CivitAI, etc.)
     # Format: http://user:pass@host:port or http://host:port

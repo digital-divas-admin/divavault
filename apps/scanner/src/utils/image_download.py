@@ -26,6 +26,27 @@ MAX_IMAGE_DIMENSION = 8192
 RESIZE_TARGET = 4096  # resize long edge to this if > MAX_IMAGE_DIMENSION
 MAX_CONCURRENT = 5
 
+# Image validation constants
+IMAGE_MAGIC_PREFIXES = (b"\xff\xd8", b"\x89P", b"RI", b"GI", b"BM")
+
+
+def check_content_type(content_type: str | None) -> bool:
+    """Return False if Content-Type is definitely not an image."""
+    if content_type is None:
+        return True
+    ct = content_type.split(";")[0].strip().lower()
+    return not ct.startswith(("video/", "text/", "application/json"))
+
+
+def check_magic_bytes(data: bytes) -> bool:
+    """Return True if first bytes match JPEG/PNG/WebP/GIF/BMP."""
+    return len(data) >= 2 and data[:2] in IMAGE_MAGIC_PREFIXES
+
+
+def civitai_thumbnail_url(original_url: str, width: int = 450) -> str:
+    """Convert CivitAI CDN URL from /original=true/ to /width=N/."""
+    return original_url.replace("/original=true/", f"/width={width}/")
+
 # Semaphore to limit concurrent downloads
 _download_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
@@ -100,6 +121,10 @@ async def _download(url: str, session: aiohttp.ClientSession) -> Path | None:
                     log.debug("download_too_large", url=url, size=content_length)
                     return None
 
+                if not check_content_type(resp.content_type):
+                    log.debug("download_content_type_skip", url=url, ct=resp.content_type)
+                    return None
+
                 # Stream to temp file
                 suffix = _get_suffix(url)
                 dest = _temp_dir / f"{uuid4().hex}{suffix}"
@@ -120,6 +145,13 @@ async def _download(url: str, session: aiohttp.ClientSession) -> Path | None:
     except aiohttp.ClientError as e:
         log.debug("download_client_error", url=url, error=str(e))
         return None
+
+    # Quick magic bytes check before full validation
+    with open(dest, "rb") as f:
+        if not check_magic_bytes(f.read(4)):
+            log.debug("download_magic_bytes_skip", url=url)
+            dest.unlink(missing_ok=True)
+            return None
 
     # Validate image integrity
     if not _validate_image(dest):
@@ -230,6 +262,68 @@ async def download_and_store(
         return None
     finally:
         local_path.unlink(missing_ok=True)
+
+
+async def upload_thumbnail(
+    path: Path,
+    platform: str = "unknown",
+    http_session: aiohttp.ClientSession | None = None,
+    max_px: int = 512,
+) -> str | None:
+    """Resize to max_px and upload to Supabase Storage discovered-images/{platform}/{uuid}.jpg.
+
+    Returns the storage key (e.g. 'civitai/{uuid}.jpg') or None on failure.
+    """
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        return None
+
+    thumb_path = path.with_suffix(".thumb.jpg")
+    try:
+        img = Image.open(path)
+        img.thumbnail((max_px, max_px), Image.LANCZOS)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        img.save(thumb_path, "JPEG", quality=80)
+        img.close()
+
+        storage_key = f"{platform}/{uuid4().hex}.jpg"
+        url = (
+            f"{settings.supabase_url}/storage/v1/object"
+            f"/discovered-images/{storage_key}"
+        )
+        headers = {
+            "Authorization": f"Bearer {settings.supabase_service_role_key}",
+            "apikey": settings.supabase_service_role_key,
+            "Content-Type": "image/jpeg",
+        }
+
+        from src.utils.rate_limiter import get_limiter
+
+        limiter = get_limiter("supabase_storage")
+        await limiter.acquire()
+
+        async def _do_upload(sess: aiohttp.ClientSession) -> str | None:
+            with open(thumb_path, "rb") as f:
+                async with sess.put(url, headers=headers, data=f) as resp:
+                    if resp.status not in (200, 201):
+                        body = await resp.text()
+                        log.warning("thumbnail_upload_failed", status=resp.status, body=body[:200])
+                        thumb_path.unlink(missing_ok=True)
+                        return None
+            thumb_path.unlink(missing_ok=True)
+            return storage_key
+
+        if http_session is not None:
+            return await _do_upload(http_session)
+        else:
+            async with aiohttp.ClientSession() as session:
+                return await _do_upload(session)
+
+    except Exception as e:
+        log.warning("thumbnail_upload_error", error=str(e))
+        if thumb_path.exists():
+            thumb_path.unlink(missing_ok=True)
+        return None
 
 
 async def download_from_supabase(

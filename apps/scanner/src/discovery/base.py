@@ -61,6 +61,7 @@ class DiscoveredImageResult:
     page_title: str | None = None
     platform: str | None = None
     image_stored_url: str | None = None
+    search_term: str | None = None
 
 
 @dataclass
@@ -82,6 +83,8 @@ class InlineDetectedImage:
     has_face: bool = False
     face_count: int = 0
     faces: list[InlineDetectedFace] = field(default_factory=list)
+    image_stored_url: str | None = None
+    search_term: str | None = None
 
 
 @dataclass

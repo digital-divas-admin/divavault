@@ -243,6 +243,12 @@ class CivitAICrawl(BaseDiscoverySource):
             if not image_url:
                 continue
 
+            if item.get("type") == "video":
+                continue
+            w, h = item.get("width") or 0, item.get("height") or 0
+            if 0 < w < 100 or 0 < h < 100:
+                continue
+
             image_id = item.get("id")
             page_url = f"https://civitai.com/images/{image_id}" if image_id else None
             meta = item.get("meta") or {}
@@ -254,6 +260,7 @@ class CivitAICrawl(BaseDiscoverySource):
                     page_url=page_url,
                     page_title=meta.get("prompt", "")[:200] if meta.get("prompt") else None,
                     platform="civitai",
+                    search_term=query,
                 )
             )
 
@@ -297,6 +304,12 @@ class CivitAICrawl(BaseDiscoverySource):
         for item in items:
             image_url = item.get("url")
             if not image_url:
+                continue
+
+            if item.get("type") == "video":
+                continue
+            w, h = item.get("width") or 0, item.get("height") or 0
+            if 0 < w < 100 or 0 < h < 100:
                 continue
 
             # Build page URL
@@ -363,6 +376,8 @@ class CivitAICrawl(BaseDiscoverySource):
 
             for version in model.get("modelVersions", []):
                 for image in version.get("images", []):
+                    if image.get("type") == "video":
+                        continue
                     image_url = image.get("url")
                     if image_url:
                         results.append(
@@ -371,6 +386,7 @@ class CivitAICrawl(BaseDiscoverySource):
                                 page_url=page_url,
                                 page_title=model_name[:200],
                                 platform="civitai",
+                                search_term=tag,
                             )
                         )
 

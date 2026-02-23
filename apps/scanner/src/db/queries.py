@@ -8,6 +8,10 @@ from sqlalchemy import and_, delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.utils.logging import get_logger
+
+log = get_logger("db.queries")
+
 from src.db.models import (
     Contributor,
     ContributorEmbedding,
@@ -42,15 +46,10 @@ async def get_pending_images(session: AsyncSession, limit: int = 50) -> list[Con
 
 
 async def get_pending_uploads(session: AsyncSession, limit: int = 50) -> list[Upload]:
-    """Get uploads with embedding_status='pending' and status='active'."""
+    """Get uploads with embedding_status='pending'."""
     result = await session.execute(
         select(Upload)
-        .where(
-            and_(
-                Upload.embedding_status == "pending",
-                Upload.status == "active",
-            )
-        )
+        .where(Upload.embedding_status == "pending")
         .order_by(Upload.created_at)
         .limit(limit)
     )
@@ -322,6 +321,7 @@ async def insert_discovered_image(
     page_url: str | None = None,
     page_title: str | None = None,
     platform: str | None = None,
+    search_term: str | None = None,
 ) -> DiscoveredImage | None:
     """Insert a discovered image (URL dedup via unique index). Returns None on conflict."""
     stmt = (
@@ -332,6 +332,7 @@ async def insert_discovered_image(
             page_url=page_url,
             page_title=page_title,
             platform=platform,
+            search_term=search_term,
         )
         .on_conflict_do_nothing(index_elements=[text("md5(source_url)")])
         .returning(DiscoveredImage)
@@ -636,6 +637,8 @@ async def insert_inline_detected_image(
     has_face: bool,
     face_count: int,
     faces: list[dict],
+    image_stored_url: str | None = None,
+    search_term: str | None = None,
 ) -> bool:
     """Insert a discovered image with face detection results and embeddings atomically.
 
@@ -648,9 +651,9 @@ async def insert_inline_detected_image(
     result = await session.execute(
         text("""
             INSERT INTO discovered_images
-                (source_url, page_url, page_title, platform, has_face, face_count)
+                (source_url, page_url, page_title, platform, has_face, face_count, image_stored_url, search_term)
             VALUES
-                (:source_url, :page_url, :page_title, :platform, :has_face, :face_count)
+                (:source_url, :page_url, :page_title, :platform, :has_face, :face_count, :image_stored_url, :search_term)
             ON CONFLICT (md5(source_url)) DO NOTHING
             RETURNING id
         """),
@@ -661,6 +664,8 @@ async def insert_inline_detected_image(
             "has_face": has_face,
             "face_count": face_count,
             "platform": platform,
+            "image_stored_url": image_stored_url,
+            "search_term": search_term,
         },
     )
     row = result.fetchone()
@@ -691,6 +696,131 @@ async def insert_inline_detected_image(
         )
 
     return True
+
+
+async def batch_insert_inline_detected_images(
+    images: list[dict],
+    platform: str,
+    batch_size: int = 500,
+) -> int:
+    """Batch insert discovered images with face embeddings (two-phase per chunk).
+
+    Each dict in images should have: source_url, page_url, page_title,
+    has_face, face_count, image_stored_url (optional), faces (list of dicts
+    with face_index, embedding (list), detection_score).
+
+    Creates its own sessions internally (one per chunk) for failure isolation.
+    Uses ON CONFLICT DO NOTHING for retry safety.
+    Returns count of new image rows inserted.
+    """
+    from src.db.connection import async_session
+
+    # In-memory dedup by source_url
+    seen_urls: set[str] = set()
+    unique_images: list[dict] = []
+    for img in images:
+        url = img["source_url"]
+        if url not in seen_urls:
+            seen_urls.add(url)
+            unique_images.append(img)
+
+    total_inserted = 0
+
+    for i in range(0, len(unique_images), batch_size):
+        chunk = unique_images[i : i + batch_size]
+
+        try:
+            async with async_session() as session:
+                # Phase 1: Batch insert discovered_images
+                # Build parameterized VALUES clause with indexed placeholders
+                value_clauses = []
+                params: dict = {"platform": platform}
+                for idx, img in enumerate(chunk):
+                    value_clauses.append(
+                        f"(:source_url_{idx}, :page_url_{idx}, :page_title_{idx},"
+                        f" :platform, :has_face_{idx}, :face_count_{idx},"
+                        f" :image_stored_url_{idx}, :search_term_{idx})"
+                    )
+                    params[f"source_url_{idx}"] = img["source_url"]
+                    params[f"page_url_{idx}"] = img.get("page_url")
+                    title = img.get("page_title")
+                    params[f"page_title_{idx}"] = title[:200] if title else None
+                    params[f"has_face_{idx}"] = img.get("has_face", False)
+                    params[f"face_count_{idx}"] = img.get("face_count", 0)
+                    params[f"image_stored_url_{idx}"] = img.get("image_stored_url")
+                    params[f"search_term_{idx}"] = img.get("search_term")
+
+                values_sql = ", ".join(value_clauses)
+                result = await session.execute(
+                    text(f"""
+                        INSERT INTO discovered_images
+                            (source_url, page_url, page_title, platform,
+                             has_face, face_count, image_stored_url, search_term)
+                        VALUES {values_sql}
+                        ON CONFLICT (md5(source_url)) DO NOTHING
+                        RETURNING id, source_url
+                    """),
+                    params,
+                )
+                inserted_rows = result.fetchall()
+
+                if not inserted_rows:
+                    await session.commit()
+                    continue
+
+                # Phase 2: Batch insert discovered_face_embeddings
+                # Build source_url → id mapping
+                url_to_id = {row[1]: row[0] for row in inserted_rows}
+
+                emb_clauses = []
+                emb_params: dict = {}
+                emb_idx = 0
+                for img in chunk:
+                    image_id = url_to_id.get(img["source_url"])
+                    if image_id is None:
+                        continue  # Was a conflict (already existed)
+                    for face in img.get("faces", []):
+                        embedding = face["embedding"]
+                        if hasattr(embedding, "tolist"):
+                            embedding = embedding.tolist()
+                        emb_str = "[" + ",".join(str(x) for x in embedding) + "]"
+                        emb_clauses.append(
+                            f"(:img_id_{emb_idx}, :face_idx_{emb_idx},"
+                            f" CAST(:emb_{emb_idx} AS vector(512)),"
+                            f" :score_{emb_idx})"
+                        )
+                        emb_params[f"img_id_{emb_idx}"] = image_id
+                        emb_params[f"face_idx_{emb_idx}"] = face["face_index"]
+                        emb_params[f"emb_{emb_idx}"] = emb_str
+                        emb_params[f"score_{emb_idx}"] = face.get("detection_score")
+                        emb_idx += 1
+
+                if emb_clauses:
+                    emb_values_sql = ", ".join(emb_clauses)
+                    await session.execute(
+                        text(f"""
+                            INSERT INTO discovered_face_embeddings
+                                (discovered_image_id, face_index, embedding,
+                                 detection_score)
+                            VALUES {emb_values_sql}
+                            ON CONFLICT (discovered_image_id, face_index) DO NOTHING
+                        """),
+                        emb_params,
+                    )
+
+                await session.commit()
+                total_inserted += len(inserted_rows)
+
+        except Exception as e:
+            log.error(
+                "batch_insert_chunk_error",
+                chunk_start=i,
+                chunk_size=len(chunk),
+                error=repr(e),
+            )
+            # Continue with next chunk — failed chunk is skipped
+
+    return total_inserted
 
 
 # --- Discovered face embedding queries ---
@@ -792,6 +922,7 @@ async def batch_insert_discovered_images(
                 "page_title": img.get("page_title"),
                 "platform": platform,
                 "image_stored_url": img.get("image_stored_url"),
+                "search_term": img.get("search_term"),
             }
             for img in chunk
         ]
@@ -1083,12 +1214,13 @@ async def get_scanner_metrics(session: AsyncSession) -> dict:
 
     metrics = {}
 
-    # Pending embeddings (from both tables)
+    # Pending embeddings (from all three tables)
     r = await session.execute(
         text("""
             SELECT
               (SELECT count(*) FROM contributor_images WHERE embedding_status = 'pending') +
-              (SELECT count(*) FROM uploads WHERE embedding_status = 'pending')
+              (SELECT count(*) FROM uploads WHERE embedding_status = 'pending') +
+              (SELECT count(*) FROM registry_identities WHERE embedding_status = 'pending')
         """)
     )
     metrics["embeddings_pending"] = r.scalar_one()
@@ -1198,6 +1330,100 @@ async def get_scanner_metrics(session: AsyncSession) -> dict:
         {"since": day_ago},
     )
     metrics["registry_matches_24h"] = r.scalar_one()
+
+    # --- Pipeline visibility metrics ---
+
+    # Images pending face detection
+    r = await session.execute(
+        text("SELECT count(*) FROM discovered_images WHERE has_face IS NULL")
+    )
+    metrics["images_pending_detection"] = r.scalar_one()
+
+    # Images with no face detected
+    r = await session.execute(
+        text("SELECT count(*) FROM discovered_images WHERE has_face = false")
+    )
+    metrics["images_no_face"] = r.scalar_one()
+
+    # Face embeddings pending matching
+    r = await session.execute(
+        text("SELECT count(*) FROM discovered_face_embeddings WHERE matched_at IS NULL")
+    )
+    metrics["faces_pending_matching"] = r.scalar_one()
+
+    # Faces detected in 24h
+    r = await session.execute(
+        text("SELECT count(*) FROM discovered_face_embeddings WHERE created_at > :since"),
+        {"since": day_ago},
+    )
+    metrics["faces_detected_24h"] = r.scalar_one()
+
+    # Faces matched in 24h
+    r = await session.execute(
+        text(
+            "SELECT count(*) FROM discovered_face_embeddings"
+            " WHERE matched_at IS NOT NULL AND matched_at > :since"
+        ),
+        {"since": day_ago},
+    )
+    metrics["faces_matched_24h"] = r.scalar_one()
+
+    # Matches pending review
+    r = await session.execute(
+        text("SELECT count(*) FROM matches WHERE status = 'new'")
+    )
+    metrics["matches_pending_review"] = r.scalar_one()
+
+    # Per-platform pipeline breakdown
+    r = await session.execute(
+        text("""
+            SELECT
+              platform,
+              count(*) AS total,
+              count(*) FILTER (WHERE has_face IS NULL) AS pending_detection,
+              count(*) FILTER (WHERE has_face = true) AS with_faces,
+              count(*) FILTER (WHERE discovered_at > :since) AS discovered_24h
+            FROM discovered_images
+            WHERE platform IS NOT NULL
+            GROUP BY platform
+        """),
+        {"since": day_ago},
+    )
+    metrics["platform_pipeline"] = [
+        {
+            "platform": row[0],
+            "total": row[1],
+            "pending_detection": row[2],
+            "with_faces": row[3],
+            "discovered_24h": row[4],
+        }
+        for row in r.fetchall()
+    ]
+
+    # Per-platform match counts
+    r = await session.execute(
+        text("""
+            SELECT
+              di.platform,
+              count(*) AS total_matches,
+              count(*) FILTER (WHERE m.created_at > :since) AS matches_24h,
+              count(*) FILTER (WHERE m.status = 'confirmed') AS confirmed
+            FROM matches m
+            JOIN discovered_images di ON di.id = m.discovered_image_id
+            WHERE di.platform IS NOT NULL
+            GROUP BY di.platform
+        """),
+        {"since": day_ago},
+    )
+    metrics["platform_matches"] = [
+        {
+            "platform": row[0],
+            "total_matches": row[1],
+            "matches_24h": row[2],
+            "confirmed": row[3],
+        }
+        for row in r.fetchall()
+    ]
 
     return metrics
 

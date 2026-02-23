@@ -21,12 +21,18 @@ import {
   Gauge,
   Search,
   ShieldAlert,
+  ScanFace,
+  Fingerprint,
+  Layers,
+  ScanLine,
+  Globe,
 } from "lucide-react";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 interface MLIntelligenceTabProps {
   recommendations: Recommendation[];
+  pendingRecsCount: number;
   appliedRecs: Recommendation[];
   modelState: ModelStateEntry[];
   signalStats: { signal_type: string; count: number }[];
@@ -36,10 +42,10 @@ interface MLIntelligenceTabProps {
 // Signal type → display config
 const FEEDBACK_LOOP_CARDS = [
   {
-    signal: "match_confirmed",
+    signal: "match_found",
     icon: CheckCircle2,
-    label: "Match Confirmed",
-    effect: "Reinforces threshold for similar content",
+    label: "Match Found",
+    effect: "New potential match detected by scanner",
     color: "text-green-400",
     bg: "bg-green-500/10",
   },
@@ -115,10 +121,51 @@ const FEEDBACK_LOOP_CARDS = [
     color: "text-cyan-400",
     bg: "bg-cyan-500/10",
   },
+  {
+    signal: "faces_detected",
+    icon: ScanFace,
+    label: "Faces Detected",
+    effect: "Face detection batch processed",
+    color: "text-blue-400",
+    bg: "bg-blue-500/10",
+  },
+  {
+    signal: "matching_completed",
+    icon: Fingerprint,
+    label: "Matching Run",
+    effect: "Face embedding comparison batch completed",
+    color: "text-purple-400",
+    bg: "bg-purple-500/10",
+  },
+  {
+    signal: "ml_cycle_completed",
+    icon: Brain,
+    label: "ML Cycle",
+    effect: "Full ML orchestration cycle completed",
+    color: "text-primary",
+    bg: "bg-primary/10",
+  },
+  {
+    signal: "scan_completed",
+    icon: ScanLine,
+    label: "Scan Completed",
+    effect: "Scan job finished processing",
+    color: "text-emerald-400",
+    bg: "bg-emerald-500/10",
+  },
+  {
+    signal: "taxonomy_mapped",
+    icon: Layers,
+    label: "Taxonomy Mapped",
+    effect: "Platform content taxonomy updated",
+    color: "text-amber-400",
+    bg: "bg-amber-500/10",
+  },
 ];
 
 export function MLIntelligenceTab({
   recommendations,
+  pendingRecsCount,
   appliedRecs,
   modelState,
   signalStats,
@@ -126,7 +173,6 @@ export function MLIntelligenceTab({
 }: MLIntelligenceTabProps) {
   const signalMap = new Map(signalStats.map((s) => [s.signal_type, s.count]));
   const totalSignals = signalStats.reduce((s, x) => s + x.count, 0);
-  const pendingRecs = recommendations.filter((r) => r.status === "pending");
   const latestModel = modelState[0];
   const analyzers = health?.ml?.analyzers || [];
 
@@ -187,7 +233,7 @@ export function MLIntelligenceTab({
             </div>
             <div>
               <p className="text-lg font-bold font-[family-name:var(--font-mono)]">
-                {pendingRecs.length}
+                {pendingRecsCount.toLocaleString()}
               </p>
               <p className="text-[10px] text-muted-foreground">
                 Pending Reviews

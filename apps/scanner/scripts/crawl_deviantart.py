@@ -24,7 +24,7 @@ from sqlalchemy import text
 
 from src.config import settings
 from src.db.connection import async_session
-from src.db.queries import insert_inline_detected_image
+from src.db.queries import batch_insert_inline_detected_images
 from src.discovery.base import DiscoveryContext
 from src.discovery.deviantart_crawl import DeviantArtCrawl, ALL_TAGS
 from src.ingest.embeddings import init_model
@@ -108,31 +108,28 @@ async def main():
     crawl = DeviantArtCrawl()
     result = await crawl.discover_with_detection(context, model)
 
-    # Insert pre-detected images with embeddings
-    new_count = 0
-    for img in result.images:
-        faces_data = [
-            {
-                "face_index": f.face_index,
-                "embedding": f.embedding.tolist() if hasattr(f.embedding, "tolist") else list(f.embedding),
-                "detection_score": f.detection_score,
-            }
-            for f in img.faces
-        ]
-        async with async_session() as session:
-            inserted = await insert_inline_detected_image(
-                session=session,
-                source_url=img.source_url,
-                page_url=img.page_url,
-                page_title=img.page_title,
-                platform="deviantart",
-                has_face=img.has_face,
-                face_count=img.face_count,
-                faces=faces_data,
-            )
-            await session.commit()
-        if inserted:
-            new_count += 1
+    # Batch insert pre-detected images with embeddings
+    images_data = [
+        {
+            "source_url": img.source_url,
+            "page_url": img.page_url,
+            "page_title": img.page_title,
+            "has_face": img.has_face,
+            "face_count": img.face_count,
+            "image_stored_url": img.image_stored_url,
+            "search_term": img.search_term,
+            "faces": [
+                {
+                    "face_index": f.face_index,
+                    "embedding": f.embedding.tolist() if hasattr(f.embedding, "tolist") else list(f.embedding),
+                    "detection_score": f.detection_score,
+                }
+                for f in img.faces
+            ],
+        }
+        for img in result.images
+    ]
+    new_count = await batch_insert_inline_detected_images(images_data, "deviantart")
 
     # Persist cursors for next run
     new_search_terms = dict(search_terms_data)

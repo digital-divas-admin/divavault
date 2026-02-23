@@ -32,7 +32,13 @@ from src.discovery.base import DiscoveryContext
 from src.discovery.platform_crawl import CivitAICrawl
 from src.ingest.embeddings import init_model, get_model
 from src.matching.confidence import get_confidence_tier
-from src.utils.image_download import load_and_resize
+from src.utils.image_download import (
+    check_content_type,
+    check_magic_bytes,
+    civitai_thumbnail_url,
+    load_and_resize,
+    upload_thumbnail,
+)
 from src.utils.logging import get_logger
 
 log = get_logger("crawl_script")
@@ -45,6 +51,29 @@ TEMP_DIR.mkdir(parents=True, exist_ok=True)
 async def crawl_civitai() -> list[dict]:
     """Run CivitAI crawler and return discovered image URLs."""
     crawl = CivitAICrawl()
+
+    # Load mapper config for dynamic search terms (same pattern as DeviantArt)
+    effective_terms: list[str] | None = None
+    tag_depths: dict[str, int] | None = None
+    try:
+        from src.intelligence.mapper.orchestrator import get_search_config
+
+        config = await get_search_config("civitai")
+        if config.effective_terms is not None and len(config.effective_terms) > 0:
+            effective_terms = config.effective_terms
+            tag_depths = config.tag_depths
+            if config.damage_breakdown:
+                d = config.damage_breakdown
+                print(f"Mapper config loaded:")
+                print(f"  HIGH:   {d.get('high', 0)} terms")
+                print(f"  MEDIUM: {d.get('medium', 0)} terms")
+                print(f"  LOW:    {d.get('low', 0)} terms")
+                print(f"  Total:  {len(effective_terms)} unique search terms")
+        elif config.effective_terms is not None and len(config.effective_terms) == 0:
+            print("No enabled sections in mapper — nothing to crawl.")
+            return []
+    except Exception as e:
+        print(f"Mapper unavailable ({e}), using hardcoded defaults")
 
     # Load any existing cursors from DB
     async with async_session() as session:
@@ -59,11 +88,15 @@ async def crawl_civitai() -> list[dict]:
         cursor=search_terms_data.get("cursor"),
         search_cursors=search_terms_data.get("search_cursors"),
         model_cursors=search_terms_data.get("model_cursors"),
+        search_terms=effective_terms,
+        tag_depths=tag_depths,
     )
 
     print(f"\n{'='*60}")
     print(f"PHASE 1: CRAWLING CIVITAI")
     print(f"{'='*60}")
+    terms_count = len(effective_terms) if effective_terms else "8+9 (hardcoded)"
+    print(f"Search terms: {terms_count}")
     print(f"Image pages per term: {settings.civitai_max_pages}")
     print(f"Model pages per tag:  {settings.civitai_model_pages_per_tag}")
     print(f"Resuming from cursors: image={bool(ctx.cursor or ctx.search_cursors)}, model={bool(ctx.model_cursors)}")
@@ -152,14 +185,47 @@ async def insert_discovered_images(images: list[dict]) -> list[dict]:
     return new_images
 
 
-async def download_image(session: aiohttp.ClientSession, url: str, image_id) -> Path | None:
-    """Download an image to temp directory."""
+async def download_thumbnail(
+    session: aiohttp.ClientSession, source_url: str, image_id
+) -> tuple[Path | None, str | None]:
+    """Download CivitAI CDN thumbnail for face detection.
+
+    Returns (path, skip_reason). skip_reason is None on success.
+    """
+    thumb_url = civitai_thumbnail_url(source_url)
     try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+        async with session.get(thumb_url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            if resp.status != 200:
+                return None, f"http_{resp.status}"
+            if not check_content_type(resp.content_type):
+                ct = (resp.content_type or "unknown").split(";")[0].strip()
+                return None, f"content_type:{ct}"
+            data = await resp.read()
+            if len(data) < 500:
+                return None, "too_small"
+            if not check_magic_bytes(data):
+                return None, "magic_bytes"
+            path = TEMP_DIR / f"{image_id}_thumb.jpg"
+            path.write_bytes(data)
+            return path, None
+    except Exception as e:
+        return None, "exception"
+
+
+async def download_original(
+    session: aiohttp.ClientSession, source_url: str, image_id
+) -> Path | None:
+    """Download full-resolution original for embedding extraction (face-positive only)."""
+    try:
+        async with session.get(source_url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             if resp.status != 200:
                 return None
+            if not check_content_type(resp.content_type):
+                return None
             data = await resp.read()
-            if len(data) < 1000:  # too small
+            if len(data) < 1000:
+                return None
+            if not check_magic_bytes(data):
                 return None
             path = TEMP_DIR / f"{image_id}.jpg"
             path.write_bytes(data)
@@ -169,17 +235,20 @@ async def download_image(session: aiohttp.ClientSession, url: str, image_id) -> 
 
 
 async def process_images(new_images: list[dict]) -> int:
-    """Download images, detect faces, store embeddings. Returns faces found."""
+    """Two-pass face detection: thumbnail detect -> original embed. Returns faces found."""
     print(f"\n{'='*60}")
     print(f"PHASE 2: FACE DETECTION ({len(new_images)} images)")
     print(f"{'='*60}")
+    print(f"  Two-pass: thumbnail (width=450) detection -> original embedding")
 
     model = get_model()
     faces_found = 0
     images_processed = 0
+    thumbs_with_faces = 0
+    originals_downloaded = 0
+    skip_counts: dict[str, int] = {}
     start = time.time()
 
-    # Process in batches with concurrent downloads
     batch_size = 20
     connector = aiohttp.TCPConnector(limit=10)
 
@@ -187,25 +256,28 @@ async def process_images(new_images: list[dict]) -> int:
         for batch_start in range(0, len(new_images), batch_size):
             batch = new_images[batch_start:batch_start + batch_size]
 
-            # Download batch concurrently
-            download_tasks = [
-                download_image(http_session, img["source_url"], img["id"])
+            # --- Pass 1: Download thumbnails and detect faces ---
+            thumb_tasks = [
+                download_thumbnail(http_session, img["source_url"], img["id"])
                 for img in batch
             ]
-            paths = await asyncio.gather(*download_tasks)
+            thumb_results = await asyncio.gather(*thumb_tasks)
 
-            # Process each downloaded image
+            face_positive: list[tuple[dict, int]] = []  # (img_dict, face_count_from_thumb)
+
             async with async_session() as db_session:
-                for img, path in zip(batch, paths):
+                for img, (thumb_path, skip_reason) in zip(batch, thumb_results):
                     images_processed += 1
-                    if path is None:
+                    if thumb_path is None:
+                        if skip_reason:
+                            skip_counts[skip_reason] = skip_counts.get(skip_reason, 0) + 1
                         await db_session.execute(text(
                             "UPDATE discovered_images SET has_face = false WHERE id = :id"
                         ), {"id": img["id"]})
                         continue
 
                     try:
-                        cv_img = load_and_resize(path)
+                        cv_img = load_and_resize(thumb_path)
                         if cv_img is None:
                             await db_session.execute(text(
                                 "UPDATE discovered_images SET has_face = false WHERE id = :id"
@@ -219,33 +291,102 @@ async def process_images(new_images: list[dict]) -> int:
                                 "UPDATE discovered_images SET has_face = false, face_count = 0 WHERE id = :id"
                             ), {"id": img["id"]})
                         else:
-                            await db_session.execute(text(
-                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
-                            ), {"id": img["id"], "fc": len(faces)})
-
-                            for face_idx, face in enumerate(faces):
-                                embedding = face.normed_embedding
-                                det_score = float(face.det_score)
-                                await insert_discovered_face_embedding(
-                                    db_session, img["id"], face_idx, embedding, det_score
-                                )
-                                faces_found += 1
-
-                    except Exception as e:
+                            # Face found on thumbnail — queue for original download
+                            thumbs_with_faces += 1
+                            face_positive.append((img, len(faces)))
+                    except Exception:
                         await db_session.execute(text(
                             "UPDATE discovered_images SET has_face = false WHERE id = :id"
                         ), {"id": img["id"]})
                     finally:
-                        path.unlink(missing_ok=True)
+                        thumb_path.unlink(missing_ok=True)
 
                 await db_session.commit()
+
+            # --- Pass 2: Download originals for face-positive images, extract embeddings ---
+            if face_positive:
+                orig_tasks = [
+                    download_original(http_session, img["source_url"], img["id"])
+                    for img, _ in face_positive
+                ]
+                orig_paths = await asyncio.gather(*orig_tasks)
+
+                async with async_session() as db_session:
+                    for (img, thumb_face_count), orig_path in zip(face_positive, orig_paths):
+                        if orig_path is not None:
+                            originals_downloaded += 1
+
+                        # Use original if available, otherwise fall back to re-downloading thumbnail
+                        detect_path = orig_path
+                        used_fallback = False
+                        if detect_path is None:
+                            # Fallback: re-download thumbnail for embeddings (better than discarding)
+                            fb_path, _ = await download_thumbnail(http_session, img["source_url"], img["id"])
+                            detect_path = fb_path
+                            used_fallback = True
+
+                        if detect_path is None:
+                            # Both original and fallback failed
+                            await db_session.execute(text(
+                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
+                            ), {"id": img["id"], "fc": thumb_face_count})
+                            continue
+
+                        try:
+                            cv_img = load_and_resize(detect_path)
+                            if cv_img is None:
+                                await db_session.execute(text(
+                                    "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
+                                ), {"id": img["id"], "fc": thumb_face_count})
+                                continue
+
+                            faces = model.get(cv_img)
+
+                            face_count = len(faces) if len(faces) > 0 else thumb_face_count
+                            await db_session.execute(text(
+                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
+                            ), {"id": img["id"], "fc": face_count})
+
+                            for face_idx, face in enumerate(faces):
+                                await insert_discovered_face_embedding(
+                                    db_session, img["id"], face_idx,
+                                    face.normed_embedding, float(face.det_score),
+                                )
+                                faces_found += 1
+
+                            # Upload thumbnail for match review
+                            await upload_thumbnail(
+                                detect_path, platform="civitai", http_session=http_session,
+                            )
+
+                        except Exception:
+                            await db_session.execute(text(
+                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
+                            ), {"id": img["id"], "fc": thumb_face_count})
+                        finally:
+                            detect_path.unlink(missing_ok=True)
+                            if used_fallback and orig_path:
+                                orig_path.unlink(missing_ok=True)
+
+                    await db_session.commit()
 
             elapsed = time.time() - start
             rate = images_processed / elapsed if elapsed > 0 else 0
             print(f"  Processed {images_processed}/{len(new_images)} | "
                   f"Faces: {faces_found} | "
+                  f"Face+: {thumbs_with_faces} | "
+                  f"Originals: {originals_downloaded} | "
                   f"{rate:.1f} img/sec | "
                   f"{elapsed:.0f}s elapsed", flush=True)
+
+    # Print skip summary
+    if skip_counts:
+        print(f"\n  Skip summary:")
+        for reason, count in sorted(skip_counts.items(), key=lambda x: -x[1]):
+            print(f"    {reason}: {count}")
+
+    pct = (thumbs_with_faces / images_processed * 100) if images_processed > 0 else 0
+    print(f"\n  Face-positive rate: {thumbs_with_faces}/{images_processed} ({pct:.1f}%)")
 
     return faces_found
 

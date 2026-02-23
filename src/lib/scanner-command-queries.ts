@@ -179,6 +179,12 @@ export interface ScoutKeyword {
   enabled: boolean;
 }
 
+export interface PipelineData {
+  pendingDetectionCount: number;
+  pendingMatchingCount: number;
+  matchesPendingReviewCount: number;
+}
+
 export interface CommandCenterData {
   funnel: {
     discovered: number;
@@ -190,12 +196,14 @@ export interface CommandCenterData {
   platforms: PlatformInfo[];
   sections: SectionProfile[];
   recommendations: Recommendation[];
+  pendingRecsCount: number;
   appliedRecs: Recommendation[];
   testUserSummary: { seeded: number; honeypot: number; synthetic: number };
   honeypotItems: HoneypotItem[];
   modelState: ModelStateEntry[];
   signalStats: { signal_type: string; count: number }[];
   platformSparklines: Record<string, number[]>;
+  pipeline: PipelineData;
   scoutDiscoveries: ScoutDiscovery[];
   scoutRuns: ScoutRun[];
   scoutKeywords: ScoutKeyword[];
@@ -227,14 +235,20 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     { data: honeypotRaw },
     // Model state
     { data: modelStateRaw },
-    // Signal stats (raw — we group in JS)
-    { data: signalsRaw },
+    // Signal stats (grouped on server via RPC to avoid PostgREST row cap)
+    { data: signalStatsRaw },
     // Scout discoveries
     { data: scoutDiscoveriesRaw },
     // Scout runs
     { data: scoutRunsRaw },
     // Scout keywords
     { data: scoutKeywordsRaw },
+    // Total pending recommendations count
+    { count: pendingRecsCount },
+    // Pipeline counts
+    { count: pendingDetectionCount },
+    { count: pendingMatchingCount },
+    { count: matchesPendingReviewCount },
   ] = await Promise.all([
     // Funnel
     supabase
@@ -294,10 +308,8 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
       .select("*")
       .order("trained_at", { ascending: false })
       .limit(5),
-    // Signals (all — group in JS)
-    supabase
-      .from("ml_feedback_signals")
-      .select("signal_type"),
+    // Signal stats (grouped on server to avoid PostgREST 1000-row cap)
+    supabase.rpc("get_signal_counts"),
     // Scout discoveries
     supabase
       .from("scout_discoveries")
@@ -316,6 +328,26 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
       .select("*")
       .order("category")
       .order("keyword"),
+    // Total pending recommendations count
+    supabase
+      .from("ml_recommendations")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pending"),
+    // Pipeline: pending face detection
+    supabase
+      .from("discovered_images")
+      .select("*", { count: "exact", head: true })
+      .is("has_face", null),
+    // Pipeline: pending matching
+    supabase
+      .from("discovered_face_embeddings")
+      .select("*", { count: "exact", head: true })
+      .is("matched_at", null),
+    // Pipeline: matches pending review
+    supabase
+      .from("matches")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "new"),
   ]);
 
   // Group test users by type
@@ -327,16 +359,10 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     else if (r.test_user_type === "synthetic") testUserSummary.synthetic++;
   }
 
-  // Group signal stats
-  const signalMap = new Map<string, number>();
-  for (const row of signalsRaw || []) {
-    const r = row as { signal_type: string };
-    signalMap.set(r.signal_type, (signalMap.get(r.signal_type) || 0) + 1);
-  }
-  const signalStats = Array.from(signalMap.entries()).map(([signal_type, count]) => ({
-    signal_type,
-    count,
-  }));
+  // Signal stats come pre-grouped from the get_signal_counts() RPC
+  const signalStats = ((signalStatsRaw || []) as { signal_type: string; count: number }[]).map(
+    (r) => ({ signal_type: r.signal_type, count: Number(r.count) })
+  );
 
   // Platform sparklines — last 7 scan_jobs per enabled platform
   const enabledPlatforms = (platformsRaw || [])
@@ -398,12 +424,18 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     platforms,
     sections: (sectionsRaw || []) as SectionProfile[],
     recommendations: (recsRaw || []) as Recommendation[],
+    pendingRecsCount: pendingRecsCount || 0,
     appliedRecs: (appliedRecsRaw || []) as Recommendation[],
     testUserSummary,
     honeypotItems: (honeypotRaw || []) as HoneypotItem[],
     modelState: (modelStateRaw || []) as ModelStateEntry[],
     signalStats,
     platformSparklines,
+    pipeline: {
+      pendingDetectionCount: pendingDetectionCount || 0,
+      pendingMatchingCount: pendingMatchingCount || 0,
+      matchesPendingReviewCount: matchesPendingReviewCount || 0,
+    },
     scoutDiscoveries: (scoutDiscoveriesRaw || []) as ScoutDiscovery[],
     scoutRuns: (scoutRunsRaw || []) as ScoutRun[],
     scoutKeywords: (scoutKeywordsRaw || []) as ScoutKeyword[],

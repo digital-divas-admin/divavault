@@ -385,11 +385,16 @@ async def get_prioritized_search_config(platform: str) -> list[TagSearchConfig] 
 
 async def update_section_stats(
     platform: str,
-    total_scanned: int,
-    total_faces: int,
+    **_kwargs,
 ) -> None:
-    """Update aggregate stats on all enabled sections for a platform after a crawl."""
+    """Recompute per-section stats from actual discovered_images data.
+
+    Uses search_term column to map images to sections via their tags.
+    Untagged (legacy) images are distributed proportionally by tag count.
+    Accepts and ignores total_scanned/total_faces kwargs for backward compat.
+    """
     async with async_session() as session:
+        # 1. Get all enabled sections with their tags
         result = await session.execute(
             select(MLSectionProfile)
             .where(MLSectionProfile.platform == platform)
@@ -400,15 +405,51 @@ async def update_section_stats(
         if not profiles:
             return
 
-        # Distribute stats evenly across enabled sections (approximation)
-        per_section_scanned = total_scanned // len(profiles) if profiles else 0
-        per_section_faces = total_faces // len(profiles) if profiles else 0
+        # 2. Query per-tag stats from discovered_images
+        tag_stats_rows = (await session.execute(text("""
+            SELECT search_term,
+                   COUNT(*) AS scanned,
+                   COUNT(*) FILTER (WHERE has_face = true) AS faces
+            FROM discovered_images
+            WHERE platform = :platform
+              AND search_term IS NOT NULL
+            GROUP BY search_term
+        """), {"platform": platform})).fetchall()
 
+        tag_stats = {row[0]: (row[1], row[2]) for row in tag_stats_rows}
+
+        # 3. Also get platform-level stats for untagged images (legacy data)
+        untagged = (await session.execute(text("""
+            SELECT COUNT(*) AS scanned,
+                   COUNT(*) FILTER (WHERE has_face = true) AS faces
+            FROM discovered_images
+            WHERE platform = :platform AND search_term IS NULL
+        """), {"platform": platform})).fetchone()
+        untagged_scanned = untagged[0] if untagged else 0
+        untagged_faces = untagged[1] if untagged else 0
+
+        # 4. Map tags → sections, compute per-section totals
+        all_section_tags = sum(len(p.tags or []) for p in profiles)
         for profile in profiles:
-            profile.total_scanned = (profile.total_scanned or 0) + per_section_scanned
-            profile.total_faces = (profile.total_faces or 0) + per_section_faces
-            total = profile.total_scanned
-            profile.face_rate = profile.total_faces / total if total > 0 else 0.0
+            section_scanned = 0
+            section_faces = 0
+            for tag in (profile.tags or []):
+                stats = tag_stats.get(tag)
+                if stats:
+                    section_scanned += stats[0]
+                    section_faces += stats[1]
+
+            # Distribute untagged images proportionally by tag count
+            if all_section_tags > 0 and untagged_scanned > 0:
+                weight = len(profile.tags or []) / all_section_tags
+                section_scanned += int(untagged_scanned * weight)
+                section_faces += int(untagged_faces * weight)
+
+            profile.total_scanned = section_scanned
+            profile.total_faces = section_faces
+            profile.face_rate = (
+                section_faces / section_scanned if section_scanned > 0 else 0.0
+            )
             profile.last_crawl_at = datetime.now(timezone.utc)
 
         await session.commit()

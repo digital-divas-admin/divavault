@@ -11,8 +11,10 @@ from uuid import UUID
 import numpy as np
 
 from src.config import TIER_CONFIG, settings
+from sqlalchemy import and_, or_, update as sa_update
+
 from src.db.connection import async_session
-from src.db.models import ContributorImage, Upload
+from src.db.models import ContributorImage, RegistryIdentity, Upload
 from src.db.queries import (
     backfill_contributor_against_discovered,
     contributor_has_embeddings,
@@ -33,6 +35,34 @@ from src.utils.image_download import download_from_supabase, load_and_resize
 from src.utils.logging import get_logger
 
 log = get_logger("ingest")
+
+
+async def _cleanup_no_selfie_identities(session) -> None:
+    """Mark registry identities with pending embeddings but no selfie as 'not_ready'.
+
+    These can never be processed until a selfie is uploaded. Marking them as
+    'not_ready' keeps them distinguishable from actual failures and prevents
+    them from being permanently stuck as 'pending'.
+    """
+    result = await session.execute(
+        sa_update(RegistryIdentity)
+        .where(
+            and_(
+                RegistryIdentity.embedding_status == "pending",
+                or_(
+                    RegistryIdentity.selfie_bucket.is_(None),
+                    RegistryIdentity.selfie_path.is_(None),
+                ),
+            )
+        )
+        .values(
+            embedding_status="not_ready",
+            embedding_error="no_selfie_uploaded",
+        )
+    )
+    if result.rowcount > 0:
+        log.info("registry_no_selfie_cleanup", marked_not_ready=result.rowcount)
+
 
 def init_model(model_name: str | None = None) -> object:
     """Initialize the face detection model. Call once on startup.
@@ -108,6 +138,11 @@ async def process_pending_registry_selfies() -> int:
     processed = 0
 
     async with async_session() as session:
+        # Mark registry identities with no selfie uploaded as not_ready
+        # so they don't stay stuck as 'pending' forever
+        await _cleanup_no_selfie_identities(session)
+        await session.commit()
+
         selfies = await get_pending_registry_selfies(session, limit=50)
         for identity in selfies:
             try:

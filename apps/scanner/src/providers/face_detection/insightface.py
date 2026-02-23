@@ -1,5 +1,6 @@
 """InsightFace face detection + embedding provider."""
 
+import os
 from pathlib import Path
 
 from insightface.app import FaceAnalysis
@@ -13,6 +14,26 @@ from src.utils.logging import get_logger
 log = get_logger("provider.insightface")
 
 
+def _add_nvidia_dll_paths() -> None:
+    """Add nvidia pip package DLL dirs to PATH so ONNX Runtime can find cuDNN."""
+    try:
+        import nvidia.cudnn
+        cudnn_bin = os.path.join(nvidia.cudnn.__path__[0], "bin")
+        if os.path.isdir(cudnn_bin) and cudnn_bin not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = cudnn_bin + os.pathsep + os.environ.get("PATH", "")
+            log.info("added_cudnn_to_path", path=cudnn_bin)
+    except ImportError:
+        pass
+    try:
+        import nvidia.cublas
+        cublas_bin = os.path.join(nvidia.cublas.__path__[0], "bin")
+        if os.path.isdir(cublas_bin) and cublas_bin not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = cublas_bin + os.pathsep + os.environ.get("PATH", "")
+            log.info("added_cublas_to_path", path=cublas_bin)
+    except ImportError:
+        pass
+
+
 class InsightFaceFaceDetection(FaceDetectionProvider):
     """Face detection and embedding via InsightFace (buffalo_sc / ArcFace)."""
 
@@ -21,10 +42,22 @@ class InsightFaceFaceDetection(FaceDetectionProvider):
 
     def init_model(self, model_name: str | None = None) -> None:
         name = model_name or settings.insightface_model
-        log.info("loading_insightface_model", model=name)
-        self._model = FaceAnalysis(name=name, providers=["CPUExecutionProvider"])
+        _add_nvidia_dll_paths()
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        log.info("loading_insightface_model", model=name, requested_providers=providers)
+        self._model = FaceAnalysis(name=name, providers=providers)
         self._model.prepare(ctx_id=0, det_size=(640, 640))
-        log.info("insightface_model_loaded", model=name)
+
+        # Log the actual provider selected by ONNX Runtime
+        active_providers = []
+        for m in self._model.models.values():
+            sess_providers = getattr(m, "providers", None) or (
+                m.session.get_providers() if hasattr(m, "session") else []
+            )
+            for p in sess_providers:
+                if p not in active_providers:
+                    active_providers.append(p)
+        log.info("insightface_model_loaded", model=name, active_providers=active_providers)
 
     def get_model(self) -> FaceAnalysis:
         if self._model is None:

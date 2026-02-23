@@ -168,6 +168,7 @@ class DiscoveredImage(Base):
     page_title: Mapped[str | None] = mapped_column(Text)
     platform: Mapped[str | None] = mapped_column(Text)
     image_stored_url: Mapped[str | None] = mapped_column(Text)
+    search_term: Mapped[str | None] = mapped_column(Text)
     has_face: Mapped[bool | None] = mapped_column(Boolean)
     face_count: Mapped[int | None] = mapped_column(Integer)
     phash = mapped_column(BIT(64))

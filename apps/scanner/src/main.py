@@ -26,6 +26,43 @@ _scheduler_task: asyncio.Task | None = None
 _health_recommender = None
 
 
+def _get_compute_info() -> dict:
+    """Return compute/GPU status for the health endpoint."""
+    gpu_available = False
+    try:
+        import onnxruntime
+        gpu_available = "CUDAExecutionProvider" in onnxruntime.get_available_providers()
+    except Exception:
+        pass
+
+    # Detect actual execution provider from the loaded InsightFace model
+    execution_provider = "unknown"
+    try:
+        from src.providers import get_face_detection_provider
+        provider = get_face_detection_provider()
+        model = provider.get_model()
+        for m in model.models.values():
+            sess_providers = getattr(m, "providers", None) or (
+                m.session.get_providers() if hasattr(m, "session") else []
+            )
+            if "CUDAExecutionProvider" in sess_providers:
+                execution_provider = "CUDAExecutionProvider"
+                break
+            if "CPUExecutionProvider" in sess_providers:
+                execution_provider = "CPUExecutionProvider"
+    except RuntimeError:
+        execution_provider = "not_initialized"
+    except Exception:
+        execution_provider = "error"
+
+    return {
+        "face_detection_provider": settings.face_detection_provider,
+        "execution_provider": execution_provider,
+        "gpu_available": gpu_available,
+        "model": settings.insightface_model,
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
@@ -118,6 +155,7 @@ async def health():
         "metrics": metrics,
         "ml": ml,
         "test_users": test_users,
+        "compute": _get_compute_info(),
     }
 
 

@@ -5,12 +5,14 @@ import type { CommandCenterData } from "@/lib/scanner-command-queries";
 import { ScanLineHeader } from "./scan-line-header";
 import { HealthPulseBar } from "./health-pulse-bar";
 import { CommandTab } from "./command-tab";
+import { PipelineTab } from "./pipeline-tab";
 import { CrawlMapTab } from "./crawl-map-tab";
 import { MLIntelligenceTab } from "./ml-intelligence-tab";
 import { TestUsersTab } from "./test-users-tab";
 import { ScoutTab } from "./scout-tab";
 import {
   LayoutDashboard,
+  GitBranch,
   Map,
   Brain,
   FlaskConical,
@@ -19,6 +21,7 @@ import {
 
 const TABS = [
   { id: "command", label: "Command", icon: LayoutDashboard },
+  { id: "pipeline", label: "Pipeline", icon: GitBranch },
   { id: "crawl-map", label: "Crawl Map", icon: Map },
   { id: "ml-intelligence", label: "ML Intelligence", icon: Brain },
   { id: "test-users", label: "Test Users", icon: FlaskConical },
@@ -104,6 +107,13 @@ export function CommandCenter({ initialData }: CommandCenterProps) {
           onSwitchTab={handleSwitchTab}
         />
       )}
+      {activeTab === "pipeline" && (
+        <PipelineTab
+          data={initialData}
+          health={health}
+          platforms={initialData.platforms}
+        />
+      )}
       {activeTab === "crawl-map" && (
         <CrawlMapTab
           sections={initialData.sections}
@@ -114,6 +124,7 @@ export function CommandCenter({ initialData }: CommandCenterProps) {
       {activeTab === "ml-intelligence" && (
         <MLIntelligenceTab
           recommendations={initialData.recommendations}
+          pendingRecsCount={initialData.pendingRecsCount}
           appliedRecs={initialData.appliedRecs}
           modelState={initialData.modelState}
           signalStats={initialData.signalStats}

@@ -30,7 +30,7 @@ import {
 
 // --- Types ---
 
-type TabId = "command" | "crawl-map" | "ml-intelligence" | "test-users";
+type TabId = "command" | "pipeline" | "crawl-map" | "ml-intelligence" | "test-users" | "scout";
 
 interface CommandTabProps {
   data: CommandCenterData;
@@ -184,7 +184,6 @@ function PipelineFunnel({ funnel }: { funnel: CommandCenterData["funnel"] }) {
   const stages = [
     { label: "Discovered", value: funnel.discovered, color: "bg-slate-500" },
     { label: "Faces Found", value: funnel.withFaces, color: "bg-blue-500" },
-    { label: "Compared", value: funnel.compared, color: "bg-indigo-500" },
     { label: "Matched", value: funnel.matched, color: "bg-purple-500" },
     { label: "Confirmed", value: funnel.confirmed, color: "bg-green-500" },
   ];
@@ -371,8 +370,10 @@ function PlatformCards({
 
 function PendingRecommendations({
   recommendations,
+  pendingRecsCount,
 }: {
   recommendations: CommandCenterData["recommendations"];
+  pendingRecsCount: number;
 }) {
   const [optimistic, setOptimistic] = useState<Record<string, string>>({});
 
@@ -400,7 +401,7 @@ function PendingRecommendations({
   return (
     <div>
       <h3 className="text-xs font-medium text-muted-foreground mb-3">
-        ML Recommendations ({pending.length} pending)
+        ML Recommendations ({pendingRecsCount.toLocaleString()} pending)
       </h3>
       <div className="space-y-2">
         {pending.slice(0, 5).map((rec) => (
@@ -562,7 +563,7 @@ export function CommandTab({ data, activity, onSwitchTab }: CommandTabProps) {
         <StatsRow data={data} />
         <PipelineFunnel funnel={data.funnel} />
         <PlatformCards data={data} onSwitchTab={onSwitchTab} />
-        <PendingRecommendations recommendations={data.recommendations} />
+        <PendingRecommendations recommendations={data.recommendations} pendingRecsCount={data.pendingRecsCount} />
         <TestUserSummary summary={data.testUserSummary} onSwitchTab={onSwitchTab} />
       </div>
 
