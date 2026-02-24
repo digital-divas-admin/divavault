@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/admin-queries";
+import { generateDmcaNotice } from "@/lib/dmca-templates";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -166,38 +167,120 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  let body: { id: string; status: string };
+  let body: { id?: string; ids?: string[]; status: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // Support both single id and bulk ids (backward compatible)
+  const ids: string[] = body.ids ?? (body.id ? [body.id] : []);
+
   const validStatuses = ["confirmed", "rejected", "false_positive"];
-  if (!body.id || !validStatuses.includes(body.status)) {
+  if (ids.length === 0 || !validStatuses.includes(body.status)) {
     return NextResponse.json(
       {
-        error: `id required, status must be one of: ${validStatuses.join(", ")}`,
+        error: `id or ids required, status must be one of: ${validStatuses.join(", ")}`,
       },
       { status: 400 }
     );
   }
 
   const service = await createServiceClient();
+  const now = new Date().toISOString();
+  const reviewerEmail = user.email ?? user.id;
 
   try {
+    // Update match status + audit fields
     const { error } = await service
       .from("matches")
-      .update({ status: body.status })
-      .eq("id", body.id);
+      .update({
+        status: body.status,
+        reviewed_at: now,
+        reviewed_by: reviewerEmail,
+      })
+      .in("id", ids);
 
     if (error) throw error;
 
-    return NextResponse.json({ id: body.id, status: body.status });
+    // Insert ML feedback signals for each match
+    const signalTypeMap: Record<string, string> = {
+      confirmed: "match_confirmed",
+      rejected: "match_rejected",
+      false_positive: "match_rejected",
+    };
+    const signals = ids.map((matchId) => ({
+      signal_type: signalTypeMap[body.status],
+      entity_type: "match",
+      entity_id: matchId,
+      context: { reviewer: reviewerEmail, status: body.status },
+      actor: reviewerEmail,
+    }));
+    await service.from("ml_feedback_signals").insert(signals);
+
+    // On confirmed: auto-generate DMCA takedown drafts
+    if (body.status === "confirmed") {
+      await generateTakedownDrafts(service, ids);
+    }
+
+    return NextResponse.json({
+      ids,
+      status: body.status,
+      reviewed_at: now,
+    });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Update failed" },
       { status: 500 }
     );
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function generateTakedownDrafts(service: any, matchIds: string[]) {
+  // Fetch match details with related contributor and discovered image info
+  const { data: matches } = await service
+    .from("matches")
+    .select(`
+      id, contributor_id, similarity_score, confidence_tier,
+      is_ai_generated, ai_detection_score,
+      discovered_images!inner(source_url, page_url, platform),
+      contributors(full_name, email)
+    `)
+    .in("id", matchIds);
+
+  if (!matches || matches.length === 0) return;
+
+  const takedowns = [];
+  for (const m of matches) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const di = m.discovered_images as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const c = m.contributors as any;
+    const infringingUrl = di?.page_url || di?.source_url;
+    const platform = di?.platform || "Unknown";
+
+    if (!infringingUrl) continue;
+
+    const noticeContent = generateDmcaNotice({
+      contributorName: c?.full_name || "Protected Contributor",
+      contributorEmail: c?.email || "legal@madeofus.ai",
+      infringingUrl,
+      platform,
+    });
+
+    takedowns.push({
+      match_id: m.id,
+      contributor_id: m.contributor_id,
+      platform,
+      takedown_type: "dmca",
+      notice_content: noticeContent,
+      status: "pending",
+    });
+  }
+
+  if (takedowns.length > 0) {
+    await service.from("takedowns").insert(takedowns);
   }
 }

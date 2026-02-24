@@ -32,10 +32,26 @@ The scanner targets **high-risk platforms** where AI-generated face content conc
 .venv/Scripts/python.exe -m src.main                     # Start FastAPI service (port 8000)
 .venv/Scripts/python.exe scripts/crawl_and_backfill.py   # CivitAI full pipeline (crawl → detect → match)
 .venv/Scripts/python.exe scripts/crawl_deviantart.py     # DeviantArt crawl with inline face detection
+.venv/Scripts/python.exe scripts/crawl_deviantart.py --backfill  # DeviantArt deep backfill (persistent cursors)
 .venv/Scripts/python.exe scripts/process_faces.py        # Face detection backfill (safety net)
 ```
 
 Scripts run **standalone** — they don't need the FastAPI service. They connect directly to the database.
+
+### Production Operations (PowerShell)
+
+```powershell
+# Run from apps/scanner/ directory
+powershell -ExecutionPolicy Bypass -File scripts/run_production.ps1   # Supervisor: auto-restart on crash, log rotation
+powershell -ExecutionPolicy Bypass -File scripts/stop_scanner.ps1     # Graceful shutdown via PID file
+powershell -ExecutionPolicy Bypass -File scripts/check_health.ps1     # Health check: status, uptime, GPU, metrics
+```
+
+**Supervisor** (`run_production.ps1`): Runs scanner in a loop, restarts with 30s delay on crash, rotates logs (keeps 7), writes PID to `logs/scanner.pid`. Clean exit (code 0) stops the supervisor.
+
+**Shutdown** (`stop_scanner.ps1`): Reads PID from `logs/scanner.pid`, sends terminate signal, waits 30s for graceful exit, force-kills if needed.
+
+**Health check** (`check_health.ps1`): Hits `localhost:8000/health`, displays status/uptime/GPU/metrics. Exit code 0 = healthy, 1 = unreachable.
 
 ### Running Tests
 
@@ -57,10 +73,13 @@ apps/scanner/
 │   ├── crawl_and_backfill.py        # CivitAI: 4-phase pipeline (crawl → two-pass thumbnail detect → match)
 │   ├── crawl_deviantart.py          # DeviantArt: crawl with inline face detection (wixmp tokens expire)
 │   ├── process_faces.py             # Backfill face detection (two-pass for CivitAI, single-pass for others)
-│   └── instrumented_test_crawl.py   # Debug instrumentation for CivitAI pipeline
+│   ├── instrumented_test_crawl.py   # Debug instrumentation for CivitAI pipeline
+│   ├── run_production.ps1           # Supervisor: auto-restart, log rotation, PID tracking
+│   ├── stop_scanner.ps1             # Graceful shutdown via PID file
+│   └── check_health.ps1             # Health check: status, uptime, GPU, metrics
 ├── src/
 │   ├── main.py                      # FastAPI app + scheduler startup/shutdown
-│   ├── config.py                    # Pydantic BaseSettings + TIER_CONFIG (free/protected/premium)
+│   ├── config.py                    # Pydantic BaseSettings + TIER_CONFIG + backfill settings
 │   ├── db/
 │   │   ├── connection.py            # SQLAlchemy async engine (pool_size=10, overflow=20, recycle=300s)
 │   │   ├── models.py               # SQLAlchemy 2.0 ORM models
@@ -77,7 +96,7 @@ apps/scanner/
 │   │   ├── embeddings.py            # Poll pending images → detect → embed → store
 │   │   └── centroid.py              # Quality-weighted centroid computation (≥3 embeddings)
 │   ├── discovery/
-│   │   ├── base.py                  # Abstract discovery source interface
+│   │   ├── base.py                  # DiscoveryContext + DiscoveryResult dataclasses
 │   │   ├── platform_crawl.py        # CivitAI crawler
 │   │   ├── deviantart_crawl.py      # DeviantArt crawler (inline detection, hybrid RSS + HTML)
 │   │   ├── reverse_image.py         # TinEye reverse image search
@@ -128,7 +147,7 @@ apps/scanner/
 │   │   ├── takedown.py              # DMCA notice generation
 │   │   └── templates.py             # Legal template library
 │   ├── jobs/
-│   │   ├── scheduler.py             # Main scheduler (priority: detection > matching > crawl)
+│   │   ├── scheduler.py             # Main scheduler (sweep + backfill, priority: detection > matching > crawl)
 │   │   ├── store.py                 # PostgreSQL job store + stale job recovery
 │   │   └── cleanup.py               # Periodic cleanup routines
 │   ├── detection/
@@ -160,11 +179,40 @@ apps/scanner/
 
 ### Three-Phase Pipeline (scheduler.py)
 
-The scanner runs in three phases, prioritized: **Detection > Matching > Crawl** (process existing before discovering more).
+The scanner runs in three phases, prioritized: **Detection > Matching > Crawl** (process existing before discovering more). Scheduler tick is 30s, face detection runs up to 20 subprocess chunks per tick.
 
 1. **Crawl** — Site-specific scraper → INSERT into `discovered_images`
 2. **Detect** — Subprocess-isolated face detection on `has_face IS NULL` images → store in `discovered_face_embeddings`
 3. **Match** — Compare embeddings against contributor registry via pgvector
+
+### Sweep + Backfill Architecture
+
+Each crawl tick has two passes:
+
+1. **Sweep** (unchanged) — Shallow scan for new content. 10 pages/term, daily interval. Cursors reset to `None` when a term is exhausted so the next sweep starts fresh from newest content.
+
+2. **Backfill** — Deep historical crawl that runs after sweep. Deeper page limits (`civitai_backfill_pages=100`, `deviantart_backfill_pages=50`). Cursors use `"exhausted"` sentinel instead of `None` — once a term runs out of pages, it's permanently skipped. Backfill state is stored in `platform_crawl_schedule.search_terms` JSONB under a `backfill` sub-key.
+
+**CivitAI completion:** The global feed cursor contains `"{id}|{timestamp_ms}"`. Backfill walks newest→oldest and stops at a 2-year cutoff (`_CIVITAI_BACKFILL_CUTOFF_DAYS=730`). Progress is tracked as a timeline position.
+
+**DeviantArt completion:** 206 tags × up to ~200 pages each. When a tag returns empty, it's exhausted. 206/206 exhausted = fully catalogued.
+
+**Post-completion:** Once `backfill.complete=true`, the backfill phase stops. Only the daily sweep remains for catching new uploads. This is the end state: "fully indexed, with lightweight daily scans."
+
+**Backfill JSONB state** (stored in `platform_crawl_schedule.search_terms.backfill`):
+```json
+{
+  "cursors": {"term1": "nextCursor123", "term2": "exhausted"},
+  "model_cursors": {"tag1": "exhausted"},
+  "terms_total": 17,
+  "terms_exhausted": 11,
+  "cursor_date": "2025-06-30T00:00:00Z",
+  "oldest_date": "2022-11-16T00:00:00Z",
+  "started_at": "2026-02-24T...",
+  "completed_at": null,
+  "complete": false
+}
+```
 
 ### CivitAI: Two-Pass Thumbnail Architecture
 
@@ -188,6 +236,7 @@ If `crawl_and_backfill.py` crashes mid-run, `process_faces.py` picks up all `has
 - Auto-detects CivitAI images (has `/original=true/` in URL) → uses two-pass thumbnail architecture
 - Non-CivitAI images → single-pass (download and detect)
 - Uses **subprocess isolation** for memory management (configurable chunk size + timeout)
+- Splits batch upfront into thumbable vs standard, downloads all concurrently (TCP connector limit=50), then filters face-positive before downloading full originals
 
 ### Provider Factory Pattern
 
@@ -205,6 +254,14 @@ When a contributor has ≥3 embeddings:
 - Outlier rejection: drop embeddings with cosine similarity <0.50 to centroid
 - More robust than single best-detection-score embedding
 - Stored as `embedding_type='centroid'` with metadata (count, outliers, avg score)
+
+### Registry (Claim Users)
+
+Separate from contributors (who have `auth.users` rows), **registry identities** are claim-based users who submit a selfie for matching without creating a full account. Stored in `registry_identities` with their own embedding pipeline (`embedding_status: pending → processed`). Matches against discovered images go into `registry_matches` (separate from `matches` which are for contributors).
+
+### Daily Coverage Snapshots
+
+The scheduler captures daily per-platform metrics into `scanner_daily_snapshots` every 24h. Tracks images discovered, faces detected, embeddings created, matches found/confirmed/rejected, and tag exhaustion. Used by the dashboard's coverage trends chart.
 
 ### Database Connection
 
@@ -254,7 +311,7 @@ CivitAI API responses are filtered for `type: "video"` and tiny images (`<100px`
 
 ### Cursor-Based Pagination
 
-Crawl state persists in `platform_crawl_schedule.search_terms` JSONB column so crawls resume where they left off after crashes or restarts.
+Crawl state persists in `platform_crawl_schedule.search_terms` JSONB column so crawls resume where they left off after crashes or restarts. Sweep cursors live at the top level (`search_cursors`, `model_cursors`). Backfill cursors live under a `backfill` sub-key with separate `cursors` and `model_cursors`. The `"exhausted"` sentinel in backfill mode permanently marks a term as fully crawled — it is never reset.
 
 ## Database Tables
 
@@ -267,10 +324,13 @@ Crawl state persists in `platform_crawl_schedule.search_terms` JSONB column so c
 ### Scanner-Owned
 - `discovered_images` — Crawled image URLs with metadata (platform, source_url, has_face boolean)
 - `discovered_face_embeddings` — 512-dim ArcFace vectors (pgvector type)
-- `matches` — Potential likeness matches (status: new/confirmed/rejected/false_positive)
+- `matches` — Potential likeness matches (status: new/confirmed/rejected/false_positive, reviewed_by for audit trail)
 - `contributor_embeddings` — Contributor face vectors for matching registry
-- `platform_crawl_schedule` — Crawl scheduling + cursor-based pagination state
+- `platform_crawl_schedule` — Crawl scheduling + cursor-based pagination state + estimated_total_images
 - `evidence` — Screenshot + metadata (hash, URL, captured_at)
+- `scanner_daily_snapshots` — Daily per-platform coverage metrics (images, faces, matches, tag exhaustion)
+- `registry_identities` — Claim/registry users (no auth.users row) with selfie embedding
+- `registry_matches` — Matches between discovered images and registry identities
 - `ml_feedback_signals` — Pipeline events (signal_type, entity_type, context JSON)
 - `ml_recommendations` — Auto-generated suggestions (status: pending/applied/dismissed)
 - `ml_model_state` — Model versioning + training metadata
@@ -298,11 +358,16 @@ DEVIANTART_CLIENT_SECRET=            # DeviantArt OAuth secret
 PROXY_URL=                           # ScraperAPI proxy (API calls only, not image downloads)
 S3_BUCKET_NAME=madeofus-evidence     # Evidence storage bucket
 
-# Crawl depth (increase for production runs)
-CIVITAI_MAX_PAGES=5                  # Image search pages per term (100 images/page)
-CIVITAI_MODEL_PAGES_PER_TAG=3        # Model/LoRA pages per tag
+# Crawl depth — sweep (daily new content)
+CIVITAI_MAX_PAGES=10                 # Image search pages per term (100 images/page)
+CIVITAI_MODEL_PAGES_PER_TAG=10       # Model/LoRA pages per tag
 DEVIANTART_MAX_PAGES=10              # Pages per DeviantArt category
 DEVIANTART_CONCURRENCY=10            # Parallel DeviantArt requests
+
+# Backfill (deep historical cataloguing, runs after sweep)
+BACKFILL_ENABLED=true                # Enable backfill pass after each sweep
+CIVITAI_BACKFILL_PAGES=100           # 100 pages/term/tick (~10K images/term)
+DEVIANTART_BACKFILL_PAGES=50         # 50 pages/tag/tick (~1.2K images/tag)
 
 # Scout (platform discovery)
 GOOGLE_CSE_API_KEY=                  # Google Custom Search (optional)
@@ -321,6 +386,7 @@ GOOGLE_CSE_CX=                       # Custom Search Engine ID (optional)
 8. **Use `await session.flush()` before accessing IDs** — SQLAlchemy won't populate auto-generated IDs until flush.
 9. **Temp file cleanup** — `cleanup_old_temp_files()` is called periodically; don't assume temp files persist.
 10. **No proxy for image downloads** — ScraperAPI proxy is only for CivitAI API calls. CDN image/thumbnail downloads go direct.
+11. **Temp directory is OS-dependent** — Uses `tempfile.gettempdir() / "scanner_images"` (Windows: `%TEMP%\scanner_images`, Linux: `/tmp/scanner_images`). Don't hardcode `/tmp/`.
 
 ## GPU/ONNX Setup
 
@@ -342,12 +408,41 @@ GOOGLE_CSE_CX=                       # Custom Search Engine ID (optional)
 
 ## Admin Dashboard (Next.js Frontend)
 
-The Scanner Command Center lives in the Next.js app at `/admin/scanner` with 6 tabs:
-- **Command** — Pipeline funnel, header stats, manual trigger buttons
-- **Pipeline** — Per-stage metrics
+The Scanner Command Center lives in the Next.js app at `/admin/scanner` with 7 tabs:
+- **Command** — Scanner health card (status/uptime/GPU/throughput/backlogs), pipeline funnel, header stats, manual trigger buttons, per-platform backfill progress, coverage trends
+- **Pipeline** — Per-stage metrics, sweep + backfill depth bars per platform
 - **Crawl Map** — Job history and success rates
+- **Matches** — Match review dashboard with pending/confirmed/rejected matches
 - **ML Intelligence** — Feedback signals, recommendations, analyzer status
 - **Test Users** — Honeypot management
 - **Scout** — Keyword management and discovery results
 
 Dashboard queries: `src/lib/scanner-command-queries.ts`, components: `src/components/admin/scanner/`.
+
+### Health Data Flow
+
+The health endpoint response (polled every 30s by the dashboard) has this shape:
+```json
+{
+  "status": "running",
+  "uptime_seconds": 12345,
+  "metrics": {
+    "images_discovered_24h": 130000,
+    "faces_detected_24h": 80000,
+    "matches_found_24h": 1,
+    "images_pending_detection": 0,
+    "faces_pending_matching": 0,
+    "embeddings_pending": 0,
+    ...
+  },
+  "compute": {
+    "gpu_available": true,
+    "execution_provider": "CUDAExecutionProvider",
+    "model": "buffalo_sc"
+  },
+  "ml": { "observer_buffer_size": 0, "analyzers": {...} },
+  "test_users": { "honeypots": 5, ... }
+}
+```
+
+Health is consumed by `HealthPulseBar` (top-level scanning/pipeline/coverage dots) and `ScannerHealth` card (Command tab — status badge, uptime, GPU, 24h throughput, backlog counts).

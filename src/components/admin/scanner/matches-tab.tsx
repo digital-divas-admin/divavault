@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import type { MatchItem } from "@/lib/scanner-command-queries";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -61,6 +62,8 @@ export function MatchesTab({ matches, pendingReviewCount }: MatchesTabProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkUpdating, setBulkUpdating] = useState(false);
 
   // Derive unique platforms from data
   const platforms = Array.from(
@@ -129,6 +132,51 @@ export function MatchesTab({ matches, pendingReviewCount }: MatchesTabProps) {
       setLoading(false);
     }
   }, [filterStatus, filterPlatform]);
+
+  const handleBulkStatusChange = useCallback(
+    async (newStatus: string) => {
+      if (selectedIds.size === 0) return;
+      setBulkUpdating(true);
+      try {
+        const res = await fetch("/api/admin/scanner/matches", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: [...selectedIds], status: newStatus }),
+        });
+        if (res.ok) {
+          setItems((prev) =>
+            prev.map((m) =>
+              selectedIds.has(m.id) ? { ...m, status: newStatus } : m
+            )
+          );
+          setSelectedIds(new Set());
+        }
+      } catch {
+        // Silently fail
+      } finally {
+        setBulkUpdating(false);
+      }
+    },
+    [selectedIds]
+  );
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    const newMatchIds = filtered.filter((m) => m.status === "new").map((m) => m.id);
+    setSelectedIds((prev) => {
+      const allSelected = newMatchIds.every((id) => prev.has(id));
+      if (allSelected) return new Set();
+      return new Set(newMatchIds);
+    });
+  }, [filtered]);
 
   return (
     <div className="space-y-4">
@@ -204,11 +252,59 @@ export function MatchesTab({ matches, pendingReviewCount }: MatchesTabProps) {
         </span>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 p-2 rounded-md bg-primary/10 border border-primary/20">
+          <span className="text-xs font-medium text-primary">
+            {selectedIds.size} selected
+          </span>
+          <Button
+            size="sm"
+            className="h-7 text-xs bg-green-600 hover:bg-green-700"
+            onClick={() => handleBulkStatusChange("confirmed")}
+            disabled={bulkUpdating}
+          >
+            {bulkUpdating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}
+            Confirm All
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={() => handleBulkStatusChange("rejected")}
+            disabled={bulkUpdating}
+          >
+            <XCircle className="h-3 w-3 mr-1" />
+            Reject All
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs text-muted-foreground"
+            onClick={() => setSelectedIds(new Set())}
+            disabled={bulkUpdating}
+          >
+            Clear
+          </Button>
+        </div>
+      )}
+
       {/* Match table */}
       <div className="rounded-md border border-border/30 overflow-hidden">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-border/30 bg-card">
+              <th className="p-2 w-8">
+                <Checkbox
+                  checked={
+                    filtered.filter((m) => m.status === "new").length > 0 &&
+                    filtered
+                      .filter((m) => m.status === "new")
+                      .every((m) => selectedIds.has(m.id))
+                  }
+                  onCheckedChange={() => toggleSelectAll()}
+                />
+              </th>
               <th className="text-left p-2 font-medium text-muted-foreground">
                 Contributor
               </th>
@@ -236,7 +332,7 @@ export function MatchesTab({ matches, pendingReviewCount }: MatchesTabProps) {
             {filtered.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="p-8 text-center text-muted-foreground"
                 >
                   No matches found
@@ -254,11 +350,22 @@ export function MatchesTab({ matches, pendingReviewCount }: MatchesTabProps) {
                 return (
                   <tr
                     key={m.id}
-                    className="border-b border-border/20 hover:bg-card/50 transition-colors cursor-pointer"
+                    className={`border-b border-border/20 hover:bg-card/50 transition-colors cursor-pointer ${selectedIds.has(m.id) ? "bg-primary/5" : ""}`}
                     onClick={() =>
                       setExpandedId(isExpanded ? null : m.id)
                     }
                   >
+                    <td
+                      className="p-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {m.status === "new" && (
+                        <Checkbox
+                          checked={selectedIds.has(m.id)}
+                          onCheckedChange={() => toggleSelect(m.id)}
+                        />
+                      )}
+                    </td>
                     <td className="p-2">
                       <span className="font-medium text-foreground">
                         {m.contributor_name || m.contributor_id.slice(0, 8)}

@@ -51,6 +51,11 @@ class DiscoveryContext:
     # Per-tag page depth overrides (e.g. damage-based priority crawl)
     tag_depths: dict[str, int] | None = None
 
+    # Backfill mode: deeper crawl with persistent cursors that use "exhausted" sentinel
+    backfill: bool = False
+    backfill_cursors: dict[str, str] | None = None
+    backfill_model_cursors: dict[str, str] | None = None
+
 
 @dataclass
 class DiscoveredImageResult:
@@ -123,6 +128,9 @@ class DiscoveryResult:
     # Tag coverage stats — how many tags were crawled and how many are exhausted
     tags_total: int = 0
     tags_exhausted: int = 0
+
+    # Platform-reported total (e.g. CivitAI metadata.totalItems)
+    estimated_total_images: int | None = None
 
 
 class BaseDiscoverySource(ABC):

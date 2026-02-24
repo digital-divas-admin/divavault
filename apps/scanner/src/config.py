@@ -1,6 +1,11 @@
 """Scanner service configuration via environment variables."""
 
+import tempfile
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+_DEFAULT_TEMP_DIR = str(Path(tempfile.gettempdir()) / "scanner_images")
 
 
 class Settings(BaseSettings):
@@ -28,13 +33,13 @@ class Settings(BaseSettings):
 
     # Scan settings
     scan_batch_size: int = 10
-    scheduler_tick_seconds: int = 60
+    scheduler_tick_seconds: int = 30
     ingest_poll_seconds: int = 30
 
     # Face detection (subprocess isolation)
     face_detection_chunk_size: int = 1000   # images per subprocess
     face_detection_timeout: int = 600       # seconds per subprocess
-    face_detection_max_chunks: int = 5      # max subprocess invocations per tick
+    face_detection_max_chunks: int = 20     # max subprocess invocations per tick
 
     # Matching
     matching_batch_size: int = 500          # face embeddings per match batch
@@ -44,18 +49,23 @@ class Settings(BaseSettings):
     deviantart_crawl_interval_hours: int = 24
 
     # CivitAI crawl
-    civitai_max_pages: int = 1  # pages per term per tick (100 images/page) — set low for test run
-    civitai_model_pages_per_tag: int = 1  # pages per tag per tick (100 models/page)
+    civitai_max_pages: int = 10  # pages per term per tick (100 images/page)
+    civitai_model_pages_per_tag: int = 10  # pages per tag per tick (100 models/page)
     civitai_nsfw_filter: str = "None"  # "None", "Soft", "Mature", "X", or "" for all
     civitai_backfill_days: int = 30  # how far back to search during backfill
+
+    # Backfill mode (runs after sweep to fully catalogue platforms)
+    backfill_enabled: bool = True
+    civitai_backfill_pages: int = 100         # 100 pages/term/tick = ~10,000 images/term
+    deviantart_backfill_pages: int = 50       # 50 pages/tag/tick = ~1,200 images/tag
 
     # DeviantArt crawl
     deviantart_client_id: str = ""
     deviantart_client_secret: str = ""
-    deviantart_max_pages: int = 2  # pages per tag per tick (24 images/page) — set low for test run
-    deviantart_high_damage_pages: int = 2  # nude, sexual, deepfake, celebfakes
-    deviantart_medium_damage_pages: int = 1  # person-focused: beauty, model, girl, portrait
-    deviantart_low_damage_pages: int = 1  # generic: art, photography, stock, CGI
+    deviantart_max_pages: int = 10  # pages per tag per tick (24 images/page)
+    deviantart_high_damage_pages: int = 10  # nude, sexual, deepfake, celebfakes
+    deviantart_medium_damage_pages: int = 10  # person-focused: beauty, model, girl, portrait
+    deviantart_low_damage_pages: int = 10  # generic: art, photography, stock, CGI
     deviantart_concurrency: int = 10  # concurrent tag fetches (ScraperAPI supports 50 concurrent)
 
     # Proxy for web scraping (used by DeviantArt, CivitAI, etc.)
@@ -100,7 +110,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Temp directory
-    temp_dir: str = "/tmp/scanner_images"
+    temp_dir: str = _DEFAULT_TEMP_DIR
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

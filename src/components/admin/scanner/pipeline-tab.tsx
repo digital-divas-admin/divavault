@@ -2,6 +2,7 @@
 
 import type { CommandCenterData, PlatformInfo } from "@/lib/scanner-command-queries";
 import { Card, CardContent } from "@/components/ui/card";
+import { CoverageTrends } from "./coverage-trends";
 import {
   Image,
   ScanFace,
@@ -435,6 +436,7 @@ function CrawlStatusGrid({ platforms }: { platforms: PlatformInfo[] }) {
           const tagsExhausted = p.tags_exhausted || 0;
           const tagProgress = tagsTotal > 0 ? (tagsExhausted / tagsTotal) * 100 : 0;
           const isCrawling = !!p.crawl_phase;
+          const bf = p.backfill;
 
           return (
             <Card key={p.platform} className="bg-card border-border/30">
@@ -465,10 +467,11 @@ function CrawlStatusGrid({ platforms }: { platforms: PlatformInfo[] }) {
                     </span>
                   </div>
                 </div>
+                {/* Sweep tag depth */}
                 {tagsTotal > 0 && (
                   <div>
                     <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
-                      <span>Tag depth</span>
+                      <span>Sweep depth</span>
                       <span className="font-[family-name:var(--font-mono)]">
                         {tagsExhausted}/{tagsTotal}
                       </span>
@@ -477,6 +480,33 @@ function CrawlStatusGrid({ platforms }: { platforms: PlatformInfo[] }) {
                       <div
                         className="h-full bg-primary rounded-full transition-all duration-500"
                         style={{ width: `${tagProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {/* Backfill progress */}
+                {bf && (
+                  <div className="mt-2">
+                    <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                      <span>Backfill</span>
+                      {bf.complete ? (
+                        <span className="text-green-400 font-medium">{"\u2713"} Complete</span>
+                      ) : p.platform === "civitai" && bf.cursorDate ? (
+                        <span className="font-[family-name:var(--font-mono)]">
+                          {new Date(bf.cursorDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })} ({bf.pctComplete.toFixed(0)}%)
+                        </span>
+                      ) : (
+                        <span className="font-[family-name:var(--font-mono)]">
+                          {bf.termsExhausted}/{bf.termsTotal} ({bf.pctComplete.toFixed(0)}%)
+                        </span>
+                      )}
+                    </div>
+                    <div className="h-1.5 bg-muted/30 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          bf.complete ? "bg-green-500" : "bg-green-500/70"
+                        }`}
+                        style={{ width: `${Math.min(100, bf.pctComplete)}%` }}
                       />
                     </div>
                   </div>
@@ -502,6 +532,7 @@ export function PipelineTab({ data, health, platforms }: PipelineTabProps) {
         <CrawlStatusGrid platforms={platforms} />
       </div>
       <PlatformBreakdownTable health={health} />
+      <CoverageTrends snapshots={data.dailySnapshots} />
     </div>
   );
 }

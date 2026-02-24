@@ -31,7 +31,7 @@ from src.discovery.base import (
     InlineDetectedImage,
     InlineDiscoveryResult,
 )
-from src.utils.image_download import upload_thumbnail
+from src.utils.image_download import check_magic_bytes, upload_thumbnail
 from src.utils.logging import get_logger
 from src.utils.rate_limiter import get_limiter
 from src.utils.retry import CircuitOpenError, retry_async, with_circuit_breaker
@@ -105,7 +105,8 @@ class DeviantArtCrawl(BaseDiscoverySource):
         """
         effective_tags = context.search_terms if context.search_terms else ALL_TAGS
         tag_depths = context.tag_depths or {}
-        saved_cursors = context.search_cursors or {}
+        backfill_mode = context.backfill
+        saved_cursors = (context.backfill_cursors if backfill_mode else context.search_cursors) or {}
         self._proxy = settings.proxy_url or None
 
         limiter = get_limiter("deviantart")
@@ -122,7 +123,7 @@ class DeviantArtCrawl(BaseDiscoverySource):
 
         # Thread pool for CPU-bound face detection (limits RAM usage)
         detection_pool = ThreadPoolExecutor(max_workers=4)
-        download_sem = asyncio.Semaphore(30)
+        download_sem = asyncio.Semaphore(15)
         temp_dir = Path(settings.temp_dir)
         temp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -132,19 +133,22 @@ class DeviantArtCrawl(BaseDiscoverySource):
             try:
                 async with download_sem:
                     async with session.get(
-                        url, timeout=aiohttp.ClientTimeout(total=15)
+                        url, timeout=aiohttp.ClientTimeout(total=30)
                     ) as resp:
                         if resp.status != 200:
+                            log.debug("download_non_200", url=url[:120], status=resp.status)
                             return None
                         data = await resp.read()
                         if len(data) < 1000:
                             return None
-                        if data[:2] not in (b"\xff\xd8", b"\x89P", b"RI"):
+                        if not check_magic_bytes(data):
                             return None
+                        temp_dir.mkdir(parents=True, exist_ok=True)
                         path = temp_dir / f"{uuid4().hex[:8]}.jpg"
                         path.write_bytes(data)
                         return path
-            except Exception:
+            except Exception as e:
+                log.debug("download_error", url=url[:120], error=repr(e))
                 return None
 
         def _detect_sync(model, image_path: Path) -> list:
@@ -289,7 +293,16 @@ class DeviantArtCrawl(BaseDiscoverySource):
                         updated_cursors[tag] = saved_cursors.get(tag)
                     return
 
-                max_pages = tag_depths.get(tag, settings.deviantart_max_pages)
+                # In backfill mode, skip tags already fully exhausted
+                if backfill_mode and saved_cursors.get(tag) == "exhausted":
+                    async with cursors_lock:
+                        updated_cursors[tag] = "exhausted"
+                    return
+
+                if backfill_mode:
+                    max_pages = settings.deviantart_backfill_pages
+                else:
+                    max_pages = tag_depths.get(tag, settings.deviantart_max_pages)
                 start_offset = saved_cursors.get(tag)
                 mode, position = self._parse_cursor(start_offset)
 
@@ -314,7 +327,7 @@ class DeviantArtCrawl(BaseDiscoverySource):
                         if not page_results:
                             if not has_next:
                                 async with cursors_lock:
-                                    updated_cursors[tag] = None
+                                    updated_cursors[tag] = "exhausted" if backfill_mode else None
                                 return
                             if mode == "rss":
                                 position += RSS_PAGE_SIZE
@@ -340,7 +353,8 @@ class DeviantArtCrawl(BaseDiscoverySource):
                         # new-content zone (no saved cursor = scanning newest).
                         # If we resumed from a saved cursor, we're deepening into
                         # history and should NOT early-stop on dedup.
-                        is_depth_zone = start_offset is not None
+                        # In backfill mode, always in depth zone — never early-stop.
+                        is_depth_zone = start_offset is not None or backfill_mode
                         if len(page_results) > 0 and page_num > 1 and not is_depth_zone:
                             dedup_ratio = ps["dedup"] / len(page_results)
                             if dedup_ratio >= DEDUP_STOP_RATIO:
@@ -356,7 +370,7 @@ class DeviantArtCrawl(BaseDiscoverySource):
                                 position += 1
                         else:
                             async with cursors_lock:
-                                updated_cursors[tag] = None
+                                updated_cursors[tag] = "exhausted" if backfill_mode else None
                             return
 
                     # Reached max_pages
@@ -377,7 +391,10 @@ class DeviantArtCrawl(BaseDiscoverySource):
         # Run all tags
         connector = aiohttp.TCPConnector(limit=30)
         async with aiohttp.ClientSession(
-            headers={"User-Agent": USER_AGENT},
+            headers={
+                "User-Agent": USER_AGENT,
+                "Referer": "https://www.deviantart.com/",
+            },
             auto_decompress=True,
             connector=connector,
         ) as http_session:
@@ -387,7 +404,10 @@ class DeviantArtCrawl(BaseDiscoverySource):
         detection_pool.shutdown(wait=False)
         gc.collect()
 
-        tags_exhausted = sum(1 for c in updated_cursors.values() if c is None)
+        if backfill_mode:
+            tags_exhausted = sum(1 for c in updated_cursors.values() if c == "exhausted")
+        else:
+            tags_exhausted = sum(1 for c in updated_cursors.values() if c is None)
 
         log.info(
             "deviantart_inline_complete",

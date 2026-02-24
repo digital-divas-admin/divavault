@@ -10,12 +10,13 @@ Only Phase 1 is site-specific. Phases 2 and 3 are shared infrastructure.
 """
 
 import asyncio
+import json
 import os
 import signal
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import imagehash
 import numpy as np
@@ -100,6 +101,7 @@ async def run_scheduler(job_store: JobStore) -> None:
     """Main scheduler loop. Runs until shutdown is requested."""
     start_time = time.monotonic()
     last_cleanup = 0.0
+    last_snapshot = 0.0
 
     # Recover stale jobs on startup
     recovered = await job_store.recover_stale(max_age_minutes=30)
@@ -168,6 +170,11 @@ async def run_scheduler(job_store: JobStore) -> None:
                 if recovered > 0:
                     log.info("stale_jobs_recovered", count=recovered)
                 last_cleanup = now
+
+            # e2. Daily coverage snapshot (every 24h)
+            if now - last_snapshot > 86400:
+                await _capture_daily_snapshot()
+                last_snapshot = now
 
             # Log metrics periodically
             tick_duration = time.monotonic() - tick_start
@@ -402,6 +409,17 @@ async def _run_ml_intelligence() -> None:
         log.error("ml_intelligence_error", error=str(e))
 
 
+async def _capture_daily_snapshot() -> None:
+    """Capture daily coverage snapshot via RPC. Never blocks pipeline."""
+    try:
+        async with async_session() as session:
+            await session.execute(text("SELECT capture_daily_snapshot()"))
+            await session.commit()
+        log.info("daily_snapshot_captured")
+    except Exception as e:
+        log.error("daily_snapshot_error", error=str(e))
+
+
 async def _run_platform_crawls(job_store: JobStore) -> None:
     """Concurrent platform crawl dispatch.
 
@@ -547,11 +565,19 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
         except Exception:
             pass
 
-        # Persist cursors
+        # Persist sweep cursors
         await _persist_crawl_state(
             job_store, crawl, result_cursors, config, total_images, new_count,
             result_tags[0], result_tags[1],
         )
+
+        # --- Backfill pass ---
+        # Re-read search_terms after sweep persistence to get latest state
+        backfill_new_count = 0
+        if settings.backfill_enabled:
+            backfill_new_count = await _run_backfill_pass(
+                job_store, crawl, scraper, effective_terms, config,
+            )
 
         # Update mapper section stats (recomputed from DB, not passed totals)
         if config.mapper_active:
@@ -560,13 +586,13 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
             except Exception as e:
                 log.error("mapper_stats_update_error", platform=crawl.platform, error=str(e))
 
-        # Mark job complete
+        # Mark job complete (sweep + backfill)
         async with async_session() as session:
             from src.db.queries import update_scan_job
             await update_scan_job(
                 session, job_id,
                 status="completed",
-                images_processed=new_count,
+                images_processed=new_count + backfill_new_count,
                 matches_found=0,
             )
             await session.commit()
@@ -645,9 +671,13 @@ async def _crawl_inline(
     # Build cursors dict for persistence
     cursors_dict = {}
     if result.search_cursors:
-        cursors_dict["search_cursors"] = {
-            k: v for k, v in result.search_cursors.items() if v is not None
-        }
+        if context.backfill:
+            # Backfill: preserve all values including "exhausted" sentinels
+            cursors_dict["search_cursors"] = dict(result.search_cursors)
+        else:
+            cursors_dict["search_cursors"] = {
+                k: v for k, v in result.search_cursors.items() if v is not None
+            }
     cursors_dict["_faces_found"] = result.faces_found
 
     return (
@@ -686,18 +716,37 @@ async def _crawl_deferred(
             )
             await session.commit()
 
+    # Store estimated_total_images if available (e.g. CivitAI metadata.totalItems)
+    if discovery_result.estimated_total_images is not None:
+        async with async_session() as session:
+            from src.db.models import PlatformCrawlSchedule
+            from sqlalchemy import update as sa_update
+            await session.execute(
+                sa_update(PlatformCrawlSchedule)
+                .where(PlatformCrawlSchedule.platform == platform)
+                .values(estimated_total_images=discovery_result.estimated_total_images)
+            )
+            await session.commit()
+
     # Build cursors dict for persistence
     cursors_dict = {}
     if discovery_result.next_cursor is not None:
         cursors_dict["cursor"] = discovery_result.next_cursor
     if discovery_result.search_cursors:
-        active = {k: v for k, v in discovery_result.search_cursors.items() if v is not None}
-        if active:
-            cursors_dict["search_cursors"] = active
+        if context.backfill:
+            # Backfill: preserve all values including "exhausted" sentinels
+            cursors_dict["search_cursors"] = dict(discovery_result.search_cursors)
+        else:
+            active = {k: v for k, v in discovery_result.search_cursors.items() if v is not None}
+            if active:
+                cursors_dict["search_cursors"] = active
     if discovery_result.model_cursors:
-        active = {k: v for k, v in discovery_result.model_cursors.items() if v is not None}
-        if active:
-            cursors_dict["model_cursors"] = active
+        if context.backfill:
+            cursors_dict["model_cursors"] = dict(discovery_result.model_cursors)
+        else:
+            active = {k: v for k, v in discovery_result.model_cursors.items() if v is not None}
+            if active:
+                cursors_dict["model_cursors"] = active
 
     return (
         len(discovery_result.images),
@@ -739,6 +788,142 @@ async def _persist_crawl_state(
             tags_exhausted=tags_exhausted,
         )
         await session.commit()
+
+
+def _parse_cursor_timestamp(cursor: str | None) -> str | None:
+    """Extract ISO timestamp from a CivitAI cursor like '12345|1706745600000'.
+
+    Returns ISO datetime string or None if unparseable.
+    """
+    if not cursor or cursor == "exhausted":
+        return None
+    try:
+        parts = cursor.split("|")
+        if len(parts) == 2 and parts[1].isdigit():
+            ts_ms = int(parts[1])
+            return datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).isoformat()
+    except Exception:
+        pass
+    return None
+
+
+# Platform origin dates (earliest content on each platform)
+_PLATFORM_ORIGINS = {
+    "civitai": "2022-11-16T00:00:00Z",
+    "deviantart": "2000-08-07T00:00:00Z",
+}
+
+# CivitAI backfill cutoff: don't crawl content older than 2 years
+_CIVITAI_BACKFILL_CUTOFF_DAYS = 730  # ~2 years
+
+
+async def _run_backfill_pass(
+    job_store: JobStore,
+    crawl,
+    scraper,
+    effective_terms: list[str] | None,
+    config,
+) -> int:
+    """Run backfill pass after sweep. Returns count of new images inserted."""
+    from src.discovery.base import DetectionStrategy
+
+    # Re-read current search_terms to get latest state (sweep just updated it)
+    from sqlalchemy import text as sa_text
+    async with async_session() as session:
+        r = await session.execute(sa_text(
+            "SELECT search_terms FROM platform_crawl_schedule WHERE platform = :p"
+        ), {"p": crawl.platform})
+        row = r.fetchone()
+        search_terms_data = (row[0] if row else None) or {}
+
+    backfill_state = search_terms_data.get("backfill", {})
+
+    # Skip if backfill already complete
+    if backfill_state.get("complete", False):
+        log.info("backfill_skip_complete", platform=crawl.platform)
+        return 0
+
+    bf_cursors = backfill_state.get("cursors", {})
+    bf_model_cursors = backfill_state.get("model_cursors", {})
+
+    bf_context = DiscoveryContext(
+        platform=crawl.platform,
+        search_terms=effective_terms if effective_terms else None,
+        backfill=True,
+        backfill_cursors=bf_cursors,
+        backfill_model_cursors=bf_model_cursors,
+        tag_depths=config.tag_depths,
+    )
+
+    log.info("backfill_start", platform=crawl.platform,
+             terms=len(effective_terms) if effective_terms else 0)
+
+    # Run same crawler in backfill mode
+    if scraper.get_detection_strategy() == DetectionStrategy.INLINE:
+        bf_total, bf_new, bf_cursors_dict, bf_tags = await _crawl_inline(
+            scraper, bf_context, crawl.platform
+        )
+    else:
+        bf_total, bf_new, bf_cursors_dict, bf_tags = await _crawl_deferred(
+            scraper, bf_context, crawl.platform
+        )
+
+    log.info("backfill_crawl_done", platform=crawl.platform,
+             total=bf_total, new=bf_new)
+
+    # Persist backfill state
+    backfill_state["cursors"] = bf_cursors_dict.get("search_cursors", bf_cursors)
+    backfill_state["model_cursors"] = bf_cursors_dict.get("model_cursors", bf_model_cursors)
+    if not backfill_state.get("started_at"):
+        backfill_state["started_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Parse CivitAI cursor timestamp for timeline progress
+    if crawl.platform == "civitai":
+        # Use the global feed cursor for timeline position
+        global_cursor = bf_cursors_dict.get("cursor")
+        cursor_date = _parse_cursor_timestamp(global_cursor)
+        if cursor_date:
+            backfill_state["cursor_date"] = cursor_date
+        backfill_state["oldest_date"] = _PLATFORM_ORIGINS.get(crawl.platform, "2022-11-16T00:00:00Z")
+
+    # Check completeness
+    all_cursors = {**backfill_state.get("cursors", {}), **backfill_state.get("model_cursors", {})}
+    total_terms = len(all_cursors) if all_cursors else (len(effective_terms) if effective_terms else 0)
+    exhausted = sum(1 for v in all_cursors.values() if v == "exhausted")
+    backfill_state["terms_total"] = total_terms
+    backfill_state["terms_exhausted"] = exhausted
+
+    # CivitAI: also check 2-year cutoff for global feed
+    civitai_cutoff_reached = False
+    if crawl.platform == "civitai" and backfill_state.get("cursor_date"):
+        try:
+            cursor_dt = datetime.fromisoformat(backfill_state["cursor_date"].replace("Z", "+00:00"))
+            cutoff_dt = datetime.now(timezone.utc) - timedelta(days=_CIVITAI_BACKFILL_CUTOFF_DAYS)
+            if cursor_dt <= cutoff_dt:
+                civitai_cutoff_reached = True
+                log.info("backfill_cutoff_reached", platform=crawl.platform,
+                         cursor_date=backfill_state["cursor_date"])
+        except Exception:
+            pass
+
+    if (total_terms > 0 and exhausted >= total_terms) or civitai_cutoff_reached:
+        backfill_state["complete"] = True
+        backfill_state["completed_at"] = datetime.now(timezone.utc).isoformat()
+        log.info("backfill_complete", platform=crawl.platform,
+                 terms_exhausted=exhausted, terms_total=total_terms)
+
+    search_terms_data["backfill"] = backfill_state
+
+    # Persist updated backfill state
+    async with async_session() as session:
+        await session.execute(sa_text(
+            "UPDATE platform_crawl_schedule "
+            "SET search_terms = CAST(:terms AS jsonb) "
+            "WHERE platform = :p"
+        ), {"terms": json.dumps(search_terms_data), "p": crawl.platform})
+        await session.commit()
+
+    return bf_new
 
 
 async def _phase_face_detection(job_store: JobStore, pending: int) -> None:

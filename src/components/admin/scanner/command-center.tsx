@@ -107,6 +107,7 @@ export function CommandCenter({ initialData }: CommandCenterProps) {
         <CommandTab
           data={initialData}
           activity={activity}
+          health={health}
           onSwitchTab={handleSwitchTab}
         />
       )}

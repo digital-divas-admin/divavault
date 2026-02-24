@@ -185,117 +185,114 @@ async def main():
         print("0,0,0,0")
         return
 
-    connector = aiohttp.TCPConnector(limit=5)
-    for i in range(0, len(batch), 50):
-        mini = batch[i:i+50]
+    connector = aiohttp.TCPConnector(limit=50)
 
-        # Split: CivitAI thumbable (no stored_url, has /original=true/) vs standard
-        thumbable = []
-        standard = []
-        for img in mini:
-            if not img.get("stored_url") and img.get("url") and "/original=true/" in img["url"]:
-                thumbable.append(img)
-            else:
-                standard.append(img)
+    # Split entire batch: CivitAI thumbable vs standard
+    thumbable = []
+    standard = []
+    for img in batch:
+        if not img.get("stored_url") and img.get("url") and "/original=true/" in img["url"]:
+            thumbable.append(img)
+        else:
+            standard.append(img)
 
-        async with aiohttp.ClientSession(connector=connector) as http:
+    async with aiohttp.ClientSession(connector=connector) as http:
 
-            # --- Two-pass for CivitAI thumbable images ---
-            if thumbable:
-                # Pass 1: Download thumbnails, detect faces
-                thumb_paths = await asyncio.gather(*[
-                    download_thumb(http, img["url"], img["id"]) for img in thumbable
-                ])
+        # --- Two-pass for CivitAI thumbable images ---
+        if thumbable:
+            # Pass 1: Download all thumbnails concurrently, detect faces
+            thumb_paths = await asyncio.gather(*[
+                download_thumb(http, img["url"], img["id"]) for img in thumbable
+            ])
 
-                face_positive = []
-                async with async_session() as db:
-                    for img, thumb_path in zip(thumbable, thumb_paths):
-                        stats["processed"] += 1
-                        stats["thumbs_checked"] += 1
-                        if thumb_path is None:
-                            await db.execute(text(
-                                "UPDATE discovered_images SET has_face = false WHERE id = :id"
-                            ), {{"id": img["id"]}})
-                            stats["originals_saved"] += 1  # saved a full download
-                            continue
-                        try:
-                            cv_img = load_and_resize(thumb_path)
-                            if cv_img is None:
-                                await db.execute(text(
-                                    "UPDATE discovered_images SET has_face = false WHERE id = :id"
-                                ), {{"id": img["id"]}})
-                                stats["originals_saved"] += 1
-                                continue
-                            detected = model.get(cv_img)
-                            if len(detected) == 0:
-                                await db.execute(text(
-                                    "UPDATE discovered_images SET has_face = false, face_count = 0 WHERE id = :id"
-                                ), {{"id": img["id"]}})
-                                stats["originals_saved"] += 1
-                            else:
-                                face_positive.append((img, len(detected)))
-                            del cv_img, detected
-                        except:
+            face_positive = []
+            async with async_session() as db:
+                for img, thumb_path in zip(thumbable, thumb_paths):
+                    stats["processed"] += 1
+                    stats["thumbs_checked"] += 1
+                    if thumb_path is None:
+                        await db.execute(text(
+                            "UPDATE discovered_images SET has_face = false WHERE id = :id"
+                        ), {{"id": img["id"]}})
+                        stats["originals_saved"] += 1
+                        continue
+                    try:
+                        cv_img = load_and_resize(thumb_path)
+                        if cv_img is None:
                             await db.execute(text(
                                 "UPDATE discovered_images SET has_face = false WHERE id = :id"
                             ), {{"id": img["id"]}})
                             stats["originals_saved"] += 1
-                        finally:
-                            if thumb_path: thumb_path.unlink(missing_ok=True)
-                    await db.commit()
+                            continue
+                        detected = model.get(cv_img)
+                        if len(detected) == 0:
+                            await db.execute(text(
+                                "UPDATE discovered_images SET has_face = false, face_count = 0 WHERE id = :id"
+                            ), {{"id": img["id"]}})
+                            stats["originals_saved"] += 1
+                        else:
+                            face_positive.append((img, len(detected)))
+                        del cv_img, detected
+                    except:
+                        await db.execute(text(
+                            "UPDATE discovered_images SET has_face = false WHERE id = :id"
+                        ), {{"id": img["id"]}})
+                        stats["originals_saved"] += 1
+                    finally:
+                        if thumb_path: thumb_path.unlink(missing_ok=True)
+                await db.commit()
 
-                # Pass 2: Download originals for face-positive only, extract embeddings
-                if face_positive:
-                    orig_paths = await asyncio.gather(*[
-                        download_orig(http, img["url"], img["id"]) for img, _ in face_positive
-                    ])
+            # Pass 2: Download originals for face-positive only, extract embeddings
+            if face_positive:
+                orig_paths = await asyncio.gather(*[
+                    download_orig(http, img["url"], img["id"]) for img, _ in face_positive
+                ])
 
-                    async with async_session() as db:
-                        for (img, thumb_fc), orig_path in zip(face_positive, orig_paths):
-                            if orig_path is None:
-                                # Original failed -- still mark as face-positive from thumbnail
+                async with async_session() as db:
+                    for (img, thumb_fc), orig_path in zip(face_positive, orig_paths):
+                        if orig_path is None:
+                            await db.execute(text(
+                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
+                            ), {{"id": img["id"], "fc": thumb_fc}})
+                            continue
+                        try:
+                            cv_img = load_and_resize(orig_path)
+                            if cv_img is None:
                                 await db.execute(text(
                                     "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
                                 ), {{"id": img["id"], "fc": thumb_fc}})
                                 continue
-                            try:
-                                cv_img = load_and_resize(orig_path)
-                                if cv_img is None:
-                                    await db.execute(text(
-                                        "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
-                                    ), {{"id": img["id"], "fc": thumb_fc}})
-                                    continue
-                                detected = model.get(cv_img)
-                                fc = len(detected) if len(detected) > 0 else thumb_fc
-                                await db.execute(text(
-                                    "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
-                                ), {{"id": img["id"], "fc": fc}})
-                                for fi, face in enumerate(detected):
-                                    await insert_discovered_face_embedding(
-                                        db, img["id"], fi, face.normed_embedding, float(face.det_score)
-                                    )
-                                    stats["faces"] += 1
-                                del cv_img, detected
-                            except:
-                                await db.execute(text(
-                                    "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
-                                ), {{"id": img["id"], "fc": thumb_fc}})
-                            finally:
-                                if orig_path: orig_path.unlink(missing_ok=True)
-                        await db.commit()
-
-            # --- Single-pass for standard images (stored URLs, non-CivitAI) ---
-            if standard:
-                paths = await asyncio.gather(*[
-                    download_standard(http, img["url"], img["id"], img.get("stored_url"))
-                    for img in standard
-                ])
-                async with async_session() as db:
-                    for img, path in zip(standard, paths):
-                        await process_standard(db, model, img, path, stats)
+                            detected = model.get(cv_img)
+                            fc = len(detected) if len(detected) > 0 else thumb_fc
+                            await db.execute(text(
+                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
+                            ), {{"id": img["id"], "fc": fc}})
+                            for fi, face in enumerate(detected):
+                                await insert_discovered_face_embedding(
+                                    db, img["id"], fi, face.normed_embedding, float(face.det_score)
+                                )
+                                stats["faces"] += 1
+                            del cv_img, detected
+                        except:
+                            await db.execute(text(
+                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
+                            ), {{"id": img["id"], "fc": thumb_fc}})
+                        finally:
+                            if orig_path: orig_path.unlink(missing_ok=True)
                     await db.commit()
 
-        gc.collect()
+        # --- Single-pass for standard images (stored URLs, non-CivitAI) ---
+        if standard:
+            paths = await asyncio.gather(*[
+                download_standard(http, img["url"], img["id"], img.get("stored_url"))
+                for img in standard
+            ])
+            async with async_session() as db:
+                for img, path in zip(standard, paths):
+                    await process_standard(db, model, img, path, stats)
+                await db.commit()
+
+    gc.collect()
 
     print(f"{{stats['processed']}},{{stats['faces']}},{{stats['thumbs_checked']}},{{stats['originals_saved']}}")
 

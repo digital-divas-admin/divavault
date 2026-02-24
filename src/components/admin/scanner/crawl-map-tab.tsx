@@ -9,6 +9,7 @@ import type {
 } from "@/lib/scanner-command-queries";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionTable } from "./section-table";
+import { SearchTermProgress } from "./search-term-progress";
 import {
   Globe,
   AlertTriangle,
@@ -339,6 +340,18 @@ export function CrawlMapTab({
               <SectionTable sections={platformSections} />
             </CardContent>
           </Card>
+
+          {/* Search term progress */}
+          <div className="mt-6">
+            <h3 className="text-sm font-medium text-zinc-300 mb-3 flex items-center gap-2">
+              <Tag className="h-4 w-4" />
+              Search Term Progress
+            </h3>
+            <SearchTermProgress
+              platforms={platforms}
+              selectedPlatform={selected}
+            />
+          </div>
 
           {/* Cross-Platform Risk */}
           {crossPlatformRisks && crossPlatformRisks.length > 0 && (

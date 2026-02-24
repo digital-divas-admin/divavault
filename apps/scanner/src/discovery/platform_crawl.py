@@ -44,12 +44,19 @@ class CivitAICrawl(BaseDiscoverySource):
         search_cursors: dict[str, str | None] | None = None
         limiter = get_limiter("civitai")
         self._proxy = settings.proxy_url or None
+        backfill = context.backfill
+
+        estimated_total: int | None = None
+
+        # In backfill mode, use backfill cursors instead of sweep cursors
+        effective_search_cursors = context.backfill_cursors if backfill else context.search_cursors
+        effective_model_cursors = context.backfill_model_cursors if backfill else context.model_cursors
 
         async with aiohttp.ClientSession() as session:
             # 1. Paginated global feed (newest images, cursor-resumed)
             try:
-                image_results, last_cursor = await self._fetch_images(
-                    session, limiter, context.cursor
+                image_results, last_cursor, estimated_total = await self._fetch_images(
+                    session, limiter, context.cursor, backfill=backfill,
                 )
                 results.extend(image_results)
             except CircuitOpenError:
@@ -61,8 +68,9 @@ class CivitAICrawl(BaseDiscoverySource):
             # 2. Targeted image searches (query-based, cursor-resumed per term)
             try:
                 search_results, search_cursors = await self._fetch_image_searches(
-                    session, limiter, context.search_cursors,
+                    session, limiter, effective_search_cursors,
                     search_terms=context.search_terms if context.search_terms else None,
+                    backfill=backfill,
                 )
                 results.extend(search_results)
             except CircuitOpenError:
@@ -74,8 +82,9 @@ class CivitAICrawl(BaseDiscoverySource):
             model_cursors: dict[str, str | None] | None = None
             try:
                 lora_results, model_cursors = await self._fetch_lora_models_by_tags(
-                    session, limiter, context.model_cursors,
+                    session, limiter, effective_model_cursors,
                     tags=context.search_terms if context.search_terms else None,
+                    backfill=backfill,
                 )
                 results.extend(lora_results)
             except CircuitOpenError:
@@ -88,7 +97,10 @@ class CivitAICrawl(BaseDiscoverySource):
         tags_total = effective_tag_count
         tags_exhausted_count = 0
         if model_cursors:
-            tags_exhausted_count = sum(1 for c in model_cursors.values() if c is None)
+            if backfill:
+                tags_exhausted_count = sum(1 for c in model_cursors.values() if c == "exhausted")
+            else:
+                tags_exhausted_count = sum(1 for c in model_cursors.values() if c is None)
 
         log.info(
             "civitai_crawl_complete",
@@ -103,6 +115,7 @@ class CivitAICrawl(BaseDiscoverySource):
             model_cursors=model_cursors,
             tags_total=tags_total,
             tags_exhausted=tags_exhausted_count,
+            estimated_total_images=estimated_total,
         )
 
     async def _fetch_images(
@@ -110,13 +123,18 @@ class CivitAICrawl(BaseDiscoverySource):
         session: aiohttp.ClientSession,
         limiter,
         cursor: str | None = None,
-    ) -> tuple[list[DiscoveredImageResult], str | None]:
-        """Fetch images across multiple pages using cursor pagination."""
+        backfill: bool = False,
+    ) -> tuple[list[DiscoveredImageResult], str | None, int | None]:
+        """Fetch images across multiple pages using cursor pagination.
+
+        Returns (results, last_cursor, estimated_total_images).
+        """
         all_results: list[DiscoveredImageResult] = []
         current_cursor = cursor
         last_valid_cursor: str | None = cursor
-        max_pages = settings.civitai_max_pages
+        max_pages = settings.civitai_backfill_pages if backfill else settings.civitai_max_pages
         nsfw_filter = settings.civitai_nsfw_filter
+        estimated_total: int | None = None
 
         for page in range(1, max_pages + 1):
             try:
@@ -136,8 +154,13 @@ class CivitAICrawl(BaseDiscoverySource):
                     last_valid_cursor = next_cursor
                     current_cursor = next_cursor
                 else:
-                    # No more pages — signal fresh start on next crawl
-                    last_valid_cursor = None
+                    # No more pages
+                    if backfill:
+                        # In backfill mode, use sentinel to prevent cursor reset
+                        last_valid_cursor = "exhausted"
+                    else:
+                        # Sweep mode: signal fresh start on next crawl
+                        last_valid_cursor = None
                     break
 
             except CircuitOpenError:
@@ -147,7 +170,25 @@ class CivitAICrawl(BaseDiscoverySource):
                 log.error("civitai_page_error", page=page, error=str(e))
                 break
 
-        return all_results, last_valid_cursor
+        # Capture totalItems from a lightweight API call (page 1, limit 1)
+        try:
+            await limiter.acquire()
+            ssl_check = False if self._proxy else None
+            async with session.get(
+                CIVITAI_IMAGES_URL,
+                params={"limit": 1, "sort": "Newest"},
+                proxy=self._proxy,
+                ssl=ssl_check,
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    total_items = data.get("metadata", {}).get("totalItems")
+                    if total_items is not None:
+                        estimated_total = int(total_items)
+        except Exception as e:
+            log.warning("civitai_total_items_error", error=str(e))
+
+        return all_results, last_valid_cursor, estimated_total
 
     async def _fetch_image_searches(
         self,
@@ -155,21 +196,28 @@ class CivitAICrawl(BaseDiscoverySource):
         limiter,
         incoming_cursors: dict[str, str] | None = None,
         search_terms: list[str] | None = None,
+        backfill: bool = False,
     ) -> tuple[list[DiscoveredImageResult], dict[str, str | None]]:
         """Search CivitAI images with face-targeted queries, paginated per term.
 
         Resumes each term from its saved cursor. Returns updated cursors so the
         next crawl tick picks up where this one left off.  When a term is
         exhausted (cursor=None), next tick restarts it from newest.
+        In backfill mode, exhausted terms are marked "exhausted" and skipped.
         """
         all_results: list[DiscoveredImageResult] = []
         nsfw_filter = settings.civitai_nsfw_filter
-        pages_per_term = settings.civitai_max_pages
+        pages_per_term = settings.civitai_backfill_pages if backfill else settings.civitai_max_pages
         saved = incoming_cursors or {}
         updated_cursors: dict[str, str | None] = {}
         terms = search_terms if search_terms else DEFAULT_IMAGE_SEARCH_TERMS
 
         for term in terms:
+            # In backfill mode, skip terms already fully exhausted
+            if backfill and saved.get(term) == "exhausted":
+                updated_cursors[term] = "exhausted"
+                continue
+
             cursor: str | None = saved.get(term)
             term_count = 0
 
@@ -184,8 +232,8 @@ class CivitAICrawl(BaseDiscoverySource):
                     if next_cursor:
                         cursor = next_cursor
                     else:
-                        # Exhausted this term — next tick restarts from newest
-                        cursor = None
+                        # Exhausted this term
+                        cursor = "exhausted" if backfill else None
                         break
 
                 except CircuitOpenError:
@@ -195,7 +243,6 @@ class CivitAICrawl(BaseDiscoverySource):
                     log.error("civitai_image_search_error", query=term, page=page, error=str(e))
                     break
 
-            # Store cursor for this term (None means start fresh next time)
             updated_cursors[term] = cursor
 
             if term_count > 0:
@@ -398,11 +445,13 @@ class CivitAICrawl(BaseDiscoverySource):
         limiter,
         incoming_cursors: dict[str, str] | None = None,
         tags: list[str] | None = None,
+        backfill: bool = False,
     ) -> tuple[list[DiscoveredImageResult], dict[str, str | None]]:
         """Crawl LoRA models per human-relevant tag, paginated with cursor resume.
 
         Each tag gets its own cursor so crawl progress is independent.
         When a tag is exhausted (cursor=None), next tick restarts it from newest.
+        In backfill mode, exhausted tags are marked "exhausted" and skipped.
         """
         saved = incoming_cursors or {}
         updated_cursors: dict[str, str | None] = {}
@@ -411,6 +460,11 @@ class CivitAICrawl(BaseDiscoverySource):
         effective_tags = tags if tags else LORA_HUMAN_TAGS
 
         for tag in effective_tags:
+            # In backfill mode, skip tags already fully exhausted
+            if backfill and saved.get(tag) == "exhausted":
+                updated_cursors[tag] = "exhausted"
+                continue
+
             cursor: str | None = saved.get(tag)
             tag_count = 0
 
@@ -425,7 +479,7 @@ class CivitAICrawl(BaseDiscoverySource):
                     if next_cursor:
                         cursor = next_cursor
                     else:
-                        cursor = None
+                        cursor = "exhausted" if backfill else None
                         break
                 except CircuitOpenError:
                     break

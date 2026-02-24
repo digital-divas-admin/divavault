@@ -47,6 +47,9 @@ nul
 *.tsbuildinfo
 next-env.d.ts
 
+# Scanner logs
+apps/scanner/logs/
+
 # Python
 __pycache__/
 *.pyc

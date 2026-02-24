@@ -207,6 +207,7 @@ class Match(Base):
     ai_generator: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, server_default=text("'new'"))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
@@ -455,6 +456,24 @@ class PlatformCrawlSchedule(Base):
     total_images_discovered: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     tags_total: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     tags_exhausted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    estimated_total_images: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class ScannerDailySnapshot(Base):
+    __tablename__ = "scanner_daily_snapshots"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    snapshot_date = mapped_column(DateTime, nullable=False)  # DATE stored as datetime
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    images_discovered: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    images_with_faces: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    embeddings_created: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    matches_found: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    matches_confirmed: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    matches_rejected: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    tags_total: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    tags_exhausted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
 # --- Scout tables (platform discovery) ---

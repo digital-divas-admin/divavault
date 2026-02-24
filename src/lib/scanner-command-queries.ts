@@ -1,6 +1,28 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import type { DailySnapshot } from "@/lib/scanner-coverage-utils";
+
+// Re-export client-safe types from the separate utils file
+// so existing type imports from scanner-command-queries still work.
+export type {
+  DailySnapshot,
+  SearchTermProgress,
+  CoverageHealthState,
+  CoverageHealth,
+} from "@/lib/scanner-coverage-utils";
 
 // --- Types ---
+
+export interface BackfillProgress {
+  enabled: boolean;
+  complete: boolean;
+  termsTotal: number;
+  termsExhausted: number;
+  pctComplete: number;
+  cursorDate: string | null;
+  oldestDate: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}
 
 export interface PlatformInfo {
   platform: string;
@@ -12,6 +34,9 @@ export interface PlatformInfo {
   total_images_discovered: number | null;
   tags_total: number | null;
   tags_exhausted: number | null;
+  estimated_total_images: number | null;
+  search_terms: Record<string, unknown> | null;
+  backfill: BackfillProgress | null;
 }
 
 export interface SectionProfile {
@@ -230,6 +255,53 @@ export interface CommandCenterData {
   scoutRuns: ScoutRun[];
   scoutKeywords: ScoutKeyword[];
   recentMatches: MatchItem[];
+  dailySnapshots: DailySnapshot[];
+}
+
+// --- Backfill Progress Parsing ---
+
+function parseBackfillProgress(
+  platform: string,
+  searchTerms: Record<string, unknown> | null,
+): BackfillProgress | null {
+  const bf = (searchTerms?.backfill ?? null) as Record<string, unknown> | null;
+  if (!bf) return null;
+
+  const termsTotal = (bf.terms_total as number) || 0;
+  const termsExhausted = (bf.terms_exhausted as number) || 0;
+  const complete = (bf.complete as boolean) || false;
+  const cursorDate = (bf.cursor_date as string) || null;
+  const oldestDate = (bf.oldest_date as string) || null;
+  const startedAt = (bf.started_at as string) || null;
+  const completedAt = (bf.completed_at as string) || null;
+
+  let pctComplete = 0;
+  if (complete) {
+    pctComplete = 100;
+  } else if (platform === "civitai" && cursorDate && oldestDate) {
+    // CivitAI: timeline percentage — how far back cursor has reached
+    const now = Date.now();
+    const cursorMs = new Date(cursorDate).getTime();
+    const oldestMs = new Date(oldestDate).getTime();
+    if (now > oldestMs) {
+      pctComplete = Math.min(100, ((now - cursorMs) / (now - oldestMs)) * 100);
+    }
+  } else if (termsTotal > 0) {
+    // DeviantArt / others: term exhaustion percentage
+    pctComplete = (termsExhausted / termsTotal) * 100;
+  }
+
+  return {
+    enabled: true,
+    complete,
+    termsTotal,
+    termsExhausted,
+    pctComplete,
+    cursorDate,
+    oldestDate,
+    startedAt,
+    completedAt,
+  };
 }
 
 // --- Main Query ---
@@ -274,6 +346,8 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     { count: matchesPendingReviewCount },
     // Recent matches
     { data: recentMatchesRaw },
+    // Daily snapshots
+    { data: dailySnapshotsRaw },
   ] = await Promise.all([
     // Funnel
     supabase
@@ -388,6 +462,12 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
       )
       .order("created_at", { ascending: false })
       .limit(50),
+    // Daily snapshots (last 90 days)
+    supabase
+      .from("scanner_daily_snapshots")
+      .select("*")
+      .gte("snapshot_date", new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0])
+      .order("snapshot_date", { ascending: true }),
   ]);
 
   // Group test users by type
@@ -447,10 +527,12 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
   });
   const platforms = (platformsRaw || []).map((p) => {
     const pi = p as PlatformInfo;
+    const updated = { ...pi };
     if (platformCountMap[pi.platform] !== undefined) {
-      return { ...pi, total_images_discovered: platformCountMap[pi.platform] };
+      updated.total_images_discovered = platformCountMap[pi.platform];
     }
-    return pi;
+    updated.backfill = parseBackfillProgress(pi.platform, pi.search_terms);
+    return updated;
   }) as PlatformInfo[];
 
   return {
@@ -480,6 +562,7 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     scoutRuns: (scoutRunsRaw || []) as ScoutRun[],
     scoutKeywords: (scoutKeywordsRaw || []) as ScoutKeyword[],
     recentMatches: await buildMatchItems(supabase, recentMatchesRaw || []),
+    dailySnapshots: (dailySnapshotsRaw || []) as DailySnapshot[],
   };
 }
 

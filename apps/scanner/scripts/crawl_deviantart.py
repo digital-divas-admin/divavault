@@ -42,6 +42,10 @@ async def main():
         "--max-pages", type=int, default=None,
         help="Override max pages per tag (ignores damage tiers)",
     )
+    parser.add_argument(
+        "--backfill", action="store_true",
+        help="Run in backfill mode: deeper pages, persistent exhausted cursors",
+    )
     args = parser.parse_args()
 
     start = time.monotonic()
@@ -84,15 +88,26 @@ async def main():
         ))
         row = r.fetchone()
         search_terms_data = (row[0] if row else None) or {}
-    saved_cursors = search_terms_data.get("search_cursors", {})
+
+    backfill_mode = args.backfill
+    if backfill_mode:
+        backfill_state = search_terms_data.get("backfill", {})
+        saved_cursors = backfill_state.get("cursors", {})
+    else:
+        saved_cursors = search_terms_data.get("search_cursors", {})
 
     # Print run header
     cursor_count = sum(1 for t in effective_tags if saved_cursors.get(t))
+    mode_label = "BACKFILL" if backfill_mode else "SWEEP"
     print(f"\n{'='*60}")
-    print(f"CRAWLING DEVIANTART (inline detection via provider)")
+    print(f"CRAWLING DEVIANTART — {mode_label} (inline detection via provider)")
     print(f"{'='*60}")
     print(f"Tags: {len(effective_tags)}")
     print(f"Concurrency: {settings.deviantart_concurrency}")
+    if backfill_mode:
+        exhausted_count = sum(1 for t in effective_tags if saved_cursors.get(t) == "exhausted")
+        print(f"Pages per tag: {settings.deviantart_backfill_pages}")
+        print(f"Tags exhausted: {exhausted_count}/{len(effective_tags)}")
     print(f"Resuming from cursors: {cursor_count}/{len(effective_tags)} tags")
     print()
 
@@ -100,8 +115,10 @@ async def main():
     context = DiscoveryContext(
         platform="deviantart",
         search_terms=effective_tags,
-        search_cursors=saved_cursors,
+        search_cursors=None if backfill_mode else saved_cursors,
         tag_depths=tag_depths if tag_depths else None,
+        backfill=backfill_mode,
+        backfill_cursors=saved_cursors if backfill_mode else None,
     )
 
     # Call the provider's inline crawl+detection
@@ -133,14 +150,30 @@ async def main():
 
     # Persist cursors for next run
     new_search_terms = dict(search_terms_data)
-    if result.search_cursors:
-        active = {k: v for k, v in result.search_cursors.items() if v is not None}
-        if active:
-            new_search_terms["search_cursors"] = active
+    if backfill_mode:
+        # In backfill mode, persist to backfill sub-key
+        bf = new_search_terms.get("backfill", {})
+        if result.search_cursors:
+            bf["cursors"] = dict(result.search_cursors)
+        if not bf.get("started_at"):
+            from datetime import datetime, timezone
+            bf["started_at"] = datetime.now(timezone.utc).isoformat()
+        all_c = bf.get("cursors", {})
+        bf["terms_total"] = len(all_c)
+        bf["terms_exhausted"] = sum(1 for v in all_c.values() if v == "exhausted")
+        if bf["terms_total"] > 0 and bf["terms_exhausted"] >= bf["terms_total"]:
+            bf["complete"] = True
+            bf["completed_at"] = datetime.now(timezone.utc).isoformat()
+        new_search_terms["backfill"] = bf
+    else:
+        if result.search_cursors:
+            active = {k: v for k, v in result.search_cursors.items() if v is not None}
+            if active:
+                new_search_terms["search_cursors"] = active
+            elif "search_cursors" in new_search_terms:
+                del new_search_terms["search_cursors"]
         elif "search_cursors" in new_search_terms:
             del new_search_terms["search_cursors"]
-    elif "search_cursors" in new_search_terms:
-        del new_search_terms["search_cursors"]
 
     async with async_session() as session:
         await session.execute(text(
