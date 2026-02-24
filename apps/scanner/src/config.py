@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # Matching
     matching_batch_size: int = 500          # face embeddings per match batch
 
+    # Crawl scheduling (hours between automatic crawls, 0 = manual only)
+    civitai_crawl_interval_hours: int = 24
+    deviantart_crawl_interval_hours: int = 24
+
     # CivitAI crawl
     civitai_max_pages: int = 1  # pages per term per tick (100 images/page) — set low for test run
     civitai_model_pages_per_tag: int = 1  # pages per tag per tick (100 models/page)

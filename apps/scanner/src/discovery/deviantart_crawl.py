@@ -336,8 +336,12 @@ class DeviantArtCrawl(BaseDiscoverySource):
                             inline_stats["failures"] += ps["failures"]
                             inline_stats["faces"] += ps["faces"]
 
-                        # Early stop on mostly-known content
-                        if len(page_results) > 0 and page_num > 1:
+                        # Early stop on mostly-known content — only in the
+                        # new-content zone (no saved cursor = scanning newest).
+                        # If we resumed from a saved cursor, we're deepening into
+                        # history and should NOT early-stop on dedup.
+                        is_depth_zone = start_offset is not None
+                        if len(page_results) > 0 and page_num > 1 and not is_depth_zone:
                             dedup_ratio = ps["dedup"] / len(page_results)
                             if dedup_ratio >= DEDUP_STOP_RATIO:
                                 async with cursors_lock:

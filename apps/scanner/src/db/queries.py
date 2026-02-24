@@ -224,14 +224,26 @@ async def update_crawl_schedule_after_run(
     platform: str,
     search_terms: dict | None = None,
 ) -> None:
-    """Update platform_crawl_schedule after a completed crawl."""
+    """Update platform_crawl_schedule after a completed crawl.
+
+    Sets next_crawl_at based on per-platform interval config.
+    If interval is 0, sets to far future (manual-only mode).
+    """
+    from src.config import settings
+
     now = datetime.now(timezone.utc)
     values: dict = {"last_crawl_at": now}
     if search_terms is not None:
         values["search_terms"] = search_terms
 
-    # Manual-only mode: don't auto-reschedule, require manual trigger
-    values["next_crawl_at"] = datetime(9999, 1, 1, tzinfo=timezone.utc)
+    # Per-platform crawl interval (0 = manual only)
+    interval_attr = f"{platform}_crawl_interval_hours"
+    interval_hours = getattr(settings, interval_attr, 0)
+
+    if interval_hours > 0:
+        values["next_crawl_at"] = now + timedelta(hours=interval_hours)
+    else:
+        values["next_crawl_at"] = datetime(9999, 1, 1, tzinfo=timezone.utc)
 
     await session.execute(
         update(PlatformCrawlSchedule)
@@ -420,6 +432,167 @@ async def update_match(session: AsyncSession, match_id: UUID, **kwargs) -> None:
         await session.execute(
             update(Match).where(Match.id == match_id).values(**kwargs)
         )
+
+
+async def get_matches_paginated(
+    session: AsyncSession,
+    status: str | None = None,
+    platform: str | None = None,
+    contributor_id: UUID | None = None,
+    confidence_tier: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    """Get matches with contributor and discovered image info, paginated.
+
+    Returns (rows, total_count).
+    """
+    where_clauses = []
+    params: dict = {"limit": limit, "offset": offset}
+
+    if status:
+        where_clauses.append("m.status = :status")
+        params["status"] = status
+    if platform:
+        where_clauses.append("di.platform = :platform")
+        params["platform"] = platform
+    if contributor_id:
+        where_clauses.append("m.contributor_id = :contributor_id")
+        params["contributor_id"] = str(contributor_id)
+    if confidence_tier:
+        where_clauses.append("m.confidence_tier = :confidence_tier")
+        params["confidence_tier"] = confidence_tier
+
+    where_sql = (" AND " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    # Count query
+    count_result = await session.execute(
+        text(f"""
+            SELECT count(*)
+            FROM matches m
+            JOIN discovered_images di ON di.id = m.discovered_image_id
+            WHERE 1=1 {where_sql}
+        """),
+        params,
+    )
+    total = count_result.scalar_one()
+
+    # Data query
+    result = await session.execute(
+        text(f"""
+            SELECT
+              m.id, m.contributor_id, m.discovered_image_id,
+              m.similarity_score, m.confidence_tier, m.status,
+              m.is_known_account, m.is_ai_generated, m.ai_detection_score,
+              m.face_index, m.created_at,
+              di.source_url, di.page_url, di.page_title, di.platform,
+              di.image_stored_url,
+              c.full_name AS contributor_name
+            FROM matches m
+            JOIN discovered_images di ON di.id = m.discovered_image_id
+            LEFT JOIN contributors c ON c.id = m.contributor_id
+            WHERE 1=1 {where_sql}
+            ORDER BY m.created_at DESC
+            LIMIT :limit OFFSET :offset
+        """),
+        params,
+    )
+    rows = result.fetchall()
+    return [
+        {
+            "id": str(row[0]),
+            "contributor_id": str(row[1]),
+            "discovered_image_id": str(row[2]),
+            "similarity_score": float(row[3]) if row[3] else None,
+            "confidence_tier": row[4],
+            "status": row[5],
+            "is_known_account": row[6],
+            "is_ai_generated": row[7],
+            "ai_detection_score": float(row[8]) if row[8] else None,
+            "face_index": row[9],
+            "created_at": row[10].isoformat() if row[10] else None,
+            "source_url": row[11],
+            "page_url": row[12],
+            "page_title": row[13],
+            "platform": row[14],
+            "image_stored_url": row[15],
+            "contributor_name": row[16],
+        }
+        for row in rows
+    ], total
+
+
+async def get_match_detail(session: AsyncSession, match_id: UUID) -> dict | None:
+    """Get full match detail including contributor photo and evidence."""
+    result = await session.execute(
+        text("""
+            SELECT
+              m.id, m.contributor_id, m.discovered_image_id,
+              m.similarity_score, m.confidence_tier, m.status,
+              m.is_known_account, m.known_account_id,
+              m.is_ai_generated, m.ai_detection_score, m.ai_generator,
+              m.best_embedding_id, m.face_index, m.created_at,
+              di.source_url, di.page_url, di.page_title, di.platform,
+              di.image_stored_url,
+              c.full_name AS contributor_name, c.subscription_tier
+            FROM matches m
+            JOIN discovered_images di ON di.id = m.discovered_image_id
+            LEFT JOIN contributors c ON c.id = m.contributor_id
+            WHERE m.id = :match_id
+        """),
+        {"match_id": str(match_id)},
+    )
+    row = result.fetchone()
+    if not row:
+        return None
+
+    # Get evidence
+    evidence_result = await session.execute(
+        text("""
+            SELECT id, evidence_type, storage_url, sha256_hash,
+                   file_size_bytes, captured_at
+            FROM evidence
+            WHERE match_id = :match_id
+            ORDER BY captured_at DESC
+        """),
+        {"match_id": str(match_id)},
+    )
+    evidence = [
+        {
+            "id": str(e[0]),
+            "evidence_type": e[1],
+            "storage_url": e[2],
+            "sha256_hash": e[3],
+            "file_size_bytes": e[4],
+            "captured_at": e[5].isoformat() if e[5] else None,
+        }
+        for e in evidence_result.fetchall()
+    ]
+
+    return {
+        "id": str(row[0]),
+        "contributor_id": str(row[1]),
+        "discovered_image_id": str(row[2]),
+        "similarity_score": float(row[3]) if row[3] else None,
+        "confidence_tier": row[4],
+        "status": row[5],
+        "is_known_account": row[6],
+        "known_account_id": str(row[7]) if row[7] else None,
+        "is_ai_generated": row[8],
+        "ai_detection_score": float(row[9]) if row[9] else None,
+        "ai_generator": row[10],
+        "best_embedding_id": str(row[11]) if row[11] else None,
+        "face_index": row[12],
+        "created_at": row[13].isoformat() if row[13] else None,
+        "source_url": row[14],
+        "page_url": row[15],
+        "page_title": row[16],
+        "platform": row[17],
+        "image_stored_url": row[18],
+        "contributor_name": row[19],
+        "contributor_tier": row[20],
+        "evidence": evidence,
+    }
 
 
 # --- Known account queries ---

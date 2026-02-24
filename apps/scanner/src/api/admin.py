@@ -424,6 +424,88 @@ async def get_signal_stats():
     }
 
 
+# --- Match Review Endpoints ---
+
+
+class UpdateMatchStatusRequest(BaseModel):
+    status: str  # confirmed, rejected, false_positive
+
+
+@router.get("/matches", dependencies=[Depends(verify_service_key)])
+async def list_matches(
+    status: str | None = Query(None),
+    platform: str | None = Query(None),
+    contributor_id: str | None = Query(None),
+    confidence_tier: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """List matches with pagination and filtering."""
+    from uuid import UUID as _UUID
+    from src.db.queries import get_matches_paginated
+
+    cid = _UUID(contributor_id) if contributor_id else None
+    async with async_session() as session:
+        rows, total = await get_matches_paginated(
+            session,
+            status=status,
+            platform=platform,
+            contributor_id=cid,
+            confidence_tier=confidence_tier,
+            limit=limit,
+            offset=offset,
+        )
+    return {"matches": rows, "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/matches/{match_id}", dependencies=[Depends(verify_service_key)])
+async def get_match(match_id: str = Path(...)):
+    """Get full match detail with evidence."""
+    from uuid import UUID as _UUID
+    from src.db.queries import get_match_detail
+
+    async with async_session() as session:
+        detail = await get_match_detail(session, _UUID(match_id))
+    if not detail:
+        raise HTTPException(status_code=404, detail="Match not found")
+    return detail
+
+
+@router.patch("/matches/{match_id}", dependencies=[Depends(verify_service_key)])
+async def update_match_status(match_id: str = Path(...), body: UpdateMatchStatusRequest = ...):
+    """Update match status (confirmed/rejected/false_positive)."""
+    from uuid import UUID as _UUID
+    from src.db.models import Match as MatchModel
+    from src.api.match_review import emit_match_review_signal
+
+    valid_statuses = {"confirmed", "rejected", "false_positive"}
+    if body.status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
+        )
+
+    mid = _UUID(match_id)
+    async with async_session() as session:
+        result = await session.execute(
+            select(MatchModel).where(MatchModel.id == mid)
+        )
+        match = result.scalar_one_or_none()
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
+
+        match.status = body.status
+        await session.commit()
+
+    # Emit ML feedback signal
+    try:
+        await emit_match_review_signal(mid, body.status)
+    except Exception:
+        pass
+
+    return {"id": match_id, "status": body.status}
+
+
 # --- Scout Endpoints ---
 
 

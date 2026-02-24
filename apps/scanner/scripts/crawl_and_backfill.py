@@ -42,8 +42,6 @@ from src.utils.image_download import (
 from src.utils.logging import get_logger
 
 log = get_logger("crawl_script")
-
-ALEXIS_ID = UUID("3e9e72a1-f6a1-4e58-aaeb-ab4716dd4dca")
 TEMP_DIR = Path(settings.temp_dir)
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -391,77 +389,102 @@ async def process_images(new_images: list[dict]) -> int:
     return faces_found
 
 
-async def backfill_alexis() -> int:
-    """Run backfill for Alexis against all discovered face embeddings."""
+async def backfill_all_contributors() -> int:
+    """Run backfill for ALL onboarded contributors against discovered face embeddings."""
     print(f"\n{'='*60}")
-    print(f"PHASE 3: BACKFILL AGAINST ALEXIS")
+    print(f"PHASE 3: BACKFILL AGAINST ALL CONTRIBUTORS")
     print(f"{'='*60}")
 
+    # Get all onboarded contributors who have embeddings
     async with async_session() as session:
-        # Get Alexis's best embedding
         r = await session.execute(text("""
-            SELECT id, embedding
-            FROM contributor_embeddings
-            WHERE contributor_id = :cid
-            ORDER BY detection_score DESC NULLS LAST
-            LIMIT 1
-        """), {"cid": str(ALEXIS_ID)})
-        row = r.fetchone()
-        if not row:
-            print("ERROR: Alexis has no embeddings!")
-            return 0
+            SELECT DISTINCT ce.contributor_id, c.full_name
+            FROM contributor_embeddings ce
+            JOIN contributors c ON c.id = ce.contributor_id
+            WHERE c.onboarding_completed = true
+              AND c.opted_out = false
+              AND c.suspended = false
+            ORDER BY ce.contributor_id
+        """))
+        contributors = r.fetchall()
 
-        emb_id = row[0]
-        # Raw SQL returns vector as string like "[0.01,-0.04,...]" — parse it
-        raw_emb = row[1]
-        if isinstance(raw_emb, str):
-            embedding_vec = np.array([float(x) for x in raw_emb.strip("[]").split(",")])
-        else:
-            embedding_vec = np.array(raw_emb)
-        print(f"Using embedding {emb_id} (shape: {embedding_vec.shape})")
+    if not contributors:
+        print("No onboarded contributors with embeddings found.")
+        return 0
 
-        # Count available face embeddings
+    print(f"Found {len(contributors)} contributors to match against")
+
+    # Count available face embeddings
+    async with async_session() as session:
         r2 = await session.execute(text("SELECT count(*) FROM discovered_face_embeddings"))
         total_embs = r2.scalar()
-        print(f"Searching against {total_embs} discovered face embeddings...")
+    print(f"Searching against {total_embs} discovered face embeddings...")
 
-        # Run backfill
-        hits = await backfill_contributor_against_discovered(
-            session,
-            contributor_id=ALEXIS_ID,
-            embedding=embedding_vec,
-            threshold=settings.match_threshold_low,
-            days_back=settings.civitai_backfill_days,
-        )
+    total_matches = 0
 
-        if not hits:
-            print(f"No matches found above threshold ({settings.match_threshold_low})")
-            return 0
+    for contributor_id, full_name in contributors:
+        display_name = full_name or str(contributor_id)[:8]
 
-        matches_created = 0
-        for hit in hits:
-            confidence = get_confidence_tier(hit["similarity"])
-            if confidence is None:
+        async with async_session() as session:
+            # Get contributor's best embedding
+            r = await session.execute(text("""
+                SELECT id, embedding::text
+                FROM contributor_embeddings
+                WHERE contributor_id = :cid
+                ORDER BY is_primary DESC, detection_score DESC NULLS LAST
+                LIMIT 1
+            """), {"cid": str(contributor_id)})
+            row = r.fetchone()
+            if not row:
                 continue
 
-            match = await insert_match(
-                session,
-                discovered_image_id=hit["discovered_image_id"],
-                contributor_id=ALEXIS_ID,
-                similarity_score=hit["similarity"],
-                confidence_tier=confidence,
-                best_embedding_id=emb_id,
-                face_index=hit["face_index"],
-            )
-            if match:
-                matches_created += 1
-                print(f"  MATCH: similarity={hit['similarity']:.4f} "
-                      f"confidence={confidence} "
-                      f"image={hit['discovered_image_id']}")
+            emb_id = row[0]
+            raw_emb = row[1]
+            if isinstance(raw_emb, str):
+                embedding_vec = np.array([float(x) for x in raw_emb.strip("[]").split(",")])
+            else:
+                embedding_vec = np.array(raw_emb)
 
-        await session.commit()
-        print(f"\nTotal matches created: {matches_created}")
-        return matches_created
+            # Run backfill for this contributor
+            hits = await backfill_contributor_against_discovered(
+                session,
+                contributor_id=contributor_id,
+                embedding=embedding_vec,
+                threshold=settings.match_threshold_low,
+                days_back=settings.civitai_backfill_days,
+            )
+
+            if not hits:
+                continue
+
+            contributor_matches = 0
+            for hit in hits:
+                confidence = get_confidence_tier(hit["similarity"])
+                if confidence is None:
+                    continue
+
+                match = await insert_match(
+                    session,
+                    discovered_image_id=hit["discovered_image_id"],
+                    contributor_id=contributor_id,
+                    similarity_score=hit["similarity"],
+                    confidence_tier=confidence,
+                    best_embedding_id=emb_id,
+                    face_index=hit["face_index"],
+                )
+                if match:
+                    contributor_matches += 1
+                    print(f"  MATCH [{display_name}]: similarity={hit['similarity']:.4f} "
+                          f"confidence={confidence} "
+                          f"image={hit['discovered_image_id']}")
+
+            await session.commit()
+            if contributor_matches > 0:
+                print(f"  → {display_name}: {contributor_matches} matches")
+                total_matches += contributor_matches
+
+    print(f"\nTotal matches created across all contributors: {total_matches}")
+    return total_matches
 
 
 async def main():
@@ -484,8 +507,8 @@ async def main():
         print("\nNo new images to process (all deduped)")
         faces = 0
 
-    # Phase 4: Backfill
-    matches = await backfill_alexis()
+    # Phase 4: Backfill against all contributors
+    matches = await backfill_all_contributors()
 
     # Summary
     elapsed = time.time() - start
@@ -495,7 +518,7 @@ async def main():
     print(f"  Images discovered: {len(images)}")
     print(f"  New (not deduped): {len(new_images)}")
     print(f"  Faces detected:    {faces}")
-    print(f"  Alexis matches:    {matches}")
+    print(f"  Matches (all):     {matches}")
 
 
 if __name__ == "__main__":

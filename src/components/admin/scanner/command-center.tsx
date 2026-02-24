@@ -10,6 +10,7 @@ import { CrawlMapTab } from "./crawl-map-tab";
 import { MLIntelligenceTab } from "./ml-intelligence-tab";
 import { TestUsersTab } from "./test-users-tab";
 import { ScoutTab } from "./scout-tab";
+import { MatchesTab } from "./matches-tab";
 import {
   LayoutDashboard,
   GitBranch,
@@ -17,12 +18,14 @@ import {
   Brain,
   FlaskConical,
   Radar,
+  Crosshair,
 } from "lucide-react";
 
 const TABS = [
   { id: "command", label: "Command", icon: LayoutDashboard },
   { id: "pipeline", label: "Pipeline", icon: GitBranch },
   { id: "crawl-map", label: "Crawl Map", icon: Map },
+  { id: "matches", label: "Matches", icon: Crosshair },
   { id: "ml-intelligence", label: "ML Intelligence", icon: Brain },
   { id: "test-users", label: "Test Users", icon: FlaskConical },
   { id: "scout", label: "Scout", icon: Radar },
@@ -119,6 +122,12 @@ export function CommandCenter({ initialData }: CommandCenterProps) {
           sections={initialData.sections}
           platforms={initialData.platforms}
           initialPlatform={selectedPlatform}
+        />
+      )}
+      {activeTab === "matches" && (
+        <MatchesTab
+          matches={initialData.recentMatches}
+          pendingReviewCount={initialData.pipeline.matchesPendingReviewCount}
         />
       )}
       {activeTab === "ml-intelligence" && (

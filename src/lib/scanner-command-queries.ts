@@ -179,6 +179,28 @@ export interface ScoutKeyword {
   enabled: boolean;
 }
 
+export interface MatchItem {
+  id: string;
+  contributor_id: string;
+  discovered_image_id: string;
+  similarity_score: number | null;
+  confidence_tier: string | null;
+  status: string;
+  is_known_account: boolean | null;
+  is_ai_generated: boolean | null;
+  ai_detection_score: number | null;
+  face_index: number | null;
+  created_at: string | null;
+  source_url: string | null;
+  page_url: string | null;
+  page_title: string | null;
+  platform: string | null;
+  image_stored_url: string | null;
+  contributor_name: string | null;
+  contributor_photo_url: string | null;
+  discovered_image_url: string | null;
+}
+
 export interface PipelineData {
   pendingDetectionCount: number;
   pendingMatchingCount: number;
@@ -207,6 +229,7 @@ export interface CommandCenterData {
   scoutDiscoveries: ScoutDiscovery[];
   scoutRuns: ScoutRun[];
   scoutKeywords: ScoutKeyword[];
+  recentMatches: MatchItem[];
 }
 
 // --- Main Query ---
@@ -249,6 +272,8 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     { count: pendingDetectionCount },
     { count: pendingMatchingCount },
     { count: matchesPendingReviewCount },
+    // Recent matches
+    { data: recentMatchesRaw },
   ] = await Promise.all([
     // Funnel
     supabase
@@ -348,6 +373,21 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
       .from("matches")
       .select("*", { count: "exact", head: true })
       .eq("status", "new"),
+    // Recent matches for Matches tab (latest 50)
+    supabase
+      .from("matches")
+      .select(
+        `
+        id, contributor_id, discovered_image_id,
+        similarity_score, confidence_tier, status,
+        is_known_account, is_ai_generated, ai_detection_score,
+        face_index, created_at,
+        discovered_images!inner(source_url, page_url, page_title, platform, image_stored_url),
+        contributors(full_name)
+      `
+      )
+      .order("created_at", { ascending: false })
+      .limit(50),
   ]);
 
   // Group test users by type
@@ -439,7 +479,110 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     scoutDiscoveries: (scoutDiscoveriesRaw || []) as ScoutDiscovery[],
     scoutRuns: (scoutRunsRaw || []) as ScoutRun[],
     scoutKeywords: (scoutKeywordsRaw || []) as ScoutKeyword[],
+    recentMatches: await buildMatchItems(supabase, recentMatchesRaw || []),
   };
+}
+
+/** Flatten raw PostgREST match rows and generate signed image URLs. */
+async function buildMatchItems(
+  supabase: Awaited<ReturnType<typeof createServiceClient>>,
+  raw: unknown[],
+): Promise<MatchItem[]> {
+  const rows = (raw as Record<string, unknown>[]).map((m) => {
+    const di = m.discovered_images as Record<string, unknown> | null;
+    const c = m.contributors as Record<string, unknown> | null;
+    return {
+      id: m.id as string,
+      contributor_id: m.contributor_id as string,
+      discovered_image_id: m.discovered_image_id as string,
+      similarity_score: m.similarity_score as number | null,
+      confidence_tier: m.confidence_tier as string | null,
+      status: m.status as string,
+      is_known_account: m.is_known_account as boolean | null,
+      is_ai_generated: m.is_ai_generated as boolean | null,
+      ai_detection_score: m.ai_detection_score as number | null,
+      face_index: m.face_index as number | null,
+      created_at: m.created_at as string | null,
+      source_url: (di?.source_url as string) ?? null,
+      page_url: (di?.page_url as string) ?? null,
+      page_title: (di?.page_title as string) ?? null,
+      platform: (di?.platform as string) ?? null,
+      image_stored_url: (di?.image_stored_url as string) ?? null,
+      contributor_name: (c?.full_name as string) ?? null,
+      contributor_photo_url: null as string | null,
+      discovered_image_url: null as string | null,
+    };
+  });
+
+  if (rows.length === 0) return rows;
+
+  // Batch-fetch one photo per contributor for side-by-side comparison
+  const contributorIds = [...new Set(rows.map((r) => r.contributor_id))];
+  const photoMap: Record<string, string> = {};
+
+  // Try contributor_images (guided capture) first
+  const { data: capturePhotos } = await supabase
+    .from("contributor_images")
+    .select("contributor_id, file_path, bucket")
+    .in("contributor_id", contributorIds)
+    .not("file_path", "is", null)
+    .order("created_at", { ascending: false });
+
+  for (const p of (capturePhotos || []) as { contributor_id: string; file_path: string; bucket: string | null }[]) {
+    if (!photoMap[p.contributor_id]) {
+      photoMap[p.contributor_id] = `${p.bucket || "capture-uploads"}:${p.file_path}`;
+    }
+  }
+
+  // Fall back to uploads table for contributors without capture photos
+  const missingIds = contributorIds.filter((id) => !photoMap[id]);
+  if (missingIds.length > 0) {
+    const { data: uploads } = await supabase
+      .from("uploads")
+      .select("contributor_id, file_path, bucket")
+      .in("contributor_id", missingIds)
+      .not("file_path", "is", null)
+      .order("created_at", { ascending: false });
+
+    for (const u of (uploads || []) as { contributor_id: string; file_path: string; bucket: string | null }[]) {
+      if (!photoMap[u.contributor_id]) {
+        photoMap[u.contributor_id] = `${u.bucket || "sfw-uploads"}:${u.file_path}`;
+      }
+    }
+  }
+
+  // Generate signed URLs for contributor photos and discovered images
+  const signedUrlPromises: Promise<void>[] = [];
+
+  for (const row of rows) {
+    // Contributor photo signed URL
+    const photoRef = photoMap[row.contributor_id];
+    if (photoRef) {
+      const [bucket, ...pathParts] = photoRef.split(":");
+      const filePath = pathParts.join(":");
+      signedUrlPromises.push(
+        supabase.storage
+          .from(bucket)
+          .createSignedUrl(filePath, 3600)
+          .then(({ data }) => { row.contributor_photo_url = data?.signedUrl ?? null; })
+      );
+    }
+
+    // Discovered image signed URL (prefer stored copy, fall back to source_url)
+    if (row.image_stored_url) {
+      signedUrlPromises.push(
+        supabase.storage
+          .from("discovered-images")
+          .createSignedUrl(row.image_stored_url, 3600)
+          .then(({ data }) => { row.discovered_image_url = data?.signedUrl ?? row.source_url; })
+      );
+    } else {
+      row.discovered_image_url = row.source_url;
+    }
+  }
+
+  await Promise.allSettled(signedUrlPromises);
+  return rows;
 }
 
 // --- Specialized Queries ---
