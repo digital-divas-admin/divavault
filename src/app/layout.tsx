@@ -29,13 +29,13 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Consented AI | AI Likeness Protection",
+  title: "Consented AI | Court-Ready Deepfake Evidence",
   description:
-    "Protect your face from unauthorized AI use. Consented AI scans AI platforms for your likeness, files takedowns, and keeps you in control.",
+    "Court-ready forensic evidence for deepfake cases. We build documented, explainable evidence packages for attorneys, talent management, and content removal firms.",
   openGraph: {
-    title: "Consented AI | AI Likeness Protection",
+    title: "Consented AI | Court-Ready Deepfake Evidence",
     description:
-      "Protect your face from unauthorized AI use. We scan 247+ platforms and file takedowns automatically.",
+      "Court-ready forensic evidence for deepfake cases. Documented methodology that holds up in court.",
     type: "website",
   },
 };
