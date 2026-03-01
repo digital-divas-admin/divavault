@@ -1,0 +1,71 @@
+# Consented AI — Full Overview
+
+> Court-ready forensic evidence for deepfake cases.
+
+## Company Overview
+
+Consented AI is an AI likeness protection platform. We build documented, explainable evidence packages for deepfake cases that hold up in court. Our clients are attorneys, talent management firms, entertainment companies, and content removal specialists who need forensic-grade proof of unauthorized AI-generated likenesses.
+
+## Core Service: Deepfake Forensic Evidence
+
+Our evidence packages include:
+
+- **Detection**: Continuous scanning of AI platforms (CivitAI, DeviantArt, Reddit, and 247+ additional sources) for unauthorized use of a person's face.
+- **Attribution**: Linking detected deepfakes to specific AI models, training datasets, and distribution platforms.
+- **Chain-of-Custody Documentation**: Timestamped, hash-verified records that satisfy legal standards for digital evidence admissibility.
+- **Expert-Ready Reports**: Structured documentation designed for use by expert witnesses and legal counsel in court proceedings.
+
+## Methodology
+
+Our forensic methodology is designed for legal admissibility:
+
+1. **Enrollment**: Individuals upload reference photos and verify their identity through KYC (Know Your Customer) checks.
+2. **Facial Signature Creation**: We generate a unique facial embedding from verified reference images.
+3. **Continuous Scanning**: Our scanner backend monitors AI content platforms for matches against enrolled facial signatures using cosine similarity matching.
+4. **Match Verification**: Detected matches undergo quality scoring and human review before escalation.
+5. **Evidence Packaging**: Confirmed matches are compiled into documented evidence packages with full provenance chains.
+6. **Automated Takedowns**: DMCA takedown notices are filed automatically for confirmed unauthorized uses.
+
+## Legal Landscape
+
+AI likeness rights are evolving rapidly across the United States. We track legislation in all 50 states and at the federal level. Our Legal Landscape page provides:
+
+- State-by-state protection level ratings
+- Bill tracking for active legislation
+- Analysis of enacted and proposed laws
+- Federal bill monitoring
+
+Visit: https://www.consentedai.com/legal-landscape
+
+## Who We Serve
+
+### Attorneys
+Deepfake litigation requires forensic evidence that meets admissibility standards. We provide court-ready documentation with chain-of-custody verification.
+
+### Talent Management & Entertainment
+Protect your talent's likeness from unauthorized AI-generated content. Continuous monitoring across hundreds of platforms with automated takedown filing.
+
+### Content Removal Firms
+Integrate our detection and evidence capabilities into your existing workflows via our API. Scale deepfake identification across your client portfolio.
+
+### Individuals
+Enroll to monitor and protect your likeness. Receive alerts when potential unauthorized uses are detected and benefit from automated DMCA takedowns.
+
+## Additional Capabilities
+
+- **Platform Scanning**: 247+ AI content platforms monitored continuously
+- **DMCA Automation**: Automated takedown notice generation and filing
+- **Developer API**: Programmatic access for integration partners
+- **Legal Landscape Tracker**: Real-time legislative tracking across all US states
+
+## Key Pages
+
+- Homepage: https://www.consentedai.com
+- Legal Landscape: https://www.consentedai.com/legal-landscape
+- Developer API: https://www.consentedai.com/developers
+- Sign Up: https://www.consentedai.com/signup
+
+## Contact
+
+- Email: info@consentedai.com
+- Website: https://www.consentedai.com

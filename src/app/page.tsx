@@ -28,6 +28,47 @@ export default function Home() {
         <Footer />
       </main>
       <InquiryDialogContent />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@graph": [
+              {
+                "@type": "Organization",
+                name: "Consented AI",
+                url: "https://www.consentedai.com",
+                description:
+                  "Court-ready forensic evidence for deepfake cases. Documented, explainable evidence packages for attorneys, talent management, and content removal firms.",
+                contactPoint: {
+                  "@type": "ContactPoint",
+                  email: "info@consentedai.com",
+                  contactType: "sales",
+                },
+              },
+              {
+                "@type": "WebSite",
+                url: "https://www.consentedai.com",
+                name: "Consented AI",
+                description:
+                  "Court-ready forensic evidence for deepfake cases.",
+              },
+              {
+                "@type": "ProfessionalService",
+                name: "Deepfake Forensic Evidence",
+                provider: {
+                  "@type": "Organization",
+                  name: "Consented AI",
+                },
+                description:
+                  "We build documented, explainable evidence packages for deepfake cases that hold up in court. Our methodology covers detection, attribution, and chain-of-custody documentation.",
+                serviceType: "Deepfake Forensic Analysis",
+                areaServed: "US",
+              },
+            ],
+          }),
+        }}
+      />
     </InquiryDialogProvider>
   );
 }

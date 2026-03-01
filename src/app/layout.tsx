@@ -29,6 +29,7 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.consentedai.com"),
   title: "Consented AI | Court-Ready Deepfake Evidence",
   description:
     "Court-ready forensic evidence for deepfake cases. We build documented, explainable evidence packages for attorneys, talent management, and content removal firms.",

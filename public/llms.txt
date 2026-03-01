@@ -1,0 +1,26 @@
+# Consented AI
+
+> Court-ready forensic evidence for deepfake cases.
+
+## What We Do
+
+Consented AI builds documented, explainable evidence packages for deepfake cases. We detect unauthorized AI-generated likenesses, attribute them to specific models and platforms, and produce chain-of-custody documentation that holds up in court.
+
+## Who We Serve
+
+- Attorneys handling deepfake litigation
+- Talent management and entertainment firms
+- Content removal and brand protection companies
+- Individuals whose likeness has been used without consent
+
+## Key Pages
+
+- Homepage: https://www.consentedai.com
+- Legal Landscape (AI likeness rights by state): https://www.consentedai.com/legal-landscape
+- Developer API: https://www.consentedai.com/developers
+- Sign Up: https://www.consentedai.com/signup
+
+## Contact
+
+- Email: info@consentedai.com
+- Website: https://www.consentedai.com
