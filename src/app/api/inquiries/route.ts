@@ -46,8 +46,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fire-and-forget email alert
-    sendInquiryAlert(parsed.data).catch((err) =>
+    // Send email alert (awaited so it completes before the response closes the execution context)
+    await sendInquiryAlert(parsed.data).catch((err) =>
       console.error("Inquiry alert email error:", err)
     );
 
