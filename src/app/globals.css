@@ -50,7 +50,7 @@
   color-scheme: light;
   --radius: 0.625rem;
   --font-sans: "DM Sans", system-ui, sans-serif;
-  --font-heading: "DM Serif Display", Georgia, serif;
+  --font-heading: "Instrument Serif", Georgia, serif;
 
   /* Ocean Ruby Radiance — light palette */
   --background: #F0F4FA;
@@ -178,6 +178,35 @@
   animation: timeline-node-pulse 2s ease-in-out infinite;
 }
 
+/* ── Landing page animations ──────────────────────── */
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes landing-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.8s ease forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 1s ease forwards;
+}
+
+.animate-landing-pulse {
+  animation: landing-pulse 2s ease infinite;
+}
+
 /* Reduced motion: disable all animations */
 @media (prefers-reduced-motion: reduce) {
   .score-ring-progress,
@@ -192,4 +221,7 @@
   .score-sparkle { opacity: 0.6; }
   .match-new-pulse { animation: none; border-left-color: rgba(220, 38, 38, 0.5); }
   .timeline-node-active { animation: none; }
+  .animate-fade-up { animation: none; opacity: 1; transform: none; }
+  .animate-fade-in { animation: none; opacity: 1; }
+  .animate-landing-pulse { animation: none; }
 }

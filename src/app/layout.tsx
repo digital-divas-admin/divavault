@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Sans, DM_Serif_Display, Outfit, DM_Mono } from "next/font/google";
+import { DM_Sans, Instrument_Serif, Outfit, DM_Mono } from "next/font/google";
 import { Suspense } from "react";
 import { SignoutCleanup } from "@/components/auth/signout-cleanup";
 import "@/lib/env";
@@ -10,10 +10,11 @@ const dmSans = DM_Sans({
   subsets: ["latin"],
 });
 
-const dmSerifDisplay = DM_Serif_Display({
+const instrumentSerif = Instrument_Serif({
   variable: "--font-heading",
   subsets: ["latin"],
   weight: "400",
+  style: ["normal", "italic"],
 });
 
 const outfit = Outfit({
@@ -47,7 +48,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${dmSans.variable} ${dmSerifDisplay.variable} ${outfit.variable} ${dmMono.variable} font-sans antialiased`}
+        className={`${dmSans.variable} ${instrumentSerif.variable} ${outfit.variable} ${dmMono.variable} font-sans antialiased`}
       >
         <Suspense fallback={null}>
           <SignoutCleanup />

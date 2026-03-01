@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
+import { InquiryDialogTrigger } from "@/components/landing/v2/inquiry-dialog";
 
 const navLinks = [
   { href: "/#how-it-works", label: "How It Works" },
@@ -38,12 +39,7 @@ export function Navbar({ variant = "light" }: { variant?: "light" | "dark" }) {
           </div>
 
           <div className="hidden md:block">
-            <Link
-              href="/signup"
-              className="inline-flex items-center justify-center text-sm font-medium bg-primary text-primary-foreground px-5 py-2 rounded-full hover:bg-primary/90 transition-colors"
-            >
-              Get Started
-            </Link>
+            <InquiryDialogTrigger />
           </div>
 
           <button
@@ -68,12 +64,9 @@ export function Navbar({ variant = "light" }: { variant?: "light" | "dark" }) {
                   {link.label}
                 </Link>
               ))}
-              <Link
-                href="/signup"
-                className="inline-flex items-center justify-center text-sm font-medium bg-primary text-primary-foreground px-5 py-2 rounded-full mt-2"
-              >
-                Get Started
-              </Link>
+              <div className="mt-2">
+                <InquiryDialogTrigger />
+              </div>
             </div>
           </div>
         )}
@@ -103,12 +96,7 @@ export function Navbar({ variant = "light" }: { variant?: "light" | "dark" }) {
         </div>
 
         <div className="hidden md:block">
-          <Link
-            href="/signup"
-            className="inline-flex items-center justify-center text-sm font-medium bg-[#DC2626] text-white px-5 py-2 rounded-full hover:bg-[#EF4444] transition-colors"
-          >
-            Get Started
-          </Link>
+          <InquiryDialogTrigger />
         </div>
 
         <button
@@ -133,12 +121,9 @@ export function Navbar({ variant = "light" }: { variant?: "light" | "dark" }) {
                 {link.label}
               </Link>
             ))}
-            <Link
-              href="/signup"
-              className="inline-flex items-center justify-center text-sm font-medium bg-[#DC2626] text-white px-5 py-2 rounded-full mt-2"
-            >
-              Get Started
-            </Link>
+            <div className="mt-2">
+              <InquiryDialogTrigger />
+            </div>
           </div>
         </div>
       )}

@@ -19,6 +19,7 @@ import {
   Megaphone,
   Crosshair,
   BarChart3,
+  MessageSquare,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,7 @@ const coreNavItems = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/payouts", label: "Payouts", icon: Wallet },
   { href: "/admin/metrics", label: "Metrics", icon: BarChart3 },
+  { href: "/admin/inquiries", label: "Inquiries", icon: MessageSquare },
 ];
 
 const scannerNavItems = [
