@@ -317,6 +317,29 @@ export async function sendInquiryAlert(data: {
   });
 }
 
+/** Sent to the person who submitted a case inquiry to confirm receipt. */
+export async function sendInquiryConfirmation(data: {
+  name: string;
+  email: string;
+  case_type: string;
+}) {
+  const caseLabel = data.case_type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return sendEmail({
+    to: data.email,
+    subject: "We received your inquiry",
+    html: wrapHtml(`
+      <h1>Thank You, ${data.name}</h1>
+      <p>We've received your <strong>${caseLabel}</strong> inquiry and a member of our team will be in touch shortly.</p>
+      <div class="card">
+        <p class="card-label">What happens next?</p>
+        <p class="card-value" style="font-family: inherit;">A specialist from our team will review your inquiry and reach out within 1–2 business days to discuss how we can help.</p>
+      </div>
+      <p>In the meantime, if you have any questions you can reply to this email or reach us at <a href="mailto:hello@consentedai.com" style="color: #DC2626; text-decoration: none;">hello@consentedai.com</a>.</p>
+    `),
+    text: `Thank you, ${data.name}.\n\nWe've received your ${caseLabel} inquiry and a member of our team will be in touch within 1–2 business days.\n\nIf you have any questions, reach us at hello@consentedai.com.`,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Opt-out email functions
 // ---------------------------------------------------------------------------

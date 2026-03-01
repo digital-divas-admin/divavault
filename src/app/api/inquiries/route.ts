@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createServiceClient } from "@/lib/supabase/server";
-import { sendInquiryAlert } from "@/lib/email";
+import { sendInquiryAlert, sendInquiryConfirmation } from "@/lib/email";
 
 const inquirySchema = z.object({
   name: z.string().min(1, { message: "Name is required" }),
@@ -46,10 +46,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Send email alert (awaited so it completes before the response closes the execution context)
-    await sendInquiryAlert(parsed.data).catch((err) =>
-      console.error("Inquiry alert email error:", err)
-    );
+    // Send emails (awaited so they complete before the response closes the execution context)
+    await Promise.all([
+      sendInquiryAlert(parsed.data).catch((err) =>
+        console.error("Inquiry alert email error:", err)
+      ),
+      sendInquiryConfirmation(parsed.data).catch((err) =>
+        console.error("Inquiry confirmation email error:", err)
+      ),
+    ]);
 
     return NextResponse.json({ success: true });
   } catch {
