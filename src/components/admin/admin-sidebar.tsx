@@ -57,6 +57,38 @@ const roleBadgeStyles: Record<AdminRole, string> = {
   super_admin: "bg-purple-500/10 text-purple-600 border-purple-500/20",
 };
 
+type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; exact?: boolean };
+
+function NavGroup({ items, isActive }: { items: NavItem[]; isActive: (href: string, exact?: boolean) => boolean }) {
+  return items.map((item) => {
+    const active = isActive(item.href, item.exact);
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+          active
+            ? "bg-primary/10 text-primary border-l-2 border-primary -ml-[2px] pl-[14px]"
+            : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+        }`}
+      >
+        <item.icon className="h-4 w-4 shrink-0" />
+        {item.label}
+      </Link>
+    );
+  });
+}
+
+function NavSectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="pt-3 pb-1 px-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+        {children}
+      </p>
+    </div>
+  );
+}
+
 interface AdminSidebarProps {
   displayName: string;
   role: AdminRole;
@@ -113,71 +145,13 @@ function SidebarContent({ displayName, role }: AdminSidebarProps) {
 
       {/* Nav items */}
       <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
-        {coreNavItems.map((item) => {
-          const active = isActive(item.href, item.exact);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                active
-                  ? "bg-primary/10 text-primary border-l-2 border-primary -ml-[2px] pl-[14px]"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              }`}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              {item.label}
-            </Link>
-          );
-        })}
+        <NavGroup items={coreNavItems} isActive={isActive} />
 
-        <div className="pt-3 pb-1 px-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-            Scanner
-          </p>
-        </div>
+        <NavSectionLabel>Scanner</NavSectionLabel>
+        <NavGroup items={scannerNavItems} isActive={isActive} />
 
-        {scannerNavItems.map((item) => {
-          const active = isActive(item.href, item.exact);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                active
-                  ? "bg-primary/10 text-primary border-l-2 border-primary -ml-[2px] pl-[14px]"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              }`}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              {item.label}
-            </Link>
-          );
-        })}
-
-        <div className="pt-3 pb-1 px-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-            Ad Intelligence
-          </p>
-        </div>
-
-        {adIntelNavItems.map((item) => {
-          const active = isActive(item.href, item.exact);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                active
-                  ? "bg-primary/10 text-primary border-l-2 border-primary -ml-[2px] pl-[14px]"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              }`}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              {item.label}
-            </Link>
-          );
-        })}
+        <NavSectionLabel>Ad Intelligence</NavSectionLabel>
+        <NavGroup items={adIntelNavItems} isActive={isActive} />
       </nav>
 
       {/* Bottom */}

@@ -85,7 +85,6 @@ export async function getAdminStats(): Promise<AdminStats> {
 
 // Recent admin activity feed
 export interface AdminActivityItem {
-  type: "signup";
   title: string;
   description: string;
   timestamp: string;
@@ -96,24 +95,20 @@ export async function getRecentAdminActivity(
 ): Promise<AdminActivityItem[]> {
   const supabase = await createServiceClient();
 
-  const { data: recentSignups } = await supabase
+  const { data } = await supabase
     .from("contributors")
     .select("full_name, display_name, created_at")
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  const items: AdminActivityItem[] = [];
-
-  for (const s of recentSignups || []) {
-    items.push({
-      type: "signup",
+  return (data || []).map((s) => {
+    const row = s as { display_name: string | null; full_name: string; created_at: string };
+    return {
       title: "New signup",
-      description: (s as { display_name: string | null; full_name: string }).display_name || (s as { full_name: string }).full_name,
-      timestamp: (s as { created_at: string }).created_at,
-    });
-  }
-
-  return items;
+      description: row.display_name || row.full_name,
+      timestamp: row.created_at,
+    };
+  });
 }
 
 // User management queries
@@ -162,23 +157,7 @@ export async function getAllContributors({
 
   if (!data) return { contributors: [], total: 0 };
 
-  const contributors: ContributorListItem[] = data.map((c) => {
-    const row = c as {
-      id: string;
-      full_name: string;
-      email: string;
-      display_name: string | null;
-      verification_status: string;
-      photo_count: number;
-      onboarding_completed: boolean;
-      suspended: boolean;
-      flagged: boolean;
-      created_at: string;
-    };
-    return { ...row };
-  });
-
-  return { contributors, total: count || 0 };
+  return { contributors: data as ContributorListItem[], total: count || 0 };
 }
 
 export interface ContributorDetail {
@@ -215,27 +194,11 @@ export async function getContributorAdmin(
 
   if (!data) return null;
 
-  const row = data as Record<string, unknown>;
+  const row = data as ContributorDetail & { suspended?: boolean; flagged?: boolean };
   return {
-    id: row.id as string,
-    full_name: row.full_name as string,
-    email: row.email as string,
-    display_name: row.display_name as string | null,
-    verification_status: row.verification_status as string,
-    instagram_username: row.instagram_username as string | null,
-    photo_count: row.photo_count as number,
-    consent_given: row.consent_given as boolean,
-    consent_timestamp: row.consent_timestamp as string | null,
-    onboarding_completed: row.onboarding_completed as boolean,
-    opted_out: row.opted_out as boolean,
-    opted_out_at: row.opted_out_at as string | null,
-    last_login_at: row.last_login_at as string | null,
-    suspended: (row.suspended as boolean) || false,
-    suspended_at: row.suspended_at as string | null,
-    flagged: (row.flagged as boolean) || false,
-    flag_reason: row.flag_reason as string | null,
-    created_at: row.created_at as string,
-    updated_at: row.updated_at as string,
+    ...row,
+    suspended: row.suspended || false,
+    flagged: row.flagged || false,
   };
 }
 
