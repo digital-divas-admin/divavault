@@ -304,6 +304,43 @@ export async function sendLegalUpdate(
   });
 }
 
+/** Sent to the team when someone submits a case inquiry. */
+export async function sendInquiryAlert(data: {
+  name: string;
+  email: string;
+  phone?: string;
+  company?: string;
+  case_type: string;
+  message?: string;
+}) {
+  const caseLabel = data.case_type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return sendEmail({
+    to: "hello@consentedai.com",
+    subject: `New case inquiry from ${data.name}`,
+    html: wrapHtml(`
+      <h1>New Case Inquiry</h1>
+      <p>Someone submitted a case inquiry through the website.</p>
+      <div class="card">
+        <p class="card-label">Name</p>
+        <p class="card-value">${data.name}</p>
+      </div>
+      <div class="card">
+        <p class="card-label">Email</p>
+        <p class="card-value">${data.email}</p>
+      </div>
+      ${data.phone ? `<div class="card"><p class="card-label">Phone</p><p class="card-value">${data.phone}</p></div>` : ""}
+      ${data.company ? `<div class="card"><p class="card-label">Company</p><p class="card-value">${data.company}</p></div>` : ""}
+      <div class="card">
+        <p class="card-label">Case Type</p>
+        <p class="card-value">${caseLabel}</p>
+      </div>
+      ${data.message ? `<div class="card"><p class="card-label">Message</p><p class="card-value" style="font-family: inherit; white-space: pre-wrap;">${data.message}</p></div>` : ""}
+      <a href="https://www.consentedai.com/admin/inquiries" class="cta">View Inquiries &rarr;</a>
+    `),
+    text: `New case inquiry from ${data.name}\n\nEmail: ${data.email}${data.phone ? `\nPhone: ${data.phone}` : ""}${data.company ? `\nCompany: ${data.company}` : ""}\nCase Type: ${caseLabel}${data.message ? `\nMessage: ${data.message}` : ""}\n\nView: https://www.consentedai.com/admin/inquiries`,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Opt-out email functions
 // ---------------------------------------------------------------------------

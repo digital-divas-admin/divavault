@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createServiceClient } from "@/lib/supabase/server";
+import { sendInquiryAlert } from "@/lib/email";
 
 const inquirySchema = z.object({
   name: z.string().min(1, { message: "Name is required" }),
@@ -44,6 +45,11 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
+
+    // Fire-and-forget email alert
+    sendInquiryAlert(parsed.data).catch((err) =>
+      console.error("Inquiry alert email error:", err)
+    );
 
     return NextResponse.json({ success: true });
   } catch {
