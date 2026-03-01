@@ -258,30 +258,6 @@ export async function sendSecurityAlert(
   });
 }
 
-/** Sent when a bounty matches a contributor's profile. */
-export async function sendBountyMatch(
-  to: string,
-  data: {
-    title: string;
-    compensation: string;
-  }
-) {
-  return sendEmail({
-    to,
-    subject: `New paid photo request matches your profile`,
-    html: wrapHtml(`
-      <h1>New Bounty Match</h1>
-      <p>A paid photo request matches your profile:</p>
-      <div class="card">
-        <p class="card-label">${data.title}</p>
-        <p class="card-value success">${data.compensation}</p>
-      </div>
-      <a href="https://www.consentedai.com/dashboard" class="cta">View Request &rarr;</a>
-    `),
-    text: `New bounty match: ${data.title} (${data.compensation}).\n\nView: https://www.consentedai.com/dashboard`,
-  });
-}
-
 /** Sent for legal landscape notification subscribers. */
 export async function sendLegalUpdate(
   to: string,

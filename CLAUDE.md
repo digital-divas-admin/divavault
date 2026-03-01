@@ -1,4 +1,4 @@
-# Made Of Us
+# Consented AI
 
 An AI likeness protection platform. Members upload photos and verify their identity to create a facial signature. We then continuously scan AI platforms (CivitAI, DeviantArt, Reddit, 247+) for unauthorized use of their face and file DMCA takedowns automatically. Dark purple-black theme with tiered protection plans (Free / Protected / Premium).
 
@@ -11,7 +11,7 @@ An AI likeness protection platform. Members upload photos and verify their ident
 - **State:** Zustand with `persist` middleware (localStorage, version 4)
 - **Identity Verification:** Veriff (`@veriff/js-sdk` + `@veriff/incontext-sdk`)
 - **Camera Capture:** `getUserMedia` API + canvas-based quality checks
-- **Deployment:** Render (via `render.yaml`) — not yet deployed; planned for future
+- **Deployment:** Render (via `render.yaml`) — deployed and live
 
 ## Commands
 
@@ -90,7 +90,7 @@ src/
 └── types/
     ├── index.ts                    # Contributor + Upload interfaces
     ├── capture.ts                  # CaptureSession, ContributorImage, ContributorConsent, etc.
-    └── marketplace.ts              # ContributorAttributes, marketplace types
+    └── marketplace.ts              # AdminRole, AdminUser, ContributorAttributes
 ```
 
 ## Important Patterns

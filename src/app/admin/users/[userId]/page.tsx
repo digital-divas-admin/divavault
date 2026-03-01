@@ -1,15 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import {
-  getContributorAdmin,
-  getSubmissionsForContributor,
-} from "@/lib/admin-queries";
+import { getContributorAdmin } from "@/lib/admin-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { VerificationStatusBadge } from "@/components/admin/verification-status-badge";
 import { UserActions } from "@/components/admin/user-actions";
-import { UserSubmissionHistory } from "@/components/admin/user-submission-history";
 import {
   ArrowLeft,
   Mail,
@@ -18,9 +14,6 @@ import {
   Instagram,
   Ban,
   AlertTriangle,
-  DollarSign,
-  Clock,
-  CheckCircle2,
 } from "lucide-react";
 
 interface PageProps {
@@ -29,10 +22,7 @@ interface PageProps {
 
 export default async function AdminUserDetailPage({ params }: PageProps) {
   const { userId } = await params;
-  const [user, submissions] = await Promise.all([
-    getContributorAdmin(userId),
-    getSubmissionsForContributor(userId),
-  ]);
+  const user = await getContributorAdmin(userId);
 
   if (!user) notFound();
 
@@ -95,7 +85,7 @@ export default async function AdminUserDetailPage({ params }: PageProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
             <div>
               <p className="text-muted-foreground">Consent</p>
               <p className="font-medium">
@@ -113,10 +103,6 @@ export default async function AdminUserDetailPage({ params }: PageProps) {
               <p className="font-medium">
                 {user.opted_out ? "Yes" : "No"}
               </p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Submissions</p>
-              <p className="font-medium">{user.submission_count}</p>
             </div>
           </div>
         </CardContent>
@@ -158,44 +144,6 @@ export default async function AdminUserDetailPage({ params }: PageProps) {
         </Card>
       )}
 
-      {/* Earnings summary */}
-      <Card className="bg-card border-border/30">
-        <CardHeader>
-          <CardTitle className="text-base">Earnings</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4 text-green-500" />
-              <div>
-                <p className="text-lg font-bold">
-                  ${(user.total_earned_cents / 100).toFixed(2)}
-                </p>
-                <p className="text-xs text-muted-foreground">Total Earned</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-yellow-500" />
-              <div>
-                <p className="text-lg font-bold">
-                  ${(user.pending_earned_cents / 100).toFixed(2)}
-                </p>
-                <p className="text-xs text-muted-foreground">Pending</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-blue-500" />
-              <div>
-                <p className="text-lg font-bold">
-                  ${(user.paid_earned_cents / 100).toFixed(2)}
-                </p>
-                <p className="text-xs text-muted-foreground">Paid</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Actions */}
       <Card className="bg-card border-border/30">
         <CardHeader>
@@ -210,14 +158,6 @@ export default async function AdminUserDetailPage({ params }: PageProps) {
           />
         </CardContent>
       </Card>
-
-      {/* Submission history */}
-      <div>
-        <h2 className="font-[family-name:var(--font-heading)] text-lg font-bold mb-3">
-          Submission History
-        </h2>
-        <UserSubmissionHistory submissions={submissions} />
-      </div>
     </div>
   );
 }

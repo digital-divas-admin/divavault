@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin, suspendContributor, flagContributor } from "@/lib/admin-queries";
-import { userActionSchema } from "@/lib/marketplace-validators";
+import { z } from "zod";
+
+const userActionSchema = z.object({
+  action: z.enum(["suspend", "unsuspend", "flag", "unflag"]),
+  reason: z.string().optional(),
+});
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

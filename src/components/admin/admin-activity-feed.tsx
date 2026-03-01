@@ -1,11 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus, Upload, Rocket } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import type { AdminActivityItem } from "@/lib/admin-queries";
 
 const iconMap = {
   signup: { icon: UserPlus, className: "text-green-500 bg-green-500/10" },
-  submission: { icon: Upload, className: "text-blue-500 bg-blue-500/10" },
-  published: { icon: Rocket, className: "text-purple-500 bg-purple-500/10" },
 };
 
 function relativeTime(timestamp: string): string {

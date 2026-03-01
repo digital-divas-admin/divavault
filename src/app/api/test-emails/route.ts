@@ -5,7 +5,6 @@ import {
   sendTakedownUpdate,
   sendScanComplete,
   sendSecurityAlert,
-  sendBountyMatch,
   sendLegalUpdate,
 } from "@/lib/email";
 
@@ -71,12 +70,6 @@ export async function POST(request: NextRequest) {
         event: "Opt-out activated",
         description:
           "You have opted out of AI training. Your likeness will no longer be scanned or monitored. You can opt back in at any time from your privacy settings.",
-      }),
-
-    bounty_match: () =>
-      sendBountyMatch(to, {
-        title: "Diverse Headshots for E-Learning Platform",
-        compensation: "$75 per set",
       }),
 
     legal_update: () =>

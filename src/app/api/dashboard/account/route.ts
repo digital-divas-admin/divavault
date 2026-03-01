@@ -7,7 +7,6 @@ const accountUpdateSchema = z.object({
   display_name: z.string().min(1).max(100).optional(),
   notifications: z
     .object({
-      email_earnings: z.boolean().optional(),
       email_photo_status: z.boolean().optional(),
       email_platform_updates: z.boolean().optional(),
       email_security_alerts: z.boolean().optional(),

@@ -9,7 +9,6 @@ export interface ActivityLog {
 
 export interface NotificationPreferences {
   contributor_id: string;
-  email_earnings: boolean;
   email_photo_status: boolean;
   email_platform_updates: boolean;
   email_security_alerts: boolean;
@@ -17,8 +16,6 @@ export interface NotificationPreferences {
   email_scan_updates: boolean;
   email_takedown_updates: boolean;
   email_optout_updates: boolean;
-  email_bounty_matches: boolean;
-  email_bounty_updates: boolean;
   updated_at: string;
   [key: string]: string | boolean;
 }
@@ -59,7 +56,6 @@ export interface DashboardContributor {
   consent_given: boolean;
   consent_timestamp: string | null;
   consent_version: string | null;
-  paypal_email: string | null;
   consent_details: Record<string, boolean> | null;
   onboarding_completed: boolean;
   opted_out: boolean;

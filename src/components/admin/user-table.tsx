@@ -103,15 +103,13 @@ export function UserTable({ contributors, total, page, pageSize }: UserTableProp
               <TableHead>Email</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Verification</TableHead>
-              <TableHead className="text-right">Submissions</TableHead>
-              <TableHead className="text-right">Earned</TableHead>
               <TableHead>Joined</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {contributors.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                   No users found
                 </TableCell>
               </TableRow>
@@ -147,10 +145,6 @@ export function UserTable({ contributors, total, page, pageSize }: UserTableProp
                   </TableCell>
                   <TableCell>
                     <VerificationStatusBadge status={c.verification_status} />
-                  </TableCell>
-                  <TableCell className="text-right">{c.submission_count}</TableCell>
-                  <TableCell className="text-right">
-                    ${(c.total_earned_cents / 100).toFixed(2)}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(c.created_at).toLocaleDateString()}

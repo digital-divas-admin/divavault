@@ -4,13 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  FileText,
-  ClipboardCheck,
   ArrowLeft,
   Menu,
   Shield,
   Users,
-  Wallet,
   Radar,
   Target,
   Briefcase,
@@ -18,7 +15,6 @@ import {
   FlaskConical,
   Megaphone,
   Crosshair,
-  BarChart3,
   MessageSquare,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -32,11 +28,7 @@ import { SignOutButton } from "@/components/auth/signout-button";
 
 const coreNavItems = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
-  { href: "/admin/requests", label: "Requests", icon: FileText },
-  { href: "/admin/review-queue", label: "Review Queue", icon: ClipboardCheck },
   { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/payouts", label: "Payouts", icon: Wallet },
-  { href: "/admin/metrics", label: "Metrics", icon: BarChart3 },
   { href: "/admin/inquiries", label: "Inquiries", icon: MessageSquare },
 ];
 

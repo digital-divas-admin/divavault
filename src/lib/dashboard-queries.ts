@@ -85,15 +85,12 @@ export async function getNotificationPreferences(
   // Return defaults if no row exists
   return {
     contributor_id: userId,
-    email_earnings: true,
     email_photo_status: true,
     email_platform_updates: true,
     email_security_alerts: true,
     email_match_alerts: true,
     email_scan_updates: true,
     email_takedown_updates: true,
-    email_bounty_matches: true,
-    email_bounty_updates: true,
     email_optout_updates: true,
     updated_at: new Date().toISOString(),
   };

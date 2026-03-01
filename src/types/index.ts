@@ -10,7 +10,6 @@ export interface Contributor {
   consent_given: boolean;
   consent_timestamp: string | null;
   consent_version: string | null;
-  paypal_email: string | null;
   consent_details: Record<string, boolean> | null;
   onboarding_completed: boolean;
   opted_out: boolean;
