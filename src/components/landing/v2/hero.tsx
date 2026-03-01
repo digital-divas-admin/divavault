@@ -42,13 +42,12 @@ export function Hero() {
         <InquiryDialogTrigger className="inline-flex items-center justify-center px-9 py-4 bg-[#DC2626] text-white rounded-[10px] font-bold text-[15px] hover:opacity-90 hover:-translate-y-0.5 transition-all">
           Discuss a Case
         </InquiryDialogTrigger>
-        <button
-          disabled
-          title="Coming soon"
-          className="inline-flex items-center justify-center px-9 py-4 bg-transparent text-[#3A5070] border border-[#D0D8E6] rounded-[10px] font-medium text-[15px] hover:border-[#3A5070] hover:text-[#0C1424] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        <a
+          href="#methodology"
+          className="inline-flex items-center justify-center px-9 py-4 bg-transparent text-[#3A5070] border border-[#D0D8E6] rounded-[10px] font-medium text-[15px] hover:border-[#3A5070] hover:text-[#0C1424] transition-all"
         >
           See Our Methodology
-        </button>
+        </a>
       </div>
 
       {/* Floating evidence card (hidden below lg) */}
