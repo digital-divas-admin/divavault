@@ -32,15 +32,33 @@ def _is_ytdlp_url(url: str) -> bool:
         return False
 
 
+def _find_ytdlp() -> str:
+    """Find the yt-dlp executable."""
+    import shutil
+    path = shutil.which("yt-dlp")
+    if path:
+        return path
+    # Check common pip install locations
+    for candidate in [
+        os.path.expanduser("~/Library/Python/3.9/bin/yt-dlp"),
+        os.path.expanduser("~/.local/bin/yt-dlp"),
+        "/usr/local/bin/yt-dlp",
+    ]:
+        if os.path.isfile(candidate):
+            return candidate
+    raise FileNotFoundError("yt-dlp not found. Install it with: pip3 install yt-dlp")
+
+
 async def _download_with_ytdlp(url: str, output_dir: str) -> dict:
     """Download media using yt-dlp in a subprocess."""
     import asyncio
     import json
 
     output_template = os.path.join(output_dir, "%(id)s.%(ext)s")
+    ytdlp_bin = _find_ytdlp()
 
     cmd = [
-        "yt-dlp",
+        ytdlp_bin,
         "--no-playlist",
         "--write-info-json",
         "--output", output_template,

@@ -92,7 +92,7 @@ async def run_provenance_check(
                 await session.execute(text(
                     "INSERT INTO deepfake_evidence "
                     "(investigation_id, evidence_type, title, content, provenance_data) "
-                    "VALUES (:inv_id, 'provenance_check', :title, :content, :prov::jsonb)"
+                    "VALUES (:inv_id, 'provenance_check', :title, :content, CAST(:prov AS jsonb))"
                 ), {
                     "inv_id": investigation_id,
                     "title": title,

@@ -55,7 +55,7 @@ async def log_activity(
     async with async_session() as session:
         await session.execute(text(
             "INSERT INTO deepfake_activity_log (investigation_id, event_type, metadata) "
-            "VALUES (:inv_id, :event, :meta::jsonb)"
+            "VALUES (:inv_id, :event, CAST(:meta AS jsonb))"
         ), {
             "inv_id": investigation_id,
             "event": event_type,

@@ -129,7 +129,7 @@ async def _fail_task(task_id: str, error_message: str) -> None:
         await session.execute(text(
             "UPDATE deepfake_tasks "
             "SET status = 'failed', completed_at = :now, "
-            "    result = jsonb_build_object('error', :error) "
+            "    result = jsonb_build_object('error', CAST(:error AS text)) "
             "WHERE id = :id"
         ), {
             "id": task_id,
@@ -336,7 +336,7 @@ async def _process_extract_metadata(
                 "UPDATE deepfake_media "
                 "SET duration_seconds = :dur, fps = :fps, codec = :codec, "
                 "    resolution_width = :rw, resolution_height = :rh, "
-                "    ffprobe_data = :ffprobe::jsonb, exif_data = :exif::jsonb, "
+                "    ffprobe_data = CAST(:ffprobe AS jsonb), exif_data = CAST(:exif AS jsonb), "
                 "    updated_at = :now "
                 "WHERE id = :id"
             ), {
