@@ -25,6 +25,9 @@ anthropic>=0.40.0
 # ML Analyzers
 scikit-learn>=1.4.0
 
+# Content Provenance
+c2pa-python>=0.6.0
+
 # Utilities
 structlog>=24.4.0
 tenacity>=9.0.0

@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     ai_detection_provider: str = "hive"
     match_scoring_provider: str = "static"
 
+    # Deepfake investigation — automated search
+    serpapi_api_key: str = ""
+    ap_api_key: str = ""
+
     # Ad Intelligence
     meta_ad_library_access_token: str = ""
     shutterstock_api_key: str = ""

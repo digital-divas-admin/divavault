@@ -619,3 +619,15 @@ async def delete_scout_keyword(keyword_id: str = Path(...)):
         return {"success": True}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+# --- Deepfake Processing Endpoints ---
+
+
+@router.post("/deepfake/process", dependencies=[Depends(verify_service_key)])
+async def trigger_deepfake_processing():
+    """Trigger processing of pending deepfake tasks."""
+    from src.deepfake.processor import process_pending_tasks
+
+    asyncio.create_task(process_pending_tasks())
+    return {"status": "processing_started"}

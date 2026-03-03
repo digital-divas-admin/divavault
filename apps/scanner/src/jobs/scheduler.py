@@ -161,6 +161,12 @@ async def run_scheduler(job_store: JobStore) -> None:
             if shutdown_requested:
                 break
 
+            # g. Deepfake task processing
+            await _run_deepfake_tasks()
+
+            if shutdown_requested:
+                break
+
             # d. Cleanup (hourly)
             now = time.monotonic()
             if now - last_cleanup > 3600:
@@ -407,6 +413,17 @@ async def _run_ml_intelligence() -> None:
         await _applier.check_outcomes()
     except Exception as e:
         log.error("ml_intelligence_error", error=str(e))
+
+
+async def _run_deepfake_tasks() -> None:
+    """Process pending deepfake tasks. Never blocks pipeline."""
+    try:
+        from src.deepfake.processor import process_pending_tasks
+        processed = await process_pending_tasks()
+        if processed > 0:
+            log.info("deepfake_tasks_tick", processed=processed)
+    except Exception as e:
+        log.error("deepfake_tasks_error", error=str(e))
 
 
 async def _capture_daily_snapshot() -> None:

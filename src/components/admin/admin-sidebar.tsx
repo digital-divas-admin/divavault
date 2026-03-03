@@ -16,6 +16,7 @@ import {
   Megaphone,
   Crosshair,
   MessageSquare,
+  SearchSlash,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +44,10 @@ const adIntelNavItems = [
   { href: "/admin/ad-intel", label: "Ad Intelligence", icon: Megaphone, exact: true },
   { href: "/admin/ad-intel/matches", label: "Ad Matches", icon: Crosshair },
   { href: "/admin/ad-intel/jobs", label: "Ad Scan Jobs", icon: Briefcase },
+];
+
+const deepfakeNavItems = [
+  { href: "/admin/investigations", label: "Deepfake Lab", icon: SearchSlash, exact: true },
 ];
 
 const roleLabels: Record<AdminRole, string> = {
@@ -152,6 +157,9 @@ function SidebarContent({ displayName, role }: AdminSidebarProps) {
 
         <NavSectionLabel>Ad Intelligence</NavSectionLabel>
         <NavGroup items={adIntelNavItems} isActive={isActive} />
+
+        <NavSectionLabel>Deepfake Lab</NavSectionLabel>
+        <NavGroup items={deepfakeNavItems} isActive={isActive} />
       </nav>
 
       {/* Bottom */}
