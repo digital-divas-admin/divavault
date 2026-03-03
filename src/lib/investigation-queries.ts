@@ -115,10 +115,30 @@ export async function getInvestigationById(id: string): Promise<InvestigationDet
     supabase.from("deepfake_reverse_search_results").select("*").eq("investigation_id", id).order("created_at"),
   ]);
 
+  // Sign frame storage URLs so the admin UI can display images
+  const frames = framesRes.data || [];
+  if (frames.length > 0) {
+    const signPromises = frames.map(async (frame: Record<string, unknown>) => {
+      if (frame.thumbnail_path) {
+        const { data } = await supabase.storage
+          .from("deepfake-evidence")
+          .createSignedUrl(frame.thumbnail_path as string, 3600);
+        if (data) frame.thumbnail_url = data.signedUrl;
+      }
+      if (frame.storage_path) {
+        const { data } = await supabase.storage
+          .from("deepfake-evidence")
+          .createSignedUrl(frame.storage_path as string, 3600);
+        if (data) frame.storage_url = data.signedUrl;
+      }
+    });
+    await Promise.all(signPromises);
+  }
+
   return {
     ...investigation,
     media: mediaRes.data || [],
-    frames: framesRes.data || [],
+    frames,
     evidence: evidenceRes.data || [],
     tasks: tasksRes.data || [],
     activity: activityRes.data || [],

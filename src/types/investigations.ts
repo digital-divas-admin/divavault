@@ -93,6 +93,8 @@ export interface InvestigationFrame {
   timestamp_seconds: number | null;
   storage_path: string;
   thumbnail_path: string | null;
+  storage_url?: string;
+  thumbnail_url?: string;
   admin_notes: string | null;
   has_artifacts: boolean;
   is_key_evidence: boolean;

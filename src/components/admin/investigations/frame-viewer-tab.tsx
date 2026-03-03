@@ -57,9 +57,17 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
                   : "border-border/50 hover:border-border"
               }`}
             >
-              <div className="w-full h-full bg-muted flex items-center justify-center">
-                <span className="text-[10px] text-muted-foreground">#{frame.frame_number}</span>
-              </div>
+              {frame.thumbnail_url ? (
+                <img
+                  src={frame.thumbnail_url}
+                  alt={`Frame #${frame.frame_number}`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-muted flex items-center justify-center">
+                  <span className="text-[10px] text-muted-foreground">#{frame.frame_number}</span>
+                </div>
+              )}
               {frame.is_key_evidence && (
                 <div className="absolute top-0.5 right-0.5">
                   <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
@@ -82,15 +90,23 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
           <div className="bg-card rounded-xl border border-border/50 overflow-hidden">
             {/* Frame image area */}
             <div className="aspect-video bg-muted flex items-center justify-center relative">
-              <div className="text-center">
-                <ImageIcon className="h-12 w-12 mx-auto text-muted-foreground/30 mb-2" />
-                <p className="text-sm text-muted-foreground">Frame #{selected.frame_number}</p>
-                {selected.timestamp_seconds !== null && (
-                  <p className="text-xs text-muted-foreground">
-                    {selected.timestamp_seconds.toFixed(2)}s
-                  </p>
-                )}
-              </div>
+              {selected.storage_url ? (
+                <img
+                  src={selected.storage_url}
+                  alt={`Frame #${selected.frame_number}`}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="text-center">
+                  <ImageIcon className="h-12 w-12 mx-auto text-muted-foreground/30 mb-2" />
+                  <p className="text-sm text-muted-foreground">Frame #{selected.frame_number}</p>
+                  {selected.timestamp_seconds !== null && (
+                    <p className="text-xs text-muted-foreground">
+                      {selected.timestamp_seconds.toFixed(2)}s
+                    </p>
+                  )}
+                </div>
+              )}
               {/* Nav arrows */}
               {selectedIdx > 0 && (
                 <button
