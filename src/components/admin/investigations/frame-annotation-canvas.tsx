@@ -79,6 +79,7 @@ export function FrameAnnotationCanvas({
   const [enhancing, setEnhancing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingEvidence, setSavingEvidence] = useState(false);
+  const [enhanceError, setEnhanceError] = useState<string | null>(null);
   const [fabricLoaded, setFabricLoaded] = useState(false);
 
   // Undo/Redo stacks
@@ -369,7 +370,7 @@ export function FrameAnnotationCanvas({
     const downHandler = (opt: any) => {
       const e = opt.e as MouseEvent;
       if (e.altKey) return;
-      const pointer = canvas.getViewportPoint(e);
+      const pointer = canvas.getScenePoint(e);
       isDrawingShape.current = true;
       shapeStartPoint.current = { x: pointer.x, y: pointer.y };
 
@@ -412,7 +413,7 @@ export function FrameAnnotationCanvas({
     const moveHandler = (opt: any) => {
       if (!isDrawingShape.current || !shapeStartPoint.current || !activeShapeRef.current) return;
       const e = opt.e as MouseEvent;
-      const pointer = canvas.getViewportPoint(e);
+      const pointer = canvas.getScenePoint(e);
       const startX = shapeStartPoint.current.x;
       const startY = shapeStartPoint.current.y;
       const shape = activeShapeRef.current;
@@ -519,6 +520,7 @@ export function FrameAnnotationCanvas({
   async function handleEnhance() {
     if (!frame.storage_path || enhancing) return;
     setEnhancing(true);
+    setEnhanceError(null);
     try {
       const res = await fetch(
         `/api/admin/investigations/${investigationId}/frames/${frame.id}/upscale`,
@@ -529,7 +531,10 @@ export function FrameAnnotationCanvas({
         }
       );
 
-      if (!res.ok) throw new Error("Upscale request failed");
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `Upscale failed (${res.status})`);
+      }
       const data = await res.json();
 
       if (data.upscaled_url && fabricRef.current && fabricModuleRef.current) {
@@ -563,6 +568,7 @@ export function FrameAnnotationCanvas({
       }
     } catch (err) {
       console.error("Enhance failed:", err);
+      setEnhanceError((err as Error).message || "Enhancement failed");
     } finally {
       setEnhancing(false);
     }
@@ -791,27 +797,34 @@ export function FrameAnnotationCanvas({
             </div>
 
             {/* Enhance button */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5 text-xs"
-                  onClick={handleEnhance}
-                  disabled={enhancing || enhanced}
-                >
-                  {enhancing ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-3.5 w-3.5" />
-                  )}
-                  {enhancing ? "Enhancing..." : enhanced ? "Enhanced" : "Enhance"}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p>AI Upscale 4x</p>
-              </TooltipContent>
-            </Tooltip>
+            <div className="flex items-center gap-1.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs"
+                    onClick={handleEnhance}
+                    disabled={enhancing || enhanced}
+                  >
+                    {enhancing ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                    {enhancing ? "Enhancing..." : enhanced ? "Enhanced" : "Enhance"}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p>AI Upscale 4x (requires scanner service)</p>
+                </TooltipContent>
+              </Tooltip>
+              {enhanceError && (
+                <span className="text-xs text-red-400 max-w-48 truncate" title={enhanceError}>
+                  {enhanceError}
+                </span>
+              )}
+            </div>
           </div>
         </TooltipProvider>
 
