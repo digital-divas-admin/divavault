@@ -81,6 +81,7 @@ export interface InvestigationMedia {
   resolution_height: number | null;
   ffprobe_data: Record<string, unknown> | null;
   exif_data: Record<string, unknown> | null;
+  storage_url?: string;
   created_at: string;
   updated_at: string;
 }

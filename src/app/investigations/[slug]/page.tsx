@@ -73,6 +73,62 @@ export default async function InvestigationDetailPage({ params }: PageProps) {
             </section>
           )}
 
+          {/* Media Under Investigation */}
+          {investigation.media.length > 0 && (
+            <section>
+              <h2 className="font-[family-name:var(--font-heading)] text-2xl text-foreground mb-6">
+                Media Under Investigation
+              </h2>
+              <div className="space-y-4">
+                {investigation.media.map((m) => (
+                  <div
+                    key={m.id}
+                    className="bg-card border border-border rounded-xl overflow-hidden"
+                  >
+                    {m.storage_url && m.media_type === "video" ? (
+                      <video
+                        src={m.storage_url}
+                        controls
+                        playsInline
+                        className="w-full max-h-[500px] bg-black"
+                      />
+                    ) : m.storage_url && m.media_type === "image" ? (
+                      <img
+                        src={m.storage_url}
+                        alt="Media under investigation"
+                        className="w-full max-h-[500px] object-contain bg-black"
+                      />
+                    ) : null}
+                    <div className="px-5 py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        {m.platform && (
+                          <span className="capitalize">{m.platform}</span>
+                        )}
+                        {m.duration_seconds != null && (
+                          <span>{Math.round(m.duration_seconds)}s</span>
+                        )}
+                        {m.resolution_width && m.resolution_height && (
+                          <span>
+                            {m.resolution_width}x{m.resolution_height}
+                          </span>
+                        )}
+                      </div>
+                      <a
+                        href={m.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Original source
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Evidence Timeline */}
           {investigation.evidence.length > 0 && (
             <section>

@@ -166,6 +166,20 @@ export const getInvestigationBySlug = cache(async (slug: string): Promise<Invest
     supabase.from("deepfake_evidence").select("*").eq("investigation_id", id).order("display_order"),
   ]);
 
+  // Sign media storage URLs for public display
+  const media = mediaRes.data || [];
+  if (media.length > 0) {
+    const signMediaPromises = media.map(async (m: Record<string, unknown>) => {
+      if (m.storage_path && m.download_status === "completed") {
+        const { data } = await supabase.storage
+          .from("deepfake-evidence")
+          .createSignedUrl(m.storage_path as string, 3600);
+        if (data) m.storage_url = data.signedUrl;
+      }
+    });
+    await Promise.all(signMediaPromises);
+  }
+
   // Sign frame storage URLs for public display
   const frames = framesRes.data || [];
   if (frames.length > 0) {
@@ -188,7 +202,7 @@ export const getInvestigationBySlug = cache(async (slug: string): Promise<Invest
 
   return {
     ...investigation,
-    media: mediaRes.data || [],
+    media,
     frames,
     evidence: evidenceRes.data || [],
     tasks: [],
