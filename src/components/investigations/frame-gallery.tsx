@@ -11,9 +11,16 @@ export function FrameGallery({ frames }: { frames: InvestigationFrame[] }) {
           key={frame.id}
           className="bg-card border border-border rounded-lg overflow-hidden"
         >
-          {/* Frame placeholder */}
-          <div className="aspect-video bg-muted flex items-center justify-center relative">
-            <Frame className="w-8 h-8 text-muted-foreground/30" />
+          <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden">
+            {frame.storage_url || frame.thumbnail_url ? (
+              <img
+                src={frame.thumbnail_url || frame.storage_url}
+                alt={`Frame #${frame.frame_number}`}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <Frame className="w-8 h-8 text-muted-foreground/30" />
+            )}
             {frame.has_artifacts && (
               <div className="absolute top-2 right-2" title="Artifacts detected">
                 <AlertCircle className="w-4 h-4 text-red-500" />
