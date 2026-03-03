@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import type { CommandCenterData } from "@/lib/scanner-command-queries";
 import { ScanLineHeader } from "./scan-line-header";
 import { HealthPulseBar } from "./health-pulse-bar";
@@ -48,24 +48,24 @@ export function CommandCenter({ initialData }: CommandCenterProps) {
   const [activity, setActivity] = useState<ActivityData>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
 
-  const fetchPollingData = useCallback(async () => {
-    try {
-      const [healthRes, activityRes] = await Promise.all([
-        fetch("/api/admin/scanner/health"),
-        fetch("/api/admin/scanner/activity"),
-      ]);
-      if (healthRes.ok) setHealth(await healthRes.json());
-      if (activityRes.ok) setActivity(await activityRes.json());
-    } catch {
-      // Silently fail — health bar shows degraded state
-    }
-  }, []);
-
   useEffect(() => {
+    let active = true;
+    async function fetchPollingData() {
+      try {
+        const [healthRes, activityRes] = await Promise.all([
+          fetch("/api/admin/scanner/health"),
+          fetch("/api/admin/scanner/activity"),
+        ]);
+        if (active && healthRes.ok) setHealth(await healthRes.json());
+        if (active && activityRes.ok) setActivity(await activityRes.json());
+      } catch {
+        // Silently fail — health bar shows degraded state
+      }
+    }
     fetchPollingData();
     const interval = setInterval(fetchPollingData, 30000);
-    return () => clearInterval(interval);
-  }, [fetchPollingData]);
+    return () => { active = false; clearInterval(interval); };
+  }, []);
 
   const handleSwitchTab = (tabId: TabId, context?: { platform?: string }) => {
     setActiveTab(tabId);

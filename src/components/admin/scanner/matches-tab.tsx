@@ -55,7 +55,7 @@ const CONFIDENCE_CONFIG: Record<string, { color: string }> = {
   low: { color: "text-zinc-400" },
 };
 
-export function MatchesTab({ matches, pendingReviewCount }: MatchesTabProps) {
+export function MatchesTab({ matches }: MatchesTabProps) {
   const [items, setItems] = useState(matches);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterPlatform, setFilterPlatform] = useState<string>("all");

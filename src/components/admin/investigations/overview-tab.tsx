@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Save, FileText, Image, Search, Clock, Globe, ExternalLink, Pencil, Plus, Trash2, X, CheckCircle2, XCircle, Loader2, AlertTriangle } from "lucide-react";
+import { Save, FileText, Image as ImageIcon, Search, Clock, Globe, ExternalLink, Pencil, Plus, Trash2, X, CheckCircle2, XCircle, Loader2, AlertTriangle } from "lucide-react";
 import { VerdictSelector } from "./verdict-selector";
 import type { InvestigationDetail, InvestigationVerdict, InvestigationCategory, ReverseSearchEngine, DeepfakeTask, TaskType } from "@/types/investigations";
 import { STATUS_LABELS, STATUS_COLORS, CATEGORY_LABELS, INVESTIGATION_CATEGORIES } from "@/types/investigations";
@@ -293,7 +293,7 @@ export function OverviewTab({ data, onUpdate }: OverviewTabProps) {
         <div className="bg-card rounded-xl border border-border/50 p-5 space-y-3">
           <h3 className="text-sm font-medium">Quick Stats</h3>
           <div className="space-y-2">
-            <StatRow icon={<Image className="h-3.5 w-3.5" />} label="Media" value={data.media.length} />
+            <StatRow icon={<ImageIcon className="h-3.5 w-3.5" />} label="Media" value={data.media.length} />
             <StatRow icon={<FileText className="h-3.5 w-3.5" />} label="Evidence" value={data.evidence.length} />
             <StatRow icon={<Search className="h-3.5 w-3.5" />} label="Frames" value={data.frames.length} />
             <StatRow icon={<Clock className="h-3.5 w-3.5" />} label="Active Tasks" value={data.tasks.filter((t) => t.status === "running" || t.status === "pending").length} />

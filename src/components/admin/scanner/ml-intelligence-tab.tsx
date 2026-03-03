@@ -25,7 +25,6 @@ import {
   Fingerprint,
   Layers,
   ScanLine,
-  Globe,
 } from "lucide-react";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

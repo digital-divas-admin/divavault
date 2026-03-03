@@ -143,6 +143,7 @@ function EvidenceCard({
             </p>
           )}
           {evidence.attachment_url && (
+            /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={evidence.attachment_url}
               alt={evidence.title || "Evidence attachment"}

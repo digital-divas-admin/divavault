@@ -9,7 +9,8 @@ import {
 } from "@/lib/optout-email";
 import { sendOptOutNotice } from "@/lib/email";
 
-export async function POST(request: NextRequest) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function POST(_req: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },

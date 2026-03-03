@@ -13,6 +13,7 @@ export function FrameGallery({ frames }: { frames: InvestigationFrame[] }) {
         >
           <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden">
             {frame.storage_url || frame.thumbnail_url ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={frame.thumbnail_url || frame.storage_url}
                 alt={`Frame #${frame.frame_number}`}

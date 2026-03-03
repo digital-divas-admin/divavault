@@ -63,6 +63,7 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
               }`}
             >
               {frame.thumbnail_url ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={frame.thumbnail_url}
                   alt={`Frame #${frame.frame_number}`}
@@ -101,6 +102,7 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
             {/* Frame image area */}
             <div className="aspect-video bg-muted flex items-center justify-center relative">
               {selected.storage_url ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={selected.storage_url}
                   alt={`Frame #${selected.frame_number}`}

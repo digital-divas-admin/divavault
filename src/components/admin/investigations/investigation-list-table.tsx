@@ -47,10 +47,14 @@ export function InvestigationListTable() {
 
   // Fetch investigations on filter change
   useEffect(() => {
-    setLoading(true);
-    fetch(`/api/admin/investigations${filter !== "all" ? `?status=${filter}` : ""}`)
-      .then((res) => res.ok ? res.json() : [])
-      .then((data) => { setInvestigations(data); setLoading(false); });
+    let active = true;
+    async function fetchInvestigations() {
+      const res = await fetch(`/api/admin/investigations${filter !== "all" ? `?status=${filter}` : ""}`);
+      const data = res.ok ? await res.json() : [];
+      if (active) { setInvestigations(data); setLoading(false); }
+    }
+    fetchInvestigations();
+    return () => { active = false; };
   }, [filter]);
 
   return (

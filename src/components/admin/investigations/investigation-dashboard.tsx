@@ -35,8 +35,15 @@ export function InvestigationDashboard({ id }: { id: string }) {
   }, [id]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    let active = true;
+    async function initialLoad() {
+      const res = await fetch(`/api/admin/investigations/${id}`);
+      if (res.ok && active) setData(await res.json());
+      if (active) setLoading(false);
+    }
+    initialLoad();
+    return () => { active = false; };
+  }, [id]);
 
   if (loading) {
     return (

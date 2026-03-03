@@ -255,7 +255,6 @@ export const useOnboardingStore = create<OnboardingState>()(
         }
         if (version < 4) {
           // v3→v4: rename sumsubStatus → verificationStatus
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { sumsubStatus, ...rest } = state as Record<string, unknown> & { sumsubStatus?: unknown };
           return { ...initialState, ...rest, verificationStatus: (sumsubStatus ?? null) as string | null };
         }

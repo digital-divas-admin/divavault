@@ -24,12 +24,13 @@ export function RiskMeter({
   className?: string;
 }) {
   const { filled, label, color } = config[level];
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(true);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  });
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setPrefersReducedMotion(mq.matches);
-
     const handler = (e: MediaQueryListEvent) => {
       setPrefersReducedMotion(e.matches);
     };

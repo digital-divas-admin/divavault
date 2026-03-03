@@ -285,6 +285,7 @@ export function PhotoSlot({
       >
         {image ? (
           <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={image.signedUrl}
               alt={stepConfig.label}

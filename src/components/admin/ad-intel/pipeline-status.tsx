@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -63,22 +63,20 @@ const STAGES = [
 export function PipelineStatusCard() {
   const [status, setStatus] = useState<PipelineStatus | null>(null);
 
-  const fetchStatus = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/ad-intel/pipeline-status");
-      if (res.ok) {
-        setStatus(await res.json());
-      }
-    } catch {
-      // Silently fail — will retry on next poll
-    }
-  }, []);
-
   useEffect(() => {
+    let active = true;
+    async function fetchStatus() {
+      try {
+        const res = await fetch("/api/admin/ad-intel/pipeline-status");
+        if (res.ok && active) setStatus(await res.json());
+      } catch {
+        // Silently fail — will retry on next poll
+      }
+    }
     fetchStatus();
     const interval = setInterval(fetchStatus, 10_000);
-    return () => clearInterval(interval);
-  }, [fetchStatus]);
+    return () => { active = false; clearInterval(interval); };
+  }, []);
 
   if (!status) {
     return (

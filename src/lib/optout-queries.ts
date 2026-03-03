@@ -60,8 +60,8 @@ export async function getOptOutCompanyViews(
 
   // Fetch communication counts per request
   const requestIds = (requests || []).map((r) => r.id);
-  let commCountMap = new Map<string, number>();
-  let commLatestMap = new Map<string, string>();
+  const commCountMap = new Map<string, number>();
+  const commLatestMap = new Map<string, string>();
 
   if (requestIds.length > 0) {
     const { data: comms } = await supabase

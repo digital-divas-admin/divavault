@@ -20,22 +20,14 @@ import {
   Tag,
 } from "lucide-react";
 
+const SEVEN_DAYS_AGO = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
 interface CrawlMapTabProps {
   sections: SectionProfile[];
   platforms: PlatformInfo[];
   initialPlatform?: string | null;
   anomalyAlerts?: AnomalyAlert[];
   crossPlatformRisks?: CrossPlatformRisk[];
-}
-
-function formatDate(date: string | null): string {
-  if (!date) return "Never";
-  return new Date(date).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 export function CrawlMapTab({
@@ -87,9 +79,8 @@ export function CrawlMapTab({
   );
 
   // Recently discovered sections (created in last 7 days and not yet enabled)
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const newSections = platformSections.filter(
-    (s) => s.last_updated_at > sevenDaysAgo && !s.scan_enabled
+    (s) => s.last_updated_at > SEVEN_DAYS_AGO && !s.scan_enabled
   );
 
   return (

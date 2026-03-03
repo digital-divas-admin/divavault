@@ -97,6 +97,7 @@ export default async function InvestigationDetailPage({ params }: PageProps) {
                         className="w-full max-h-[500px] bg-black"
                       />
                     ) : m.storage_url && m.media_type === "image" ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
                       <img
                         src={m.storage_url}
                         alt="Media under investigation"

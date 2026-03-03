@@ -9,7 +9,6 @@ import type {
   ConsentScope,
   RegistryIdentity,
   RegistryConsentEvent,
-  RegistryVerification,
   RegistryContact,
   RegistryIdentityStatus,
   ConsentEventType,
@@ -432,7 +431,7 @@ export async function bulkLookup(cids: string[]): Promise<BulkLookupResult> {
 
   // Get latest consent event per found CID
   const foundCids = (identities ?? []).map((i: { cid: string }) => i.cid);
-  let consentMap = new Map<string, string>();
+  const consentMap = new Map<string, string>();
 
   if (foundCids.length > 0) {
     const { data: events, error: evError } = await supabase
