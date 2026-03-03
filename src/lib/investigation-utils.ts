@@ -65,3 +65,20 @@ export function formatConfidence(score: number | null): string {
 export function getStoragePath(investigationId: string, subfolder: "media" | "frames" | "evidence"): string {
   return `${investigationId}/${subfolder}`;
 }
+
+const TWEET_URL_RE = /(?:twitter\.com|x\.com)\/\w+\/status\/(\d+)/;
+
+/**
+ * Extract the tweet ID from a Twitter/X status URL, or null if not a tweet URL.
+ */
+export function extractTweetId(url: string): string | null {
+  const match = url.match(TWEET_URL_RE);
+  return match ? match[1] : null;
+}
+
+/**
+ * Check whether a URL points to a specific tweet on Twitter/X.
+ */
+export function isTweetUrl(url: string | null | undefined): boolean {
+  return !!url && extractTweetId(url) !== null;
+}

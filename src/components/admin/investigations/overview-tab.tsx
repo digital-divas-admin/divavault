@@ -2,12 +2,20 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Save, FileText, Image, Search, Clock, Globe, ExternalLink } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Save, FileText, Image, Search, Clock, Globe, ExternalLink, Pencil, Plus, Trash2, X } from "lucide-react";
 import { VerdictSelector } from "./verdict-selector";
-import type { InvestigationDetail, InvestigationVerdict, ReverseSearchEngine } from "@/types/investigations";
-import { STATUS_LABELS, STATUS_COLORS, CATEGORY_LABELS } from "@/types/investigations";
+import type { InvestigationDetail, InvestigationVerdict, InvestigationCategory, ReverseSearchEngine } from "@/types/investigations";
+import { STATUS_LABELS, STATUS_COLORS, CATEGORY_LABELS, INVESTIGATION_CATEGORIES } from "@/types/investigations";
 
 const ENGINE_LABELS: Partial<Record<ReverseSearchEngine, string>> = {
   tineye: "TinEye",
@@ -23,6 +31,26 @@ interface OverviewTabProps {
   onUpdate: () => void;
 }
 
+interface EditableFields {
+  title: string;
+  category: InvestigationCategory;
+  description: string;
+  geographicContext: string;
+  dateFirstSeen: string;
+  sourceUrls: string[];
+}
+
+function initFields(data: InvestigationDetail): EditableFields {
+  return {
+    title: data.title,
+    category: data.category,
+    description: data.description || "",
+    geographicContext: data.geographic_context || "",
+    dateFirstSeen: data.date_first_seen || "",
+    sourceUrls: data.source_urls || [],
+  };
+}
+
 export function OverviewTab({ data, onUpdate }: OverviewTabProps) {
   const [verdict, setVerdict] = useState<InvestigationVerdict | null>(data.verdict);
   const [confidence, setConfidence] = useState<number | null>(data.confidence_score);
@@ -30,20 +58,46 @@ export function OverviewTab({ data, onUpdate }: OverviewTabProps) {
   const [methodology, setMethodology] = useState(data.methodology || "");
   const [saving, setSaving] = useState(false);
 
+  const [editing, setEditing] = useState(false);
+  const [fields, setFields] = useState(() => initFields(data));
+
+  function updateField<K extends keyof EditableFields>(key: K, value: EditableFields[K]) {
+    setFields((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleCancelEdit() {
+    setFields(initFields(data));
+    setEditing(false);
+  }
+
   async function handleSave() {
     setSaving(true);
-    await fetch(`/api/admin/investigations/${data.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        verdict,
-        confidence_score: confidence,
-        summary: summary || null,
-        methodology: methodology || null,
-      }),
-    });
-    setSaving(false);
-    onUpdate();
+    try {
+      const res = await fetch(`/api/admin/investigations/${data.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: fields.title,
+          category: fields.category,
+          description: fields.description || null,
+          geographic_context: fields.geographicContext || null,
+          date_first_seen: fields.dateFirstSeen || null,
+          source_urls: fields.sourceUrls.filter((u) => u.trim()),
+          verdict,
+          confidence_score: confidence,
+          summary: summary || null,
+          methodology: methodology || null,
+        }),
+      });
+      if (!res.ok) {
+        console.error("Failed to save investigation:", res.status);
+        return;
+      }
+      setEditing(false);
+      onUpdate();
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -53,26 +107,143 @@ export function OverviewTab({ data, onUpdate }: OverviewTabProps) {
         {/* Header card */}
         <div className="bg-card rounded-xl border border-border/50 p-6">
           <div className="flex items-start justify-between mb-4">
-            <div>
-              <h2 className="text-xl font-semibold">{data.title}</h2>
-              <div className="flex items-center gap-2 mt-2">
-                <Badge variant="outline">{CATEGORY_LABELS[data.category]}</Badge>
-                <Badge
-                  variant="outline"
-                  className={STATUS_COLORS[data.status]}
-                >
-                  {STATUS_LABELS[data.status]}
-                </Badge>
+            {editing ? (
+              <div className="flex-1 space-y-3">
+                <Input
+                  value={fields.title}
+                  onChange={(e) => updateField("title", e.target.value)}
+                  className="text-xl font-semibold"
+                  placeholder="Investigation title"
+                />
+                <div className="flex items-center gap-2">
+                  <Select value={fields.category} onValueChange={(v) => updateField("category", v as InvestigationCategory)}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {INVESTIGATION_CATEGORIES.map((cat) => (
+                        <SelectItem key={cat} value={cat}>
+                          {CATEGORY_LABELS[cat]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Badge variant="outline" className={STATUS_COLORS[data.status]}>
+                    {STATUS_LABELS[data.status]}
+                  </Badge>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <h2 className="text-xl font-semibold">{data.title}</h2>
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge variant="outline">{CATEGORY_LABELS[data.category]}</Badge>
+                  <Badge variant="outline" className={STATUS_COLORS[data.status]}>
+                    {STATUS_LABELS[data.status]}
+                  </Badge>
+                </div>
+              </div>
+            )}
+            {!editing && (
+              <Button variant="ghost" size="sm" onClick={() => setEditing(true)} className="gap-1.5">
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </Button>
+            )}
+          </div>
+
+          {editing ? (
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Description</label>
+                <Textarea
+                  value={fields.description}
+                  onChange={(e) => updateField("description", e.target.value)}
+                  placeholder="Investigation description..."
+                  rows={3}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Geographic Context</label>
+                  <Input
+                    value={fields.geographicContext}
+                    onChange={(e) => updateField("geographicContext", e.target.value)}
+                    placeholder="e.g. Ukraine, US"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Date First Seen</label>
+                  <Input
+                    type="date"
+                    value={fields.dateFirstSeen}
+                    onChange={(e) => updateField("dateFirstSeen", e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Source URLs</label>
+                <div className="space-y-2">
+                  {fields.sourceUrls.map((url, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Input
+                        value={url}
+                        onChange={(e) => {
+                          const updated = [...fields.sourceUrls];
+                          updated[i] = e.target.value;
+                          updateField("sourceUrls", updated);
+                        }}
+                        placeholder="https://..."
+                        className="flex-1"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => updateField("sourceUrls", fields.sourceUrls.filter((_, j) => j !== i))}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 text-xs"
+                    onClick={() => updateField("sourceUrls", [...fields.sourceUrls, ""])}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add URL
+                  </Button>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="ghost" size="sm" onClick={handleCancelEdit} className="gap-1.5">
+                  <X className="h-3.5 w-3.5" />
+                  Cancel
+                </Button>
+                <Button onClick={handleSave} disabled={saving} size="sm" className="gap-1.5">
+                  <Save className="h-4 w-4" />
+                  {saving ? "Saving..." : "Save All"}
+                </Button>
               </div>
             </div>
-          </div>
-          {data.description && (
-            <p className="text-sm text-muted-foreground">{data.description}</p>
-          )}
-          {data.geographic_context && (
-            <p className="text-xs text-muted-foreground mt-2">
-              Region: {data.geographic_context}
-            </p>
+          ) : (
+            <>
+              {data.description && (
+                <p className="text-sm text-muted-foreground">{data.description}</p>
+              )}
+              {data.geographic_context && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Region: {data.geographic_context}
+                </p>
+              )}
+              {data.date_first_seen && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  First seen: {data.date_first_seen}
+                </p>
+              )}
+            </>
           )}
         </div>
 

@@ -7,6 +7,8 @@ import { EvidenceTimeline } from "@/components/investigations/evidence-timeline"
 import { FrameGallery } from "@/components/investigations/frame-gallery";
 import { getInvestigationBySlug } from "@/lib/investigation-queries";
 import { VERDICT_LABELS } from "@/types/investigations";
+import { TwitterEmbed } from "@/components/investigations/twitter-embed";
+import { isTweetUrl } from "@/lib/investigation-utils";
 import { ExternalLink, Link as LinkIcon } from "lucide-react";
 
 interface PageProps {
@@ -85,7 +87,9 @@ export default async function InvestigationDetailPage({ params }: PageProps) {
                     key={m.id}
                     className="bg-card border border-border rounded-xl overflow-hidden"
                   >
-                    {m.storage_url && m.media_type === "video" ? (
+                    {isTweetUrl(m.source_url) ? (
+                      <TwitterEmbed tweetUrl={m.source_url} />
+                    ) : m.storage_url && m.media_type === "video" ? (
                       <video
                         src={m.storage_url}
                         controls
