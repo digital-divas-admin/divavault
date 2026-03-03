@@ -54,11 +54,22 @@ export function FrameAnnotationCanvas({
   onOpenChange,
   onSaved,
 }: FrameAnnotationCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [canvasReady, setCanvasReady] = useState(false);
+
+  // Callback ref to detect when canvas element mounts in the Dialog portal
+  const canvasCallbackRef = useCallback((node: HTMLCanvasElement | null) => {
+    canvasRef.current = node;
+    setCanvasReady(!!node);
+  }, []);
+  const containerCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    containerRef.current = node;
+  }, []);
   const fabricRef = useRef<any>(null);
   const fabricModuleRef = useRef<any>(null);
   const bgImageRef = useRef<any>(null);
+  const blobUrlRef = useRef<string | null>(null);
 
   const [activeTool, setActiveTool] = useState<DrawingTool>("select");
   const [strokeColor, setStrokeColor] = useState("#ef4444");
@@ -134,9 +145,9 @@ export function FrameAnnotationCanvas({
     if (undoStack.current.length > 50) undoStack.current.shift();
   }, []);
 
-  // Initialize fabric canvas
+  // Initialize fabric canvas — depends on canvasReady (callback ref) not just open
   useEffect(() => {
-    if (!open || !canvasRef.current) return;
+    if (!open || !canvasReady || !canvasRef.current) return;
 
     let disposed = false;
 
@@ -162,10 +173,20 @@ export function FrameAnnotationCanvas({
       if (frame.storage_url) {
         try {
           const imgRes = await fetch(frame.storage_url);
+          if (!imgRes.ok) throw new Error(`Fetch failed: ${imgRes.status}`);
           const imgBlob = await imgRes.blob();
           const blobUrl = URL.createObjectURL(imgBlob);
-          const img = await fabric.FabricImage.fromURL(blobUrl);
-          URL.revokeObjectURL(blobUrl);
+          blobUrlRef.current = blobUrl;
+
+          // Load via HTMLImageElement explicitly then wrap in FabricImage
+          const imgEl = new Image();
+          await new Promise<void>((resolve, reject) => {
+            imgEl.onload = () => resolve();
+            imgEl.onerror = (e) => reject(e);
+            imgEl.src = blobUrl;
+          });
+          if (disposed) return;
+          const img = new fabric.FabricImage(imgEl);
 
           fitImageToCanvas(img, rect.width, rect.height);
 
@@ -260,10 +281,14 @@ export function FrameAnnotationCanvas({
         fabricRef.current.dispose();
         fabricRef.current = null;
       }
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
       setFabricLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, frame.storage_url, frame.id]);
+  }, [open, canvasReady, frame.storage_url, frame.id]);
 
   // Handle resize
   useEffect(() => {
@@ -513,9 +538,17 @@ export function FrameAnnotationCanvas({
 
         const upRes = await fetch(data.upscaled_url);
         const upBlob = await upRes.blob();
+        // Revoke old blob URL before creating new one
+        if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
         const upBlobUrl = URL.createObjectURL(upBlob);
-        const img = await fabric.FabricImage.fromURL(upBlobUrl);
-        URL.revokeObjectURL(upBlobUrl);
+        blobUrlRef.current = upBlobUrl;
+        const upImgEl = new Image();
+        await new Promise<void>((resolve, reject) => {
+          upImgEl.onload = () => resolve();
+          upImgEl.onerror = (e) => reject(e);
+          upImgEl.src = upBlobUrl;
+        });
+        const img = new fabric.FabricImage(upImgEl);
 
         fitImageToCanvas(img, canvas.getWidth(), canvas.getHeight());
 
@@ -784,10 +817,10 @@ export function FrameAnnotationCanvas({
 
         {/* Canvas area */}
         <div
-          ref={containerRef}
+          ref={containerCallbackRef}
           className="flex-1 overflow-hidden relative"
         >
-          <canvas ref={canvasRef} />
+          <canvas ref={canvasCallbackRef} />
         </div>
 
         {/* Footer */}
