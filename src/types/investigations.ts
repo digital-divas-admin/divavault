@@ -99,6 +99,9 @@ export interface InvestigationFrame {
   admin_notes: string | null;
   has_artifacts: boolean;
   is_key_evidence: boolean;
+  drawing_data: Record<string, unknown> | null;
+  annotation_image_path: string | null;
+  annotation_image_url?: string;
   created_at: string;
   updated_at: string;
 }
@@ -124,6 +127,7 @@ export interface InvestigationEvidence {
   title: string | null;
   content: string | null;
   attachment_path: string | null;
+  attachment_url?: string;
   external_url: string | null;
   display_order: number;
   ai_detection_score: number | null;

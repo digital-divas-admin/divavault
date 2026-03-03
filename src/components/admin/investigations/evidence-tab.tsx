@@ -142,6 +142,13 @@ function EvidenceCard({
               {evidence.content}
             </p>
           )}
+          {evidence.attachment_url && (
+            <img
+              src={evidence.attachment_url}
+              alt={evidence.title || "Evidence attachment"}
+              className="w-full max-h-60 object-contain bg-black rounded-lg mt-2"
+            />
+          )}
           {evidence.external_url && (
             <a
               href={evidence.external_url}

@@ -99,6 +99,13 @@ export async function POST(
       }
     }
 
+    // Fire-and-forget: trigger scanner to process newly created tasks
+    const scannerUrl = process.env.SCANNER_SERVICE_URL || "http://localhost:8000";
+    fetch(`${scannerUrl}/admin/deepfake/process`, {
+      method: "POST",
+      headers: { "x-service-key": process.env.SUPABASE_SERVICE_ROLE_KEY || "" },
+    }).catch((err) => console.error("Failed to trigger scanner:", err));
+
     return NextResponse.json({ tasks: createdTasks }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

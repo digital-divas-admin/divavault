@@ -48,6 +48,7 @@ export const annotateFrameSchema = z.object({
   admin_notes: z.string().nullable().optional(),
   has_artifacts: z.boolean().optional(),
   is_key_evidence: z.boolean().optional(),
+  drawing_data: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 // --- Evidence ---
@@ -57,6 +58,7 @@ export const createEvidenceSchema = z.object({
   title: z.string().optional(),
   content: z.string().optional(),
   external_url: z.string().url().optional(),
+  attachment_path: z.string().optional(),
   display_order: z.number().int().optional(),
 });
 

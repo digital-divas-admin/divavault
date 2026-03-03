@@ -17,6 +17,10 @@ import { VerdictSelector } from "./verdict-selector";
 import type { InvestigationDetail, InvestigationVerdict, InvestigationCategory, ReverseSearchEngine } from "@/types/investigations";
 import { STATUS_LABELS, STATUS_COLORS, CATEGORY_LABELS, INVESTIGATION_CATEGORIES } from "@/types/investigations";
 
+function safeDomain(url: string): string {
+  try { return new URL(url).hostname; } catch { return url; }
+}
+
 const ENGINE_LABELS: Partial<Record<ReverseSearchEngine, string>> = {
   tineye: "TinEye",
   serpapi: "Google Lens",
@@ -356,7 +360,7 @@ export function OverviewTab({ data, onUpdate }: OverviewTabProps) {
                   rel="noopener noreferrer"
                   className="text-xs text-primary hover:underline flex items-center gap-1"
                 >
-                  {earliest.result_domain || new URL(earliest.result_url).hostname}
+                  {earliest.result_domain || safeDomain(earliest.result_url)}
                   <ExternalLink className="h-3 w-3" />
                 </a>
                 {earliest.result_title && (
@@ -368,6 +372,52 @@ export function OverviewTab({ data, onUpdate }: OverviewTabProps) {
                 <Badge variant="outline" className="text-[10px]">
                   {ENGINE_LABELS[earliest.engine] || earliest.engine}
                 </Badge>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* All Search Results */}
+        {data.reverse_search_results.length > 0 && (() => {
+          const grouped = data.reverse_search_results.reduce<Record<string, typeof data.reverse_search_results>>((acc, r) => {
+            const key = r.engine;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(r);
+            return acc;
+          }, {});
+          return (
+            <div className="bg-card rounded-xl border border-border/50 p-5">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                <Search className="h-4 w-4" />
+                Search Results
+              </h3>
+              <div className="space-y-4">
+                {Object.entries(grouped).map(([engine, results]) => (
+                  <div key={engine}>
+                    <Badge variant="outline" className="text-[10px] mb-2">
+                      {ENGINE_LABELS[engine as ReverseSearchEngine] || engine}
+                    </Badge>
+                    <div className="space-y-1.5">
+                      {results.map((r) => (
+                        <div key={r.id} className="text-xs">
+                          <a
+                            href={r.result_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline flex items-center gap-1"
+                          >
+                            {r.result_title || r.result_domain || safeDomain(r.result_url)}
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                          </a>
+                          <div className="flex items-center gap-2 text-muted-foreground mt-0.5">
+                            {r.result_date && <span>{r.result_date}</span>}
+                            {r.result_domain && <span>{r.result_domain}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           );

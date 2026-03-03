@@ -631,3 +631,81 @@ async def trigger_deepfake_processing():
 
     asyncio.create_task(process_pending_tasks())
     return {"status": "processing_started"}
+
+
+class UpscaleRequest(BaseModel):
+    frame_id: str
+    storage_path: str
+
+
+@router.post("/deepfake/upscale", dependencies=[Depends(verify_service_key)])
+async def upscale_frame(body: UpscaleRequest):
+    """Upscale a frame image using Pillow LANCZOS 4x resize.
+
+    Downloads the frame from Supabase storage, upscales it, and uploads back.
+    Returns the storage path and a signed URL for the upscaled image.
+    """
+    import io
+    from datetime import timezone
+
+    try:
+        from supabase import create_client
+    except ImportError:
+        raise HTTPException(status_code=500, detail="supabase-py not available")
+
+    try:
+        from PIL import Image
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Pillow not available")
+
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+
+    # Download original frame
+    try:
+        res = supabase.storage.from_("deepfake-evidence").download(body.storage_path)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Failed to download frame: {e}")
+
+    # Upscale with Pillow LANCZOS 4x
+    try:
+        img = Image.open(io.BytesIO(res))
+        new_width = img.width * 4
+        new_height = img.height * 4
+        upscaled = img.resize((new_width, new_height), Image.LANCZOS)
+
+        # Save to buffer
+        buf = io.BytesIO()
+        upscaled.save(buf, format="PNG", optimize=True)
+        buf.seek(0)
+        upscaled_bytes = buf.getvalue()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upscale failed: {e}")
+
+    # Upload upscaled image
+    timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
+    upscaled_path = f"upscaled/{body.frame_id}-{timestamp}.png"
+
+    try:
+        supabase.storage.from_("deepfake-evidence").upload(
+            upscaled_path,
+            upscaled_bytes,
+            file_options={"content-type": "image/png"},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+
+    # Generate signed URL
+    try:
+        signed = supabase.storage.from_("deepfake-evidence").create_signed_url(
+            upscaled_path, 3600
+        )
+        signed_url = signed.get("signedURL") or signed.get("signedUrl", "")
+    except Exception:
+        signed_url = ""
+
+    return {
+        "upscaled_path": upscaled_path,
+        "upscaled_url": signed_url,
+        "original_size": f"{img.width}x{img.height}",
+        "upscaled_size": f"{new_width}x{new_height}",
+    }

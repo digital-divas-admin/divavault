@@ -131,15 +131,35 @@ export async function getInvestigationById(id: string): Promise<InvestigationDet
           .createSignedUrl(frame.storage_path as string, 3600);
         if (data) frame.storage_url = data.signedUrl;
       }
+      if (frame.annotation_image_path) {
+        const { data } = await supabase.storage
+          .from("deepfake-evidence")
+          .createSignedUrl(frame.annotation_image_path as string, 3600);
+        if (data) frame.annotation_image_url = data.signedUrl;
+      }
     });
     await Promise.all(signPromises);
+  }
+
+  // Sign evidence attachment URLs
+  const evidence = evidenceRes.data || [];
+  if (evidence.length > 0) {
+    const signEvidencePromises = evidence.map(async (ev: Record<string, unknown>) => {
+      if (ev.attachment_path) {
+        const { data } = await supabase.storage
+          .from("deepfake-evidence")
+          .createSignedUrl(ev.attachment_path as string, 3600);
+        if (data) ev.attachment_url = data.signedUrl;
+      }
+    });
+    await Promise.all(signEvidencePromises);
   }
 
   return {
     ...investigation,
     media: mediaRes.data || [],
     frames,
-    evidence: evidenceRes.data || [],
+    evidence,
     tasks: tasksRes.data || [],
     activity: activityRes.data || [],
     reverse_search_results: searchRes.data || [],
@@ -400,6 +420,8 @@ export async function annotateFrame(
     admin_notes?: string | null;
     has_artifacts?: boolean;
     is_key_evidence?: boolean;
+    drawing_data?: Record<string, unknown> | null;
+    annotation_image_path?: string | null;
   }
 ): Promise<InvestigationFrame> {
   const supabase = await createServiceClient();
@@ -442,6 +464,7 @@ export async function createEvidence(
     title?: string;
     content?: string;
     external_url?: string;
+    attachment_path?: string;
     display_order?: number;
   }
 ): Promise<InvestigationEvidence> {

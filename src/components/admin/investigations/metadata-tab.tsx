@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, FileCode, Info, Bot, ShieldCheck } from "lucide-react";
-import type { InvestigationDetail } from "@/types/investigations";
+import { AlertTriangle, FileCode, Info, Bot, ShieldCheck, Newspaper, Globe } from "lucide-react";
+import type { InvestigationDetail, TaskType } from "@/types/investigations";
 
 interface MetadataTabProps {
   data: InvestigationDetail;
@@ -35,6 +35,20 @@ export function MetadataTab({ data, onUpdate }: MetadataTabProps) {
           taskType="ai_detection"
           label="Run AI Detection"
           icon={<Bot className="h-3.5 w-3.5" />}
+          onUpdate={onUpdate}
+        />
+        <AnalysisTriggerButton
+          investigationId={data.id}
+          taskType="news_search"
+          label="News Search"
+          icon={<Newspaper className="h-3.5 w-3.5" />}
+          onUpdate={onUpdate}
+        />
+        <AnalysisTriggerButton
+          investigationId={data.id}
+          taskType="wire_search"
+          label="Wire Service Check"
+          icon={<Globe className="h-3.5 w-3.5" />}
           onUpdate={onUpdate}
         />
       </div>
@@ -197,7 +211,7 @@ function AnalysisTriggerButton({
   onUpdate,
 }: {
   investigationId: string;
-  taskType: string;
+  taskType: TaskType;
   label: string;
   icon: React.ReactNode;
   onUpdate: () => void;

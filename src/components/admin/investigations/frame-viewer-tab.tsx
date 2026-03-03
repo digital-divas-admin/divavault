@@ -15,9 +15,13 @@ import {
   ChevronRight,
   Bot,
   SearchCheck,
+  Newspaper,
+  Globe,
+  Pen,
 } from "lucide-react";
+import { FrameAnnotationCanvas } from "./frame-annotation-canvas";
 import { buildReverseSearchUrl } from "@/lib/investigation-utils";
-import type { InvestigationDetail, InvestigationFrame } from "@/types/investigations";
+import type { InvestigationDetail, InvestigationFrame, TaskType } from "@/types/investigations";
 
 interface FrameViewerTabProps {
   data: InvestigationDetail;
@@ -26,6 +30,7 @@ interface FrameViewerTabProps {
 
 export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [annotateOpen, setAnnotateOpen] = useState(false);
   const frames = data.frames;
 
   if (frames.length === 0) {
@@ -76,6 +81,11 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
               {frame.has_artifacts && (
                 <div className="absolute bottom-0.5 right-0.5">
                   <AlertTriangle className="h-3 w-3 text-red-500" />
+                </div>
+              )}
+              {frame.drawing_data && (
+                <div className="absolute bottom-0.5 left-0.5">
+                  <Pen className="h-3 w-3 text-purple-400" />
                 </div>
               )}
             </button>
@@ -139,7 +149,21 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
                     Key Evidence
                   </Badge>
                 )}
+                {selected.annotation_image_url && (
+                  <Badge className="text-[10px] bg-purple-500/10 text-purple-400 border-purple-500/20">
+                    Has Annotations
+                  </Badge>
+                )}
               </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 text-xs"
+                onClick={() => setAnnotateOpen(true)}
+              >
+                <Pen className="h-3.5 w-3.5" />
+                Annotate
+              </Button>
             </div>
           </div>
         </div>
@@ -159,10 +183,9 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
             </p>
             <div className="space-y-2">
               {(["tineye", "google_lens", "yandex"] as const).map((engine) => {
-                // In production this would use a signed URL for the frame
                 const searchUrl = buildReverseSearchUrl(
                   engine,
-                  selected.storage_path || ""
+                  selected.storage_url || ""
                 );
                 return (
                   <a
@@ -191,6 +214,18 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
           />
         </div>
       </div>
+
+      {/* Annotation Canvas Dialog */}
+      <FrameAnnotationCanvas
+        frame={selected}
+        investigationId={data.id}
+        open={annotateOpen}
+        onOpenChange={setAnnotateOpen}
+        onSaved={() => {
+          setAnnotateOpen(false);
+          onUpdate();
+        }}
+      />
     </div>
   );
 }
@@ -275,9 +310,9 @@ function AutomatedAnalysisPanel({
   frames: InvestigationFrame[];
   onUpdate: () => void;
 }) {
-  const [loading, setLoading] = useState<string | null>(null);
+  const [loading, setLoading] = useState<TaskType | null>(null);
 
-  async function triggerTask(taskTypes: string[], frameIds?: string[]) {
+  async function triggerTask(taskTypes: TaskType[], frameIds?: string[]) {
     setLoading(taskTypes[0]);
     try {
       await fetch(`/api/admin/investigations/${investigationId}/automated-tasks`, {
@@ -334,6 +369,30 @@ function AutomatedAnalysisPanel({
         >
           <Bot className="h-3.5 w-3.5" />
           {loading === "ai_detection" ? "Analyzing..." : "AI Detection"}
+        </Button>
+
+        <div className="border-t border-border/30 my-2" />
+        <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Investigation-level</p>
+
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full justify-start gap-2"
+          disabled={loading !== null}
+          onClick={() => triggerTask(["news_search"])}
+        >
+          <Newspaper className="h-3.5 w-3.5" />
+          {loading === "news_search" ? "Searching..." : "News Search"}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full justify-start gap-2"
+          disabled={loading !== null}
+          onClick={() => triggerTask(["wire_search"])}
+        >
+          <Globe className="h-3.5 w-3.5" />
+          {loading === "wire_search" ? "Searching..." : "AP / Getty Check"}
         </Button>
       </div>
     </div>
