@@ -311,18 +311,37 @@ function AutomatedAnalysisPanel({
   onUpdate: () => void;
 }) {
   const [loading, setLoading] = useState<TaskType | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [successCount, setSuccessCount] = useState<number | null>(null);
 
   async function triggerTask(taskTypes: TaskType[], frameIds?: string[]) {
     setLoading(taskTypes[0]);
+    setError(null);
+    setSuccessCount(null);
     try {
-      await fetch(`/api/admin/investigations/${investigationId}/automated-tasks`, {
+      const res = await fetch(`/api/admin/investigations/${investigationId}/automated-tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ task_types: taskTypes, frame_ids: frameIds }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg = typeof body.error === "string" ? body.error : `Request failed (${res.status})`;
+        setError(msg);
+        return;
+      }
+      const data = await res.json();
+      const count = data.tasks?.length ?? 0;
+      setSuccessCount(count);
+      if (count === 0) {
+        setError("No tasks created — are there frames to analyze?");
+      }
       onUpdate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reach server");
     } finally {
       setLoading(null);
+      setTimeout(() => { setSuccessCount(null); setError(null); }, 8000);
     }
   }
 
@@ -394,6 +413,16 @@ function AutomatedAnalysisPanel({
           <Globe className="h-3.5 w-3.5" />
           {loading === "wire_search" ? "Searching..." : "AP / Getty Check"}
         </Button>
+
+        {/* Feedback messages */}
+        {error && (
+          <p className="text-xs text-red-400 mt-1">{error}</p>
+        )}
+        {successCount !== null && successCount > 0 && !error && (
+          <p className="text-xs text-green-400 mt-1">
+            Created {successCount} task{successCount > 1 ? "s" : ""}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -7,10 +7,12 @@ deepfake investigation pipeline.
 from sqlalchemy import text
 
 from src.db.connection import async_session
+from src.config import settings
 from src.deepfake.utils import (
-    deepfake_storage_url,
+    create_signed_storage_url,
     log_activity,
     resolve_storage_path,
+    set_task_skipped_result,
     update_task_progress,
 )
 from src.providers import get_ai_detection_provider
@@ -31,18 +33,28 @@ async def run_ai_detection(
     Uses the existing Hive AI provider to classify whether content
     is AI-generated, and stores the result as evidence.
     """
+    if not settings.hive_api_key:
+        log.warning("hive_api_key_not_configured")
+        await set_task_skipped_result(
+            task_id,
+            "Hive API key not configured. Set HIVE_API_KEY in scanner .env to enable AI detection.",
+        )
+        return
+
     storage_path = await resolve_storage_path(frame_id, media_id)
     if not storage_path:
         raise ValueError("No storage path found for frame or media")
 
     await update_task_progress(task_id, 20)
 
-    # Build authenticated URL for the provider
-    storage_url = deepfake_storage_url(storage_path)
+    # Create a signed URL so the external Hive API can fetch the image
+    signed_url = await create_signed_storage_url(storage_path, expires_in=300)
+    if not signed_url:
+        raise ValueError("Could not create signed URL for AI detection")
 
     # Call AI detection provider
     provider = get_ai_detection_provider()
-    classification = await provider.classify(storage_url)
+    classification = await provider.classify(signed_url)
 
     await update_task_progress(task_id, 70)
 

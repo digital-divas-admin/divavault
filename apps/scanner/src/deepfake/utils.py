@@ -136,3 +136,47 @@ async def temp_directory(prefix: str = "deepfake_"):
         yield tmp_dir
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+async def create_signed_storage_url(storage_path: str, expires_in: int = 300) -> str | None:
+    """Create a signed URL for a deepfake-evidence storage file.
+
+    Uses the Supabase Storage REST API directly (no extra dependency).
+    """
+    url = f"{settings.supabase_url}/storage/v1/object/sign/deepfake-evidence/{storage_path}"
+    headers = {
+        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+        "apikey": settings.supabase_service_role_key,
+        "Content-Type": "application/json",
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json={"expiresIn": expires_in}) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    log.error("signed_url_failed", path=storage_path, status=resp.status, body=body[:200])
+                    return None
+                data = await resp.json()
+                token = data.get("signedURL") or data.get("signedUrl") or ""
+                if not token:
+                    log.error("signed_url_empty", path=storage_path, data=data)
+                    return None
+                # signedURL is a relative path — prefix with supabase_url
+                if token.startswith("/"):
+                    return f"{settings.supabase_url}{token}"
+                return token
+    except Exception as e:
+        log.error("signed_url_exception", path=storage_path, error=str(e))
+        return None
+
+
+async def set_task_skipped_result(task_id: str, reason: str) -> None:
+    """Store a 'skipped' result on a task (e.g. missing API key)."""
+    async with async_session() as session:
+        await session.execute(text(
+            "UPDATE deepfake_tasks SET result = CAST(:result AS jsonb) WHERE id = :id"
+        ), {
+            "id": task_id,
+            "result": json.dumps({"skipped": True, "reason": reason}),
+        })
+        await session.commit()

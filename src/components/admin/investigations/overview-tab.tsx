@@ -12,9 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Save, FileText, Image, Search, Clock, Globe, ExternalLink, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Save, FileText, Image, Search, Clock, Globe, ExternalLink, Pencil, Plus, Trash2, X, CheckCircle2, XCircle, Loader2, AlertTriangle } from "lucide-react";
 import { VerdictSelector } from "./verdict-selector";
-import type { InvestigationDetail, InvestigationVerdict, InvestigationCategory, ReverseSearchEngine } from "@/types/investigations";
+import type { InvestigationDetail, InvestigationVerdict, InvestigationCategory, ReverseSearchEngine, DeepfakeTask, TaskType } from "@/types/investigations";
 import { STATUS_LABELS, STATUS_COLORS, CATEGORY_LABELS, INVESTIGATION_CATEGORIES } from "@/types/investigations";
 
 function safeDomain(url: string): string {
@@ -300,6 +300,9 @@ export function OverviewTab({ data, onUpdate }: OverviewTabProps) {
           </div>
         </div>
 
+        {/* Recent Tasks */}
+        <RecentTasksSection tasks={data.tasks} />
+
         {/* Activity Feed */}
         <div className="bg-card rounded-xl border border-border/50 p-5">
           <h3 className="text-sm font-medium mb-3">Recent Activity</h3>
@@ -422,6 +425,84 @@ export function OverviewTab({ data, onUpdate }: OverviewTabProps) {
             </div>
           );
         })()}
+      </div>
+    </div>
+  );
+}
+
+const TASK_TYPE_LABELS: Record<TaskType, string> = {
+  download_media: "Download Media",
+  extract_frames: "Extract Frames",
+  extract_metadata: "Extract Metadata",
+  reverse_search: "Reverse Search",
+  ai_detection: "AI Detection",
+  check_provenance: "Provenance Check",
+  news_search: "News Search",
+  wire_search: "AP / Getty Check",
+};
+
+function RecentTasksSection({ tasks }: { tasks: DeepfakeTask[] }) {
+  // Show completed, failed, running, and pending tasks — most recent first
+  const recent = [...tasks]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 10);
+
+  if (recent.length === 0) return null;
+
+  return (
+    <div className="bg-card rounded-xl border border-border/50 p-5">
+      <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+        <Clock className="h-4 w-4" />
+        Recent Tasks
+      </h3>
+      <div className="space-y-2">
+        {recent.map((task) => {
+          const resultObj = task.result as Record<string, unknown> | null;
+          const skipped = Boolean(resultObj?.skipped);
+          const skipReason = skipped && typeof resultObj?.reason === "string" ? resultObj.reason : null;
+
+          return (
+            <div key={task.id} className="flex items-start gap-2 text-xs">
+              <div className="mt-0.5 shrink-0">
+                {task.status === "completed" && !skipped && (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                )}
+                {task.status === "completed" && skipped && (
+                  <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
+                )}
+                {task.status === "failed" && (
+                  <XCircle className="h-3.5 w-3.5 text-red-500" />
+                )}
+                {task.status === "running" && (
+                  <Loader2 className="h-3.5 w-3.5 text-primary animate-spin" />
+                )}
+                {task.status === "pending" && (
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-foreground font-medium">
+                    {TASK_TYPE_LABELS[task.task_type] || task.task_type}
+                  </span>
+                  {task.status === "running" && task.progress != null && task.progress > 0 && (
+                    <span className="text-muted-foreground">{task.progress}%</span>
+                  )}
+                </div>
+                {task.status === "failed" && task.error_message && (
+                  <p className="text-red-400 mt-0.5 break-words">{task.error_message}</p>
+                )}
+                {skipped && skipReason && (
+                  <p className="text-yellow-400/80 mt-0.5 break-words">{skipReason}</p>
+                )}
+                <span className="text-muted-foreground">
+                  {new Date(task.created_at).toLocaleDateString()}{" "}
+                  {new Date(task.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

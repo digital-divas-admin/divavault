@@ -14,10 +14,12 @@ from sqlalchemy import text
 from src.config import settings
 from src.db.connection import async_session
 from src.deepfake.utils import (
+    create_signed_storage_url,
     deepfake_storage_url,
     download_from_storage,
     get_frame_storage_path,
     log_activity,
+    set_task_skipped_result,
     temp_directory,
     update_task_progress,
 )
@@ -45,6 +47,14 @@ async def run_reverse_search(
         raise ValueError(f"Frame {frame_id} not found or has no storage path")
 
     await update_task_progress(task_id, 10)
+
+    if not settings.tineye_api_key and not settings.serpapi_api_key:
+        log.warning("reverse_search_no_keys")
+        await set_task_skipped_result(
+            task_id,
+            "Neither TinEye nor SerpAPI keys are configured. Set TINEYE_API_KEY or SERPAPI_API_KEY in scanner .env to enable reverse image search.",
+        )
+        return
 
     async with temp_directory("deepfake_rsearch_") as tmp_dir:
         local_path = Path(tmp_dir) / "frame.jpg"
@@ -158,14 +168,15 @@ async def _search_tineye(local_path: str) -> list[dict]:
 
 
 async def _search_serpapi(storage_path: str) -> list[dict]:
-    """Search SerpAPI Google Lens with a public storage URL."""
+    """Search SerpAPI Google Lens with a signed storage URL."""
     if not settings.serpapi_api_key:
         log.debug("serpapi_skipped_no_key")
         return []
 
-    image_url = (
-        f"{settings.supabase_url}/storage/v1/object/public/deepfake-evidence/{quote(storage_path)}"
-    )
+    image_url = await create_signed_storage_url(storage_path, expires_in=300)
+    if not image_url:
+        log.warning("serpapi_signed_url_failed", path=storage_path)
+        return []
 
     limiter = get_limiter("serpapi")
     await limiter.acquire()

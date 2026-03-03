@@ -11,7 +11,7 @@ interface TaskStatusBarProps {
 }
 
 export function TaskStatusBar({ tasks, investigationId, onUpdate }: TaskStatusBarProps) {
-  // Poll for task updates every 15 seconds
+  // Poll for task updates every 15 seconds — always refresh parent data
   useEffect(() => {
     const interval = setInterval(async () => {
       const res = await fetch(`/api/admin/investigations/${investigationId}/tasks`);
@@ -20,8 +20,9 @@ export function TaskStatusBar({ tasks, investigationId, onUpdate }: TaskStatusBa
         const stillActive = updated.some(
           (t: DeepfakeTask) => t.status === "pending" || t.status === "running"
         );
+        // Always refresh so progress updates propagate to the UI
+        onUpdate();
         if (!stillActive) {
-          onUpdate();
           clearInterval(interval);
         }
       }

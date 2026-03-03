@@ -15,6 +15,7 @@ from src.deepfake.utils import (
     build_search_query,
     get_investigation_search_context,
     log_activity,
+    set_task_skipped_result,
     update_task_progress,
 )
 from src.utils.logging import get_logger
@@ -40,7 +41,11 @@ async def run_wire_search(
 
     if not settings.ap_api_key and not settings.getty_api_key:
         log.warning("wire_search_no_apis_configured")
-        raise ValueError("No wire service API keys configured (AP_API_KEY or GETTY_API_KEY)")
+        await set_task_skipped_result(
+            task_id,
+            "No wire service API keys configured. Set AP_API_KEY or GETTY_API_KEY in scanner .env to enable wire search.",
+        )
+        return
 
     # Run AP + Getty in parallel
     ap_coro = _search_ap(query) if settings.ap_api_key else asyncio.sleep(0, result=[])

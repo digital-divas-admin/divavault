@@ -13,6 +13,7 @@ from src.deepfake.utils import (
     build_search_query,
     get_investigation_search_context,
     log_activity,
+    set_task_skipped_result,
     update_task_progress,
 )
 from src.utils.logging import get_logger
@@ -33,7 +34,11 @@ async def run_news_search(
     """
     if not settings.serpapi_api_key:
         log.warning("serpapi_api_key_not_configured")
-        raise ValueError("SerpAPI key not configured — cannot run news search")
+        await set_task_skipped_result(
+            task_id,
+            "SerpAPI key not configured. Set SERPAPI_API_KEY in scanner .env to enable news search.",
+        )
+        return
 
     title, geo_context, _ = await get_investigation_search_context(investigation_id)
     query = build_search_query(title, geo_context)
