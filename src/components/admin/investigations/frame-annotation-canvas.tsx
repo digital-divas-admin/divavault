@@ -158,12 +158,14 @@ export function FrameAnnotationCanvas({
 
       fabricRef.current = canvas;
 
-      // Load frame image as background
+      // Load frame image as background (fetch as blob to avoid CORS canvas tainting)
       if (frame.storage_url) {
         try {
-          const img = await fabric.FabricImage.fromURL(frame.storage_url, {
-            crossOrigin: "anonymous",
-          });
+          const imgRes = await fetch(frame.storage_url);
+          const imgBlob = await imgRes.blob();
+          const blobUrl = URL.createObjectURL(imgBlob);
+          const img = await fabric.FabricImage.fromURL(blobUrl);
+          URL.revokeObjectURL(blobUrl);
 
           fitImageToCanvas(img, rect.width, rect.height);
 
@@ -509,9 +511,11 @@ export function FrameAnnotationCanvas({
         const fabric = fabricModuleRef.current;
         const canvas = fabricRef.current;
 
-        const img = await fabric.FabricImage.fromURL(data.upscaled_url, {
-          crossOrigin: "anonymous",
-        });
+        const upRes = await fetch(data.upscaled_url);
+        const upBlob = await upRes.blob();
+        const upBlobUrl = URL.createObjectURL(upBlob);
+        const img = await fabric.FabricImage.fromURL(upBlobUrl);
+        URL.revokeObjectURL(upBlobUrl);
 
         fitImageToCanvas(img, canvas.getWidth(), canvas.getHeight());
 
