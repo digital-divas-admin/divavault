@@ -70,6 +70,7 @@ export function FrameAnnotationCanvas({
   const fabricModuleRef = useRef<any>(null);
   const bgImageRef = useRef<any>(null);
   const blobUrlRef = useRef<string | null>(null);
+  const storageUrlRef = useRef(frame.storage_url);
 
   const [activeTool, setActiveTool] = useState<DrawingTool>("select");
   const [strokeColor, setStrokeColor] = useState("#ef4444");
@@ -150,6 +151,9 @@ export function FrameAnnotationCanvas({
     if (undoStack.current.length > 50) undoStack.current.shift();
   }, []);
 
+  // Keep storage URL ref in sync (avoids re-init when signed URL rotates)
+  storageUrlRef.current = frame.storage_url;
+
   // Initialize fabric canvas — depends on canvasReady (callback ref) not just open
   useEffect(() => {
     if (!open || !canvasReady || !canvasRef.current) return;
@@ -175,9 +179,10 @@ export function FrameAnnotationCanvas({
       fabricRef.current = canvas;
 
       // Load frame image as background (fetch as blob to avoid CORS canvas tainting)
-      if (frame.storage_url) {
+      const imageUrl = storageUrlRef.current;
+      if (imageUrl) {
         try {
-          const imgRes = await fetch(frame.storage_url);
+          const imgRes = await fetch(imageUrl);
           if (!imgRes.ok) throw new Error(`Fetch failed: ${imgRes.status}`);
           const imgBlob = await imgRes.blob();
           const blobUrl = URL.createObjectURL(imgBlob);
@@ -293,7 +298,7 @@ export function FrameAnnotationCanvas({
       setFabricLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, canvasReady, frame.storage_url, frame.id]);
+  }, [open, canvasReady, frame.id]);
 
   // Handle resize
   useEffect(() => {

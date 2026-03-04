@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Loader2, X } from "lucide-react";
 import type { DeepfakeTask } from "@/types/investigations";
 
 interface TaskStatusBarProps {
@@ -11,24 +11,44 @@ interface TaskStatusBarProps {
 }
 
 export function TaskStatusBar({ tasks, investigationId, onUpdate }: TaskStatusBarProps) {
-  // Poll for task updates every 15 seconds — always refresh parent data
+  const [dismissed, setDismissed] = useState(false);
+  const prevStatusRef = useRef<string>("");
+
+  // Poll for task updates every 15 seconds — only refresh parent when status changes
   useEffect(() => {
+    if (dismissed) return;
+
     const interval = setInterval(async () => {
-      const res = await fetch(`/api/admin/investigations/${investigationId}/tasks`);
-      if (res.ok) {
+      try {
+        const res = await fetch(`/api/admin/investigations/${investigationId}/tasks`);
+        if (!res.ok) return;
         const updated = await res.json();
         const stillActive = updated.some(
           (t: DeepfakeTask) => t.status === "pending" || t.status === "running"
         );
-        // Always refresh so progress updates propagate to the UI
-        onUpdate();
+
+        // Build a fingerprint of task statuses + progress to detect actual changes
+        const statusKey = updated
+          .map((t: DeepfakeTask) => `${t.id}:${t.status}:${t.progress ?? 0}`)
+          .sort()
+          .join(",");
+
+        if (statusKey !== prevStatusRef.current) {
+          prevStatusRef.current = statusKey;
+          onUpdate();
+        }
+
         if (!stillActive) {
           clearInterval(interval);
         }
+      } catch {
+        // Network error — skip this poll cycle
       }
     }, 15000);
     return () => clearInterval(interval);
-  }, [investigationId, onUpdate]);
+  }, [investigationId, onUpdate, dismissed]);
+
+  if (dismissed) return null;
 
   const running = tasks.filter((t) => t.status === "running");
   const pending = tasks.filter((t) => t.status === "pending");
@@ -60,6 +80,13 @@ export function TaskStatusBar({ tasks, investigationId, onUpdate }: TaskStatusBa
           </div>
         )}
       </div>
+      <button
+        onClick={() => setDismissed(true)}
+        className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted/50"
+        title="Dismiss"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
