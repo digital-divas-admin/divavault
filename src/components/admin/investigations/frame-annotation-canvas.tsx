@@ -92,6 +92,10 @@ export function FrameAnnotationCanvas({
   const shapeStartPoint = useRef<{ x: number; y: number } | null>(null);
   const activeShapeRef = useRef<any>(null);
   const shapeCleanupRef = useRef<(() => void) | null>(null);
+  const suppressUndo = useRef(false);
+
+  // Tracks desired selection state for the current tool (used by pan handler)
+  const selectionEnabledRef = useRef(true);
 
   function fitImageToCanvas(img: any, width: number, height: number) {
     const scaleX = width / (img.width || 1);
@@ -220,7 +224,7 @@ export function FrameAnnotationCanvas({
 
       // Event listeners for undo tracking
       canvas.on("object:added", () => {
-        if (!isRestoring.current) pushUndoState();
+        if (!isRestoring.current && !suppressUndo.current) pushUndoState();
       });
       canvas.on("object:modified", () => {
         if (!isRestoring.current) pushUndoState();
@@ -266,7 +270,7 @@ export function FrameAnnotationCanvas({
       canvas.on("mouse:up", () => {
         if (isPanning) {
           isPanning = false;
-          canvas.selection = true;
+          canvas.selection = selectionEnabledRef.current;
           canvas.setCursor("default");
         }
       });
@@ -299,6 +303,7 @@ export function FrameAnnotationCanvas({
       const entry = entries[0];
       if (!entry || !fabricRef.current) return;
       const { width, height } = entry.contentRect;
+      if (width === 0 || height === 0) return;
       fabricRef.current.setDimensions({ width, height });
       fabricRef.current.renderAll();
     });
@@ -319,10 +324,17 @@ export function FrameAnnotationCanvas({
       shapeCleanupRef.current = null;
     }
 
+    // Restore selectability on all non-bg objects (from previous tool mode)
+    canvas.forEachObject((obj: any) => {
+      if (obj === bgImageRef.current) return;
+      obj.set({ selectable: true, evented: true });
+    });
+
     // Reset all modes
     canvas.isDrawingMode = false;
     canvas.selection = true;
     canvas.defaultCursor = "default";
+    selectionEnabledRef.current = true;
 
     if (activeTool === "pen") {
       canvas.isDrawingMode = true;
@@ -332,10 +344,11 @@ export function FrameAnnotationCanvas({
       canvas.freeDrawingBrush = brush;
     } else if (activeTool === "eraser") {
       canvas.selection = false;
+      selectionEnabledRef.current = false;
       canvas.defaultCursor = "crosshair";
       canvas.forEachObject((obj: any) => {
         if (obj === bgImageRef.current) return;
-        obj.set({ hoverCursor: "pointer" });
+        obj.set({ selectable: false, evented: true, hoverCursor: "pointer" });
       });
       // Click-to-delete mode
       const eraserHandler = (opt: any) => {
@@ -350,7 +363,13 @@ export function FrameAnnotationCanvas({
       };
     } else if (activeTool === "rect" || activeTool === "circle" || activeTool === "arrow") {
       canvas.selection = false;
+      selectionEnabledRef.current = false;
       canvas.defaultCursor = "crosshair";
+      // Disable per-object selectability so existing objects can't be selected during drawing
+      canvas.forEachObject((obj: any) => {
+        if (obj === bgImageRef.current) return;
+        obj.set({ selectable: false, evented: false });
+      });
       shapeCleanupRef.current = setupShapeDrawing(canvas, fabric, activeTool);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -370,6 +389,7 @@ export function FrameAnnotationCanvas({
     const downHandler = (opt: any) => {
       const e = opt.e as MouseEvent;
       if (e.altKey) return;
+      e.preventDefault();
       const pointer = canvas.getScenePoint(e);
       isDrawingShape.current = true;
       shapeStartPoint.current = { x: pointer.x, y: pointer.y };
@@ -406,13 +426,16 @@ export function FrameAnnotationCanvas({
       }
 
       activeShapeRef.current = shape;
+      suppressUndo.current = true;
       canvas.add(shape);
+      suppressUndo.current = false;
       canvas.renderAll();
     };
 
     const moveHandler = (opt: any) => {
       if (!isDrawingShape.current || !shapeStartPoint.current || !activeShapeRef.current) return;
       const e = opt.e as MouseEvent;
+      e.preventDefault();
       const pointer = canvas.getScenePoint(e);
       const startX = shapeStartPoint.current.x;
       const startY = shapeStartPoint.current.y;
@@ -456,6 +479,7 @@ export function FrameAnnotationCanvas({
         const angle = Math.atan2(y2 - y1, x2 - x1);
         const headLen = strokeWidth * 4;
 
+        suppressUndo.current = true;
         const triangle = new fabric.Triangle({
           left: x2,
           top: y2,
@@ -467,11 +491,13 @@ export function FrameAnnotationCanvas({
           originY: "center",
         });
         canvas.add(triangle);
+        suppressUndo.current = false;
       }
 
       activeShapeRef.current = null;
       shapeStartPoint.current = null;
       canvas.renderAll();
+      pushUndoState();
     };
 
     canvas.on("mouse:down", downHandler);
@@ -482,6 +508,14 @@ export function FrameAnnotationCanvas({
       canvas.off("mouse:down", downHandler);
       canvas.off("mouse:move", moveHandler);
       canvas.off("mouse:up", upHandler);
+      // Clean up any in-progress shape drawing
+      if (isDrawingShape.current && activeShapeRef.current) {
+        canvas.remove(activeShapeRef.current);
+        canvas.renderAll();
+      }
+      isDrawingShape.current = false;
+      activeShapeRef.current = null;
+      shapeStartPoint.current = null;
     };
   }
 
@@ -661,6 +695,8 @@ export function FrameAnnotationCanvas({
       <DialogContent
         className="max-w-[95vw] w-[95vw] h-[90vh] flex flex-col p-0 gap-0"
         showCloseButton={true}
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader className="px-4 py-3 border-b border-border/30 shrink-0">
           <div className="flex items-center gap-3">
