@@ -207,6 +207,56 @@
   animation: landing-pulse 2s ease infinite;
 }
 
+/* ── Print stylesheet ──────────────────────── */
+@media print {
+  /* Hide non-essential elements — components should add the .no-print class */
+  nav,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Force white background, black text */
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  * {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Images */
+  img {
+    max-width: 100% !important;
+    break-inside: avoid;
+  }
+
+  /* Print URLs after links */
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.75em;
+    color: #666;
+    word-break: break-all;
+  }
+
+  /* Don't print URL for internal anchors or JavaScript links */
+  a[href^="#"]::after,
+  a[href^="javascript:"]::after {
+    content: "";
+  }
+
+  /* Page breaks */
+  .methodology-section {
+    break-before: page;
+  }
+
+  section {
+    break-inside: avoid;
+  }
+}
+
 /* Reduced motion: disable all animations */
 @media (prefers-reduced-motion: reduce) {
   .score-ring-progress,

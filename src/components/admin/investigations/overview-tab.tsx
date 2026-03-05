@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,10 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Save, FileText, Image as ImageIcon, Search, Clock, Globe, ExternalLink, Pencil, Plus, Trash2, X, CheckCircle2, XCircle, Loader2, AlertTriangle } from "lucide-react";
+import { Save, FileText, Image as ImageIcon, Search, Clock, Globe, ExternalLink, Pencil, Plus, Trash2, X, CheckCircle2, XCircle, Loader2, AlertTriangle, Timer, Fingerprint, Film, Monitor } from "lucide-react";
 import { VerdictSelector } from "./verdict-selector";
 import type { InvestigationDetail, InvestigationVerdict, InvestigationCategory, ReverseSearchEngine, DeepfakeTask, TaskType } from "@/types/investigations";
 import { STATUS_LABELS, STATUS_COLORS, CATEGORY_LABELS, INVESTIGATION_CATEGORIES } from "@/types/investigations";
+import { formatDuration, isAiGeneratorDuration, computeTechnicalFingerprint, getAiScoreTextColor, MIN_CANDIDATE_MATCHES } from "@/lib/investigation-utils";
 
 function safeDomain(url: string): string {
   try { return new URL(url).hostname; } catch { return url; }
@@ -64,6 +65,14 @@ export function OverviewTab({ data, onUpdate }: OverviewTabProps) {
 
   const [editing, setEditing] = useState(false);
   const [fields, setFields] = useState(() => initFields(data));
+
+  const fingerprint = useMemo(() => {
+    const video = data.media.find((m) => m.media_type === "video" && (m.duration_seconds != null || m.fps != null));
+    return video ? computeTechnicalFingerprint(video) : null;
+  }, [data.media]);
+  const fingerprintVideo = useMemo(() => {
+    return data.media.find((m) => m.media_type === "video" && (m.duration_seconds != null || m.fps != null)) ?? null;
+  }, [data.media]);
 
   function updateField<K extends keyof EditableFields>(key: K, value: EditableFields[K]) {
     setFields((prev) => ({ ...prev, [key]: value }));
@@ -296,6 +305,67 @@ export function OverviewTab({ data, onUpdate }: OverviewTabProps) {
             <StatRow icon={<ImageIcon className="h-3.5 w-3.5" />} label="Media" value={data.media.length} />
             <StatRow icon={<FileText className="h-3.5 w-3.5" />} label="Evidence" value={data.evidence.length} />
             <StatRow icon={<Search className="h-3.5 w-3.5" />} label="Frames" value={data.frames.length} />
+            {(() => {
+              const totalDuration = data.media.reduce((sum, m) => sum + (m.duration_seconds || 0), 0);
+              if (totalDuration <= 0) return null;
+              return (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Timer className="h-3.5 w-3.5" />
+                    Duration
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium">{formatDuration(totalDuration)}</span>
+                    {data.media.some((m) => isAiGeneratorDuration(m.duration_seconds)) && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                        AI length
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+            {fingerprint && (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Fingerprint className="h-3.5 w-3.5" />
+                    Fingerprint
+                  </div>
+                  <span className={`text-sm font-medium ${getAiScoreTextColor(fingerprint.normalizedScore)}`}>{fingerprint.overallScore}/100</span>
+                </div>
+                {fingerprintVideo?.fps != null && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Film className="h-3.5 w-3.5" />
+                      FPS
+                    </div>
+                    <span className="text-sm font-medium">{Math.round(fingerprintVideo.fps)} fps</span>
+                  </div>
+                )}
+                {fingerprintVideo?.resolution_width && fingerprintVideo?.resolution_height && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Monitor className="h-3.5 w-3.5" />
+                      Resolution
+                    </div>
+                    <span className="text-sm font-medium">{fingerprintVideo.resolution_width}x{fingerprintVideo.resolution_height}</span>
+                  </div>
+                )}
+                {fingerprint.topCandidates.length > 0 && fingerprint.topCandidates[0].matchCount >= MIN_CANDIDATE_MATCHES && (
+                  <div className="pt-1">
+                    <span className="text-[10px] text-muted-foreground block mb-1">Top candidates</span>
+                    <div className="flex flex-wrap gap-1">
+                      {fingerprint.topCandidates.filter((c) => c.matchCount >= MIN_CANDIDATE_MATCHES).slice(0, 3).map((c) => (
+                        <span key={c.name} className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
+                          {c.name} ({c.matchCount}/3)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
             <StatRow icon={<Clock className="h-3.5 w-3.5" />} label="Active Tasks" value={data.tasks.filter((t) => t.status === "running" || t.status === "pending").length} />
           </div>
         </div>
@@ -515,7 +585,7 @@ function StatRow({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: number;
+  value: number | string;
 }) {
   return (
     <div className="flex items-center justify-between">

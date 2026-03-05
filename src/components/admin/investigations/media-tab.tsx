@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +14,10 @@ import {
   Film,
   ImageIcon,
   ExternalLink,
+  RotateCcw,
 } from "lucide-react";
 import type { InvestigationDetail, InvestigationMedia } from "@/types/investigations";
+import { computeTechnicalFingerprint, getAiScoreTextColor, MIN_CANDIDATE_MATCHES } from "@/lib/investigation-utils";
 
 interface MediaTabProps {
   data: InvestigationDetail;
@@ -25,13 +27,14 @@ interface MediaTabProps {
 export function MediaTab({ data, onUpdate }: MediaTabProps) {
   const [url, setUrl] = useState("");
   const [adding, setAdding] = useState(false);
+  const [retrying, setRetrying] = useState<string | null>(null);
 
   async function handleAddMedia(e: React.FormEvent) {
     e.preventDefault();
     if (!url.trim()) return;
     setAdding(true);
 
-    await fetch(`/api/admin/investigations/${data.id}/media`, {
+    const resp = await fetch(`/api/admin/investigations/${data.id}/media`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ source_url: url }),
@@ -40,6 +43,28 @@ export function MediaTab({ data, onUpdate }: MediaTabProps) {
     setUrl("");
     setAdding(false);
     onUpdate();
+
+    // Fire-and-forget: trigger download & frame extraction
+    if (resp.ok) {
+      const media = await resp.json();
+      fetch(
+        `/api/admin/investigations/${data.id}/media/${media.id}/process`,
+        { method: "POST" }
+      ).then(() => onUpdate()).catch(() => onUpdate());
+    }
+  }
+
+  async function handleRetry(mediaId: string) {
+    setRetrying(mediaId);
+    try {
+      await fetch(
+        `/api/admin/investigations/${data.id}/media/${mediaId}/process`,
+        { method: "POST" }
+      );
+    } finally {
+      setRetrying(null);
+      onUpdate();
+    }
   }
 
   return (
@@ -65,7 +90,7 @@ export function MediaTab({ data, onUpdate }: MediaTabProps) {
         </form>
         <p className="text-xs text-muted-foreground mt-2">
           Supports YouTube, TikTok, X/Twitter, Facebook, Instagram, Rumble, and direct media URLs.
-          Media will be downloaded and processed by the scanner backend.
+          Media will be downloaded and frames extracted automatically.
         </p>
       </div>
 
@@ -81,7 +106,12 @@ export function MediaTab({ data, onUpdate }: MediaTabProps) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {data.media.map((media) => (
-            <MediaCard key={media.id} media={media} />
+            <MediaCard
+              key={media.id}
+              media={media}
+              onRetry={() => handleRetry(media.id)}
+              retrying={retrying === media.id}
+            />
           ))}
         </div>
       )}
@@ -89,7 +119,20 @@ export function MediaTab({ data, onUpdate }: MediaTabProps) {
   );
 }
 
-function MediaCard({ media }: { media: InvestigationMedia }) {
+function MediaCard({
+  media,
+  onRetry,
+  retrying,
+}: {
+  media: InvestigationMedia;
+  onRetry: () => void;
+  retrying: boolean;
+}) {
+  const fp = useMemo(
+    () => media.media_type === "video" ? computeTechnicalFingerprint(media) : null,
+    [media]
+  );
+
   const statusIcon = {
     pending: <Clock className="h-4 w-4 text-muted-foreground" />,
     downloading: <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />,
@@ -136,19 +179,53 @@ function MediaCard({ media }: { media: InvestigationMedia }) {
           {media.download_error && (
             <p className="text-xs text-destructive mt-1">{media.download_error}</p>
           )}
+          {(media.download_status === "failed" ||
+            media.download_status === "pending") && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2 h-7 text-xs gap-1.5"
+              onClick={onRetry}
+              disabled={retrying}
+            >
+              {retrying ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RotateCcw className="h-3 w-3" />
+              )}
+              {media.download_status === "failed" ? "Retry" : "Process"}
+            </Button>
+          )}
           {media.download_status === "completed" && (
-            <div className="flex gap-3 mt-2 text-xs text-muted-foreground">
-              {media.duration_seconds && (
-                <span>{Math.round(media.duration_seconds)}s</span>
-              )}
-              {media.resolution_width && media.resolution_height && (
-                <span>
-                  {media.resolution_width}x{media.resolution_height}
-                </span>
-              )}
-              {media.codec && <span>{media.codec}</span>}
-              {media.file_size_bytes && (
-                <span>{(media.file_size_bytes / 1024 / 1024).toFixed(1)} MB</span>
+            <div className="space-y-1.5 mt-2">
+              <div className="flex gap-3 text-xs text-muted-foreground">
+                {media.duration_seconds && (
+                  <span>{Math.round(media.duration_seconds)}s</span>
+                )}
+                {media.fps && (
+                  <span>{Math.round(media.fps)} fps</span>
+                )}
+                {media.resolution_width && media.resolution_height && (
+                  <span>
+                    {media.resolution_width}x{media.resolution_height}
+                  </span>
+                )}
+                {media.codec && <span>{media.codec}</span>}
+                {media.file_size_bytes && (
+                  <span>{(media.file_size_bytes / 1024 / 1024).toFixed(1)} MB</span>
+                )}
+              </div>
+              {fp && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-xs font-medium ${getAiScoreTextColor(fp.normalizedScore)}`}>
+                    Fingerprint: {fp.overallScore}/100
+                  </span>
+                  {fp.topCandidates.filter((c) => c.matchCount >= MIN_CANDIDATE_MATCHES).slice(0, 2).map((c) => (
+                    <span key={c.name} className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
+                      {c.name}
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
           )}

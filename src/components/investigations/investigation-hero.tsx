@@ -5,7 +5,9 @@ import {
   VERDICT_COLORS,
   CATEGORY_LABELS,
 } from "@/types/investigations";
+import { investigationUrl } from "@/lib/investigation-utils";
 import { MapPin, Calendar } from "lucide-react";
+import { ShareButtons } from "@/components/investigations/share-buttons";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
@@ -15,12 +17,16 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 
 export function InvestigationHero({
   investigation,
+  readTime,
 }: {
   investigation: InvestigationDetail;
+  readTime: number;
 }) {
   const publishedDate = investigation.published_at
     ? dateFormatter.format(new Date(investigation.published_at))
     : dateFormatter.format(new Date(investigation.date_investigated));
+
+  const url = investigationUrl(investigation.slug);
 
   return (
     <section className="pt-12 pb-10 px-4 sm:pt-20 sm:pb-14 sm:px-6 relative overflow-hidden">
@@ -44,37 +50,46 @@ export function InvestigationHero({
         </div>
 
         {/* Title */}
-        <h1 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl md:text-5xl text-foreground mb-6 leading-tight">
+        <h1 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl md:text-5xl text-foreground mb-3 leading-tight">
           {investigation.title}
         </h1>
 
-        {/* Verdict + Confidence */}
+        {/* Description subtitle */}
+        {investigation.description && (
+          <p className="text-lg text-muted-foreground mb-6 leading-relaxed">
+            {investigation.description}
+          </p>
+        )}
+
+        {/* Verdict badge */}
         {investigation.verdict && (
-          <div className="flex items-center gap-5 flex-wrap">
+          <div className="mb-6">
             <span
-              className={`inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold ${VERDICT_COLORS[investigation.verdict]}`}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-semibold ${VERDICT_COLORS[investigation.verdict]}`}
             >
+              <span className={`w-2 h-2 rounded-full ${
+                investigation.verdict === "confirmed_fake" ? "bg-red-500" :
+                investigation.verdict === "likely_fake" ? "bg-orange-500" :
+                investigation.verdict === "inconclusive" ? "bg-yellow-500" :
+                investigation.verdict === "likely_real" ? "bg-blue-500" :
+                "bg-green-500"
+              }`} />
               {VERDICT_LABELS[investigation.verdict]}
             </span>
-
-            {investigation.confidence_score !== null && (
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground font-medium">
-                  Confidence
-                </span>
-                <div className="w-32 h-2 rounded-full bg-border overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${investigation.confidence_score}%` }}
-                  />
-                </div>
-                <span className="text-sm font-semibold text-foreground">
-                  {investigation.confidence_score}%
-                </span>
-              </div>
-            )}
           </div>
         )}
+
+        {/* Metadata bar + Share buttons */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{publishedDate}</span>
+            <span className="text-muted-foreground/40">&middot;</span>
+            <span>{readTime} min read</span>
+            <span className="text-muted-foreground/40">&middot;</span>
+            <span>Consented AI Forensic Team</span>
+          </div>
+          <ShareButtons url={url} title={investigation.title} />
+        </div>
       </div>
     </section>
   );

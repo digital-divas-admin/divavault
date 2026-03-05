@@ -8,6 +8,7 @@ import { FrameViewerTab } from "./frame-viewer-tab";
 import { MetadataTab } from "./metadata-tab";
 import { EvidenceTab } from "./evidence-tab";
 import { PublishTab } from "./publish-tab";
+import { CorroborationTab } from "./corroboration-tab";
 import { TaskStatusBar } from "./task-status-bar";
 
 const TABS = [
@@ -16,6 +17,7 @@ const TABS = [
   { key: "frames", label: "Frame Analysis" },
   { key: "metadata", label: "Metadata" },
   { key: "evidence", label: "Evidence" },
+  { key: "corroboration", label: "Corroboration" },
   { key: "publish", label: "Publish" },
 ] as const;
 
@@ -94,6 +96,9 @@ export function InvestigationDashboard({ id }: { id: string }) {
             {tab.key === "evidence" && data.evidence.length > 0 && (
               <span className="ml-1.5 text-xs opacity-70">{data.evidence.length}</span>
             )}
+            {tab.key === "corroboration" && data.reverse_search_results.length > 0 && (
+              <span className="ml-1.5 text-xs opacity-70">{data.reverse_search_results.length}</span>
+            )}
           </button>
         ))}
       </div>
@@ -105,6 +110,7 @@ export function InvestigationDashboard({ id }: { id: string }) {
         {activeTab === "frames" && <FrameViewerTab data={data} onUpdate={loadData} />}
         {activeTab === "metadata" && <MetadataTab data={data} onUpdate={loadData} />}
         {activeTab === "evidence" && <EvidenceTab data={data} onUpdate={loadData} />}
+        {activeTab === "corroboration" && <CorroborationTab data={data} onUpdate={loadData} />}
         {activeTab === "publish" && <PublishTab data={data} onUpdate={loadData} />}
       </div>
     </div>

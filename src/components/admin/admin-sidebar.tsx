@@ -17,6 +17,7 @@ import {
   Crosshair,
   MessageSquare,
   SearchSlash,
+  ScanEye,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +49,7 @@ const adIntelNavItems = [
 
 const deepfakeNavItems = [
   { href: "/admin/investigations", label: "Deepfake Lab", icon: SearchSlash, exact: true },
+  { href: "/admin/investigations/clip-detector", label: "CLIP Detector", icon: ScanEye },
 ];
 
 const roleLabels: Record<AdminRole, string> = {

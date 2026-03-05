@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { InvestigationDetail } from "@/types/investigations";
 import { VERDICT_LABELS, VERDICT_COLORS } from "@/types/investigations";
+import { formatDuration } from "@/lib/investigation-utils";
 
 interface PublishTabProps {
   data: InvestigationDetail;
@@ -219,6 +220,18 @@ export function PublishTab({ data, onUpdate }: PublishTabProps) {
           {data.summary && (
             <p className="text-sm text-muted-foreground">{data.summary}</p>
           )}
+          {(() => {
+            const videos = data.media.filter((m) => m.media_type === "video");
+            if (videos.length === 0) return null;
+            const totalDuration = videos.reduce((sum, m) => sum + (m.duration_seconds || 0), 0);
+            return (
+              <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t border-border/30">
+                <span>{videos.length} video{videos.length !== 1 ? "s" : ""}</span>
+                {totalDuration > 0 && <span>{formatDuration(totalDuration)} total</span>}
+                <span>{data.frames.length} frames analyzed</span>
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>

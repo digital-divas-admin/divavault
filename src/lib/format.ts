@@ -15,3 +15,10 @@ export function formatDate(timestamp: string): string {
     year: "numeric",
   });
 }
+
+/** Compact number formatting: 1234 → "1.2K", 1500000 → "1.5M" */
+export function formatCompactNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  return n.toString();
+}

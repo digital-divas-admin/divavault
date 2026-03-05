@@ -81,6 +81,14 @@ export interface InvestigationMedia {
   resolution_height: number | null;
   ffprobe_data: Record<string, unknown> | null;
   exif_data: Record<string, unknown> | null;
+  engagement_stats: {
+    views?: number | null;
+    reposts?: number | null;
+    likes?: number | null;
+    replies?: number | null;
+    bookmarks?: number | null;
+    captured_at?: string | null;
+  } | null;
   storage_url?: string;
   created_at: string;
   updated_at: string;
@@ -131,7 +139,9 @@ export interface InvestigationEvidence {
   external_url: string | null;
   display_order: number;
   ai_detection_score: number | null;
+  ai_detection_deepfake_score: number | null;
   ai_detection_generator: string | null;
+  frame_number: number | null;
   provenance_data: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
@@ -214,6 +224,22 @@ export const VERDICT_COLORS: Record<InvestigationVerdict, string> = {
   inconclusive: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
   likely_real: "bg-blue-500/10 text-blue-600 border-blue-500/20",
   confirmed_real: "bg-green-500/10 text-green-600 border-green-500/20",
+};
+
+export const VERDICT_TEXT_COLORS: Record<InvestigationVerdict, string> = {
+  confirmed_fake: "text-red-600",
+  likely_fake: "text-orange-600",
+  inconclusive: "text-yellow-600",
+  likely_real: "text-blue-600",
+  confirmed_real: "text-green-600",
+};
+
+export const VERDICT_BANNER_COLORS: Record<InvestigationVerdict, string> = {
+  confirmed_fake: "bg-red-50 border-red-200 text-red-800",
+  likely_fake: "bg-orange-50 border-orange-200 text-orange-800",
+  inconclusive: "bg-yellow-50 border-yellow-200 text-yellow-800",
+  likely_real: "bg-blue-50 border-blue-200 text-blue-800",
+  confirmed_real: "bg-green-50 border-green-200 text-green-800",
 };
 
 export const CATEGORY_LABELS: Record<InvestigationCategory, string> = {

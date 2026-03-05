@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,8 @@ import {
   Pen,
 } from "lucide-react";
 import { FrameAnnotationCanvas } from "./frame-annotation-canvas";
-import { buildReverseSearchUrl } from "@/lib/investigation-utils";
+import { ForensicEnhancePanel } from "./forensic-enhance-panel";
+import { buildReverseSearchUrl, isAiGeneratorDuration } from "@/lib/investigation-utils";
 import type { InvestigationDetail, InvestigationFrame, TaskType } from "@/types/investigations";
 
 interface FrameViewerTabProps {
@@ -31,7 +32,15 @@ interface FrameViewerTabProps {
 export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [annotateOpen, setAnnotateOpen] = useState(false);
+  const [enhancedUrl, setEnhancedUrl] = useState<string | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
   const frames = data.frames;
+
+  const selectFrame = useCallback((idx: number) => {
+    setSelectedIdx(idx);
+    setEnhancedUrl(null);
+    setShowOriginal(false);
+  }, []);
 
   if (frames.length === 0) {
     return (
@@ -55,7 +64,7 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
           {frames.map((frame, i) => (
             <button
               key={frame.id}
-              onClick={() => setSelectedIdx(i)}
+              onClick={() => selectFrame(i)}
               className={`relative shrink-0 w-20 h-14 rounded-lg border-2 transition-all overflow-hidden ${
                 i === selectedIdx
                   ? "border-primary ring-1 ring-primary/30"
@@ -101,7 +110,14 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
           <div className="bg-card rounded-xl border border-border/50 overflow-hidden">
             {/* Frame image area */}
             <div className="aspect-video bg-muted flex items-center justify-center relative">
-              {selected.storage_url ? (
+              {(enhancedUrl && !showOriginal) ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={enhancedUrl}
+                  alt={`Enhanced Frame #${selected.frame_number}`}
+                  className="w-full h-full object-contain"
+                />
+              ) : selected.storage_url ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={selected.storage_url}
@@ -122,7 +138,7 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
               {/* Nav arrows */}
               {selectedIdx > 0 && (
                 <button
-                  onClick={() => setSelectedIdx(selectedIdx - 1)}
+                  onClick={() => selectFrame(selectedIdx - 1)}
                   className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 flex items-center justify-center hover:bg-background"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -130,7 +146,7 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
               )}
               {selectedIdx < frames.length - 1 && (
                 <button
-                  onClick={() => setSelectedIdx(selectedIdx + 1)}
+                  onClick={() => selectFrame(selectedIdx + 1)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 flex items-center justify-center hover:bg-background"
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -141,6 +157,24 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
             <div className="px-4 py-2.5 border-t border-border/30 flex items-center justify-between">
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <span>Frame {selectedIdx + 1} of {frames.length}</span>
+                {(() => {
+                  const parentMedia = data.media.find((m) => m.id === selected.media_id);
+                  if (!parentMedia?.duration_seconds || selected.timestamp_seconds == null) return null;
+                  const ts = Math.floor(selected.timestamp_seconds);
+                  const dur = Math.floor(parentMedia.duration_seconds);
+                  const fmtTs = `${Math.floor(ts / 60)}:${String(ts % 60).padStart(2, "0")}`;
+                  const fmtDur = `${Math.floor(dur / 60)}:${String(dur % 60).padStart(2, "0")}`;
+                  return (
+                    <span className="flex items-center gap-1.5">
+                      <span>{fmtTs} / {fmtDur}</span>
+                      {isAiGeneratorDuration(parentMedia.duration_seconds) && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                          AI length
+                        </span>
+                      )}
+                    </span>
+                  );
+                })()}
                 {selected.has_artifacts && (
                   <Badge className="text-[10px] bg-red-500/10 text-red-600 border-red-500/20">
                     Artifacts Detected
@@ -155,6 +189,19 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
                   <Badge className="text-[10px] bg-purple-500/10 text-purple-400 border-purple-500/20">
                     Has Annotations
                   </Badge>
+                )}
+                {enhancedUrl && (
+                  <>
+                    <Badge className="text-[10px] bg-purple-500/10 text-purple-400 border-purple-500/20">
+                      Enhanced
+                    </Badge>
+                    <button
+                      onClick={() => setShowOriginal(!showOriginal)}
+                      className="text-[10px] text-primary hover:underline"
+                    >
+                      {showOriginal ? "Show Enhanced" : "Show Original"}
+                    </button>
+                  </>
                 )}
               </div>
               <Button
@@ -173,6 +220,38 @@ export function FrameViewerTab({ data, onUpdate }: FrameViewerTabProps) {
         {/* Annotation panel */}
         <div className="space-y-4">
           <FrameAnnotationPanel key={selected.id} frame={selected} onUpdate={onUpdate} investigationId={data.id} />
+
+          {/* Forensic Enhancement */}
+          <ForensicEnhancePanel
+            key={`forensic-${selected.id}`}
+            frame={selected}
+            investigationId={data.id}
+            onEnhanced={(url) => {
+              setEnhancedUrl(url);
+              setShowOriginal(false);
+            }}
+            onReset={() => {
+              setEnhancedUrl(null);
+              setShowOriginal(false);
+            }}
+            onSaveEvidence={async (storagePath, filterLabel, filterDescription) => {
+              try {
+                await fetch(`/api/admin/investigations/${data.id}/evidence`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    evidence_type: "screenshot",
+                    title: `${filterLabel} — Frame #${selected.frame_number}`,
+                    attachment_path: storagePath,
+                    content: `${filterDescription}. Applied to frame #${selected.frame_number} of the source video.`,
+                  }),
+                });
+                onUpdate();
+              } catch (err) {
+                console.error("Save evidence failed:", err);
+              }
+            }}
+          />
 
           {/* Reverse search buttons */}
           <div className="bg-card rounded-xl border border-border/50 p-5">

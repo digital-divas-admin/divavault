@@ -17,6 +17,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   MousePointer2,
   Pen,
   Square,
@@ -29,13 +34,90 @@ import {
   ZoomOut,
   Maximize2,
   Sparkles,
+  Microscope,
+  RotateCcw,
   Save,
   Camera,
   Loader2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type { InvestigationFrame } from "@/types/investigations";
 
 type DrawingTool = "select" | "pen" | "rect" | "circle" | "arrow" | "eraser";
+
+interface ForensicParam {
+  key: string;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  default: number;
+}
+
+interface ForensicPreset {
+  id: string;
+  label: string;
+  description: string;
+  params: ForensicParam[];
+}
+
+const FORENSIC_PRESETS: ForensicPreset[] = [
+  {
+    id: "sharpen",
+    label: "Sharpen",
+    description: "Unsharp mask to reveal hidden detail",
+    params: [
+      { key: "strength", label: "Strength", min: 0.5, max: 3.0, step: 0.1, default: 1.5 },
+    ],
+  },
+  {
+    id: "edge_detect",
+    label: "Edge Detect",
+    description: "Highlight manipulation boundaries",
+    params: [
+      { key: "low", label: "Low Threshold", min: 0.01, max: 0.5, step: 0.01, default: 0.1 },
+      { key: "high", label: "High Threshold", min: 0.1, max: 0.8, step: 0.01, default: 0.3 },
+    ],
+  },
+  {
+    id: "denoise",
+    label: "Denoise",
+    description: "Remove noise to reveal structure",
+    params: [
+      { key: "luma", label: "Luma", min: 1, max: 20, step: 1, default: 6 },
+      { key: "chroma", label: "Chroma", min: 1, max: 20, step: 1, default: 4 },
+    ],
+  },
+  {
+    id: "histogram_eq",
+    label: "Histogram EQ",
+    description: "Global histogram equalization",
+    params: [
+      { key: "strength", label: "Strength", min: 0.1, max: 1.0, step: 0.05, default: 0.5 },
+      { key: "intensity", label: "Intensity", min: 0.1, max: 1.0, step: 0.05, default: 0.5 },
+    ],
+  },
+  {
+    id: "color_amplify",
+    label: "Color Amplify",
+    description: "Boost color to reveal inconsistencies",
+    params: [
+      { key: "saturation", label: "Saturation", min: 1, max: 5, step: 0.1, default: 3 },
+      { key: "contrast", label: "Contrast", min: 0.5, max: 3, step: 0.1, default: 1.5 },
+      { key: "brightness", label: "Brightness", min: -0.3, max: 0.3, step: 0.01, default: 0 },
+    ],
+  },
+  {
+    id: "ela",
+    label: "ELA",
+    description: "Error Level Analysis — detect edits",
+    params: [
+      { key: "quality", label: "Quality", min: 5, max: 30, step: 1, default: 15 },
+      { key: "amplify", label: "Amplification", min: 5, max: 30, step: 1, default: 15 },
+    ],
+  },
+];
 
 interface FrameAnnotationCanvasProps {
   frame: InvestigationFrame;
@@ -71,6 +153,8 @@ export function FrameAnnotationCanvas({
   const bgImageRef = useRef<any>(null);
   const blobUrlRef = useRef<string | null>(null);
   const storageUrlRef = useRef(frame.storage_url);
+  const enhancedBlobUrlRef = useRef<string | null>(null);
+  const originalBlobUrlRef = useRef<string | null>(null);
 
   const [activeTool, setActiveTool] = useState<DrawingTool>("select");
   const [strokeColor, setStrokeColor] = useState("#ef4444");
@@ -78,10 +162,18 @@ export function FrameAnnotationCanvas({
   const [zoom, setZoom] = useState(1);
   const [enhanced, setEnhanced] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
+  const [showingOriginal, setShowingOriginal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingEvidence, setSavingEvidence] = useState(false);
   const [enhanceError, setEnhanceError] = useState<string | null>(null);
   const [fabricLoaded, setFabricLoaded] = useState(false);
+
+  // Forensic filter state
+  const [forensicFilter, setForensicFilter] = useState<string | null>(null);
+  const [forensicParams, setForensicParams] = useState<Record<string, number>>({});
+  const [forensicLoading, setForensicLoading] = useState(false);
+  const [forensicError, setForensicError] = useState<string | null>(null);
+  const [forensicActive, setForensicActive] = useState<string | null>(null);
 
   // Undo/Redo stacks
   const undoStack = useRef<string[]>([]);
@@ -98,6 +190,10 @@ export function FrameAnnotationCanvas({
   // Tracks desired selection state for the current tool (used by pan handler)
   const selectionEnabledRef = useRef(true);
 
+  // Spacebar pan state
+  const spacebarDown = useRef(false);
+  const keyHandlersRef = useRef<{ down: (e: KeyboardEvent) => void; up: (e: KeyboardEvent) => void } | null>(null);
+
   function fitImageToCanvas(img: any, width: number, height: number) {
     const scaleX = width / (img.width || 1);
     const scaleY = height / (img.height || 1);
@@ -105,12 +201,15 @@ export function FrameAnnotationCanvas({
     img.set({
       scaleX: scale,
       scaleY: scale,
+      originX: "left",
+      originY: "top",
       left: (width - (img.width || 0) * scale) / 2,
       top: (height - (img.height || 0) * scale) / 2,
       selectable: false,
       evented: false,
       hasControls: false,
     });
+    if (img.setCoords) img.setCoords();
   }
 
   /** Serialize only drawing objects (skip bg image at index 0). */
@@ -198,7 +297,10 @@ export function FrameAnnotationCanvas({
           if (disposed) return;
           const img = new fabric.FabricImage(imgEl);
 
-          fitImageToCanvas(img, rect.width, rect.height);
+          // Re-query container dimensions (dialog animation may have completed since initCanvas started)
+          const currentW = canvas.getWidth();
+          const currentH = canvas.getHeight();
+          fitImageToCanvas(img, currentW, currentH);
 
           canvas.add(img);
           canvas.sendObjectToBack(img);
@@ -247,17 +349,38 @@ export function FrameAnnotationCanvas({
         opt.e.stopPropagation();
       });
 
-      // Pan on Alt+drag
+      // Pan on spacebar+drag or middle-mouse drag
       let isPanning = false;
       let lastPanPoint = { x: 0, y: 0 };
 
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.code === "Space" && !spacebarDown.current) {
+          spacebarDown.current = true;
+          canvas.defaultCursor = "grab";
+          canvas.setCursor("grab");
+          e.preventDefault();
+        }
+      };
+      const handleKeyUp = (e: KeyboardEvent) => {
+        if (e.code === "Space") {
+          spacebarDown.current = false;
+          if (!isPanning) {
+            canvas.defaultCursor = activeTool === "select" ? "default" : "crosshair";
+            canvas.setCursor(canvas.defaultCursor);
+          }
+        }
+      };
+      keyHandlersRef.current = { down: handleKeyDown, up: handleKeyUp };
+      window.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("keyup", handleKeyUp);
+
       canvas.on("mouse:down", (opt: any) => {
         const e = opt.e as MouseEvent;
-        if (e.altKey || e.button === 1) {
+        if (spacebarDown.current || e.button === 1) {
           isPanning = true;
           lastPanPoint = { x: e.clientX, y: e.clientY };
           canvas.selection = false;
-          canvas.setCursor("grab");
+          canvas.setCursor("grabbing");
         }
       });
 
@@ -276,17 +399,27 @@ export function FrameAnnotationCanvas({
         if (isPanning) {
           isPanning = false;
           canvas.selection = selectionEnabledRef.current;
-          canvas.setCursor("default");
+          if (spacebarDown.current) {
+            canvas.setCursor("grab");
+          } else {
+            canvas.setCursor("default");
+          }
         }
       });
 
       setFabricLoaded(true);
     }
 
-    initCanvas();
+    requestAnimationFrame(() => initCanvas());
 
     return () => {
       disposed = true;
+      if (keyHandlersRef.current) {
+        window.removeEventListener("keydown", keyHandlersRef.current.down);
+        window.removeEventListener("keyup", keyHandlersRef.current.up);
+        keyHandlersRef.current = null;
+      }
+      spacebarDown.current = false;
       if (fabricRef.current) {
         fabricRef.current.dispose();
         fabricRef.current = null;
@@ -310,6 +443,10 @@ export function FrameAnnotationCanvas({
       const { width, height } = entry.contentRect;
       if (width === 0 || height === 0) return;
       fabricRef.current.setDimensions({ width, height });
+      // Re-center background image when container resizes (e.g. dialog animation)
+      if (bgImageRef.current) {
+        fitImageToCanvas(bgImageRef.current, width, height);
+      }
       fabricRef.current.renderAll();
     });
 
@@ -393,7 +530,7 @@ export function FrameAnnotationCanvas({
   function setupShapeDrawing(canvas: any, fabric: any, tool: "rect" | "circle" | "arrow") {
     const downHandler = (opt: any) => {
       const e = opt.e as MouseEvent;
-      if (e.altKey) return;
+      if (spacebarDown.current) return;
       e.preventDefault();
       const pointer = canvas.getScenePoint(e);
       isDrawingShape.current = true;
@@ -553,6 +690,10 @@ export function FrameAnnotationCanvas({
     if (!canvas) return;
     canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
     setZoom(1);
+    // Re-center background image to current canvas size
+    if (bgImageRef.current) {
+      fitImageToCanvas(bgImageRef.current, canvas.getWidth(), canvas.getHeight());
+    }
     canvas.renderAll();
   }
 
@@ -580,12 +721,14 @@ export function FrameAnnotationCanvas({
         const fabric = fabricModuleRef.current;
         const canvas = fabricRef.current;
 
+        // Save original blob URL before replacing
+        originalBlobUrlRef.current = blobUrlRef.current;
+
         const upRes = await fetch(data.upscaled_url);
         const upBlob = await upRes.blob();
-        // Revoke old blob URL before creating new one
-        if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
         const upBlobUrl = URL.createObjectURL(upBlob);
         blobUrlRef.current = upBlobUrl;
+        enhancedBlobUrlRef.current = upBlobUrl;
         const upImgEl = new Image();
         await new Promise<void>((resolve, reject) => {
           upImgEl.onload = () => resolve();
@@ -604,12 +747,158 @@ export function FrameAnnotationCanvas({
         bgImageRef.current = img;
         canvas.renderAll();
         setEnhanced(true);
+        setShowingOriginal(false);
       }
     } catch (err) {
       console.error("Enhance failed:", err);
       setEnhanceError((err as Error).message || "Enhancement failed");
     } finally {
       setEnhancing(false);
+    }
+  }
+
+  async function handleToggleOriginal() {
+    const canvas = fabricRef.current;
+    const fabric = fabricModuleRef.current;
+    if (!canvas || !fabric) return;
+
+    const targetUrl = showingOriginal
+      ? enhancedBlobUrlRef.current
+      : originalBlobUrlRef.current || storageUrlRef.current;
+    if (!targetUrl) return;
+
+    try {
+      // If switching to original and we don't have a cached blob, fetch it
+      let imgSrc = targetUrl;
+      if (!showingOriginal && !originalBlobUrlRef.current && storageUrlRef.current) {
+        const res = await fetch(storageUrlRef.current);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        originalBlobUrlRef.current = url;
+        imgSrc = url;
+      }
+
+      const imgEl = new Image();
+      await new Promise<void>((resolve, reject) => {
+        imgEl.onload = () => resolve();
+        imgEl.onerror = (e) => reject(e);
+        imgEl.src = imgSrc;
+      });
+      const img = new fabric.FabricImage(imgEl);
+      fitImageToCanvas(img, canvas.getWidth(), canvas.getHeight());
+
+      if (bgImageRef.current) canvas.remove(bgImageRef.current);
+      canvas.add(img);
+      canvas.sendObjectToBack(img);
+      bgImageRef.current = img;
+      canvas.renderAll();
+      setShowingOriginal(!showingOriginal);
+    } catch (err) {
+      console.error("Toggle original/enhanced failed:", err);
+    }
+  }
+
+  function selectForensicFilter(filterId: string) {
+    const preset = FORENSIC_PRESETS.find((f) => f.id === filterId);
+    if (!preset) return;
+    setForensicFilter(filterId);
+    const defaults: Record<string, number> = {};
+    for (const p of preset.params) {
+      defaults[p.key] = p.default;
+    }
+    setForensicParams(defaults);
+    setForensicError(null);
+  }
+
+  async function handleApplyForensic() {
+    if (!forensicFilter || forensicLoading) return;
+    setForensicLoading(true);
+    setForensicError(null);
+    try {
+      const res = await fetch(
+        `/api/admin/investigations/${investigationId}/frames/${frame.id}/enhance`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: forensicFilter, params: forensicParams }),
+        }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Failed (${res.status})`);
+      }
+      const data = await res.json();
+      if (data.url && fabricRef.current && fabricModuleRef.current) {
+        const fabric = fabricModuleRef.current;
+        const canvas = fabricRef.current;
+
+        const imgRes = await fetch(data.url);
+        const imgBlob = await imgRes.blob();
+        if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+        const newBlobUrl = URL.createObjectURL(imgBlob);
+        blobUrlRef.current = newBlobUrl;
+
+        const imgEl = new Image();
+        await new Promise<void>((resolve, reject) => {
+          imgEl.onload = () => resolve();
+          imgEl.onerror = (e) => reject(e);
+          imgEl.src = newBlobUrl;
+        });
+        const img = new fabric.FabricImage(imgEl);
+        fitImageToCanvas(img, canvas.getWidth(), canvas.getHeight());
+
+        if (bgImageRef.current) canvas.remove(bgImageRef.current);
+        canvas.add(img);
+        canvas.sendObjectToBack(img);
+        bgImageRef.current = img;
+        canvas.renderAll();
+
+        const preset = FORENSIC_PRESETS.find((f) => f.id === forensicFilter);
+        setForensicActive(preset?.label || forensicFilter);
+      }
+    } catch (err) {
+      setForensicError(err instanceof Error ? err.message : "Enhancement failed");
+    } finally {
+      setForensicLoading(false);
+    }
+  }
+
+  async function handleResetForensic() {
+    const canvas = fabricRef.current;
+    const fabric = fabricModuleRef.current;
+    if (!canvas || !fabric) return;
+
+    try {
+      const imageUrl = storageUrlRef.current;
+      if (!imageUrl) return;
+
+      const imgRes = await fetch(imageUrl);
+      const imgBlob = await imgRes.blob();
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+      const newBlobUrl = URL.createObjectURL(imgBlob);
+      blobUrlRef.current = newBlobUrl;
+
+      const imgEl = new Image();
+      await new Promise<void>((resolve, reject) => {
+        imgEl.onload = () => resolve();
+        imgEl.onerror = (e) => reject(e);
+        imgEl.src = newBlobUrl;
+      });
+      const img = new fabric.FabricImage(imgEl);
+      fitImageToCanvas(img, canvas.getWidth(), canvas.getHeight());
+
+      if (bgImageRef.current) canvas.remove(bgImageRef.current);
+      canvas.add(img);
+      canvas.sendObjectToBack(img);
+      bgImageRef.current = img;
+      canvas.renderAll();
+
+      setForensicActive(null);
+      setForensicFilter(null);
+      setForensicParams({});
+      setForensicError(null);
+    } catch (err) {
+      console.error("Reset forensic failed:", err);
     }
   }
 
@@ -643,9 +932,20 @@ export function FrameAnnotationCanvas({
       canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
       canvas.renderAll();
 
+      // Crop to background image bounds (exclude letterbox bars)
+      const bgImage = canvas.getObjects()[0];
+      const cropLeft = bgImage?.left ?? 0;
+      const cropTop = bgImage?.top ?? 0;
+      const cropWidth = (bgImage?.width ?? canvas.getWidth()) * (bgImage?.scaleX ?? 1);
+      const cropHeight = (bgImage?.height ?? canvas.getHeight()) * (bgImage?.scaleY ?? 1);
+
       // Skip 2x multiplier when already enhanced (4x image would be enormous)
       const dataUrl = canvas.toDataURL({
         format: "png",
+        left: cropLeft,
+        top: cropTop,
+        width: cropWidth,
+        height: cropHeight,
         ...(enhanced ? {} : { multiplier: 2 }),
       });
 
@@ -698,7 +998,7 @@ export function FrameAnnotationCanvas({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[95vw] w-[95vw] h-[90vh] flex flex-col p-0 gap-0"
+        className="max-w-[98vw] sm:max-w-[98vw] w-[98vw] h-[95vh] flex flex-col p-0 gap-0"
         showCloseButton={true}
         onPointerDownOutside={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
@@ -709,8 +1009,8 @@ export function FrameAnnotationCanvas({
               Annotate Frame #{frame.frame_number}
             </DialogTitle>
             {enhanced && (
-              <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/20 text-[10px]">
-                Enhanced 4x
+              <Badge className={`text-[10px] ${showingOriginal ? "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" : "bg-purple-500/10 text-purple-400 border-purple-500/20"}`}>
+                {showingOriginal ? "Original" : "Enhanced 4x"}
               </Badge>
             )}
           </div>
@@ -857,14 +1157,142 @@ export function FrameAnnotationCanvas({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  <p>AI Upscale 4x (requires scanner service)</p>
+                  <p>AI Upscale 4x via Real-ESRGAN</p>
                 </TooltipContent>
               </Tooltip>
+              {enhanced && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant={showingOriginal ? "default" : "outline"}
+                      className="gap-1.5 text-xs"
+                      onClick={handleToggleOriginal}
+                    >
+                      {showingOriginal ? (
+                        <EyeOff className="h-3.5 w-3.5" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5" />
+                      )}
+                      {showingOriginal ? "Show Enhanced" : "Show Original"}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>Compare original vs enhanced</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
               {enhanceError && (
                 <span className="text-xs text-red-400 max-w-48 truncate" title={enhanceError}>
                   {enhanceError}
                 </span>
               )}
+            </div>
+
+            {/* Forensic filters */}
+            <div className="flex items-center gap-1.5">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                    <Microscope className="h-3.5 w-3.5" />
+                    Forensic
+                    {forensicActive && (
+                      <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/20 text-[10px] ml-1">
+                        {forensicActive}
+                      </Badge>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72" side="bottom" align="start">
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      Apply forensic filters to reveal manipulation artifacts.
+                    </p>
+
+                    {/* Filter buttons grid */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {FORENSIC_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          onClick={() => selectForensicFilter(preset.id)}
+                          className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                            forensicFilter === preset.id
+                              ? "bg-primary/20 border-primary/40 text-primary"
+                              : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
+                          }`}
+                          title={preset.description}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Parameter sliders when a filter is selected */}
+                    {forensicFilter && (() => {
+                      const preset = FORENSIC_PRESETS.find((f) => f.id === forensicFilter);
+                      if (!preset) return null;
+                      return (
+                        <div className="space-y-3 pt-1">
+                          {preset.params.map((paramDef) => (
+                            <div key={paramDef.key}>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <label className="text-xs text-muted-foreground">{paramDef.label}</label>
+                                <span className="text-xs font-mono text-foreground">
+                                  {(forensicParams[paramDef.key] ?? paramDef.default).toFixed(
+                                    paramDef.step < 1 ? (paramDef.step < 0.1 ? 2 : 1) : 0
+                                  )}
+                                </span>
+                              </div>
+                              <Slider
+                                value={[forensicParams[paramDef.key] ?? paramDef.default]}
+                                onValueChange={([v]) =>
+                                  setForensicParams((prev) => ({ ...prev, [paramDef.key]: v }))
+                                }
+                                min={paramDef.min}
+                                max={paramDef.max}
+                                step={paramDef.step}
+                              />
+                            </div>
+                          ))}
+                          <Button
+                            size="sm"
+                            className="w-full gap-2"
+                            onClick={handleApplyForensic}
+                            disabled={forensicLoading}
+                          >
+                            {forensicLoading ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Microscope className="h-3.5 w-3.5" />
+                            )}
+                            {forensicLoading ? "Applying..." : "Apply Filter"}
+                          </Button>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Error */}
+                    {forensicError && (
+                      <p className="text-xs text-red-400">{forensicError}</p>
+                    )}
+
+                    {/* Reset button when a filter is active */}
+                    {forensicActive && (
+                      <div className="pt-1 border-t border-border/30">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full gap-1.5 text-xs"
+                          onClick={handleResetForensic}
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          Reset to Original
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
         </TooltipProvider>
@@ -880,7 +1308,7 @@ export function FrameAnnotationCanvas({
         {/* Footer */}
         <div className="px-4 py-2.5 border-t border-border/30 flex items-center justify-between shrink-0">
           <span className="text-xs text-muted-foreground">
-            Alt+drag to pan &middot; Scroll to zoom
+            Space+drag to pan &middot; Scroll to zoom
           </span>
           <div className="flex items-center gap-2">
             <Button

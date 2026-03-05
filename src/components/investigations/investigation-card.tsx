@@ -58,10 +58,23 @@ export function InvestigationCard({
           </h3>
 
           <div className="mt-auto flex items-center justify-between text-xs text-muted-foreground">
-            <span>{publishedDate}</span>
+            <div className="flex items-center gap-2">
+              <span>{publishedDate}</span>
+              {(investigation.evidence_count > 0 || investigation.media_count > 0) && (
+                <>
+                  <span className="text-muted-foreground/40">&middot;</span>
+                  <span>
+                    {[
+                      investigation.evidence_count > 0 && `${investigation.evidence_count} evidence`,
+                      investigation.media_count > 0 && `${investigation.media_count} media`,
+                    ].filter(Boolean).join(", ")}
+                  </span>
+                </>
+              )}
+            </div>
             {investigation.confidence_score !== null && (
               <span className="font-medium">
-                {investigation.confidence_score}% confidence
+                {investigation.confidence_score}%
               </span>
             )}
           </div>

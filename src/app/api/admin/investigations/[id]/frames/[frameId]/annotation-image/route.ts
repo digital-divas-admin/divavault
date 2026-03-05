@@ -58,13 +58,21 @@ export async function POST(
     // Update frame's annotation_image_path (via annotateFrame for activity logging)
     await annotateFrame(frameId, { annotation_image_path: storagePath });
 
+    // Get frame number for richer evidence content
+    const { data: frameRecord } = await serviceClient
+      .from("deepfake_frames")
+      .select("frame_number")
+      .eq("id", frameId)
+      .single();
+    const frameNumber = frameRecord?.frame_number ?? frameId.slice(0, 8);
+
     // Create evidence record if requested
     let evidenceRecord = null;
     if (createEvidenceFlag) {
       evidenceRecord = await createEvidence(investigationId, {
         evidence_type: "screenshot",
-        title: evidenceTitle || `Annotated Frame`,
-        content: `Annotated frame capture saved as evidence`,
+        title: evidenceTitle || `Annotated Frame #${frameNumber}`,
+        content: `Analyst-annotated frame highlighting areas of interest in frame #${frameNumber}.`,
         attachment_path: storagePath,
       });
     }

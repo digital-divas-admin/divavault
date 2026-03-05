@@ -50,10 +50,22 @@ export async function POST(
       }
     }
 
+    // For AI detection, only sample a few spread-out frames to save API calls.
+    // If a few frames are AI-generated, the whole video is.
+    const AI_DETECTION_SAMPLE = 3;
+    let aiDetectionFrameIds = targetFrameIds;
+    if (targetFrameIds.length > AI_DETECTION_SAMPLE) {
+      const step = (targetFrameIds.length - 1) / (AI_DETECTION_SAMPLE - 1);
+      aiDetectionFrameIds = Array.from({ length: AI_DETECTION_SAMPLE }, (_, i) =>
+        targetFrameIds[Math.round(i * step)]
+      );
+    }
+
     for (const taskType of task_types) {
       if (taskType === "reverse_search" || taskType === "ai_detection") {
-        if (targetFrameIds.length > 0) {
-          const rows = targetFrameIds.map((frameId) => ({
+        const frameIds = taskType === "ai_detection" ? aiDetectionFrameIds : targetFrameIds;
+        if (frameIds.length > 0) {
+          const rows = frameIds.map((frameId) => ({
             investigation_id: id,
             task_type: taskType,
             frame_id: frameId,
@@ -105,6 +117,15 @@ export async function POST(
       method: "POST",
       headers: { "x-service-key": process.env.SUPABASE_SERVICE_ROLE_KEY || "" },
     }).catch((err) => console.error("Failed to trigger scanner:", err));
+
+    // Fire-and-forget: process AI detection tasks via Hive API
+    if (task_types.includes("ai_detection") && createdTasks.some(t => t.task_type === "ai_detection")) {
+      import("@/lib/hive-ai").then(({ processAiDetectionTasks }) =>
+        processAiDetectionTasks(id).catch((err) =>
+          console.error("[automated-tasks] AI detection processing error:", err)
+        )
+      );
+    }
 
     return NextResponse.json({ tasks: createdTasks }, { status: 201 });
   } catch (e) {

@@ -3,6 +3,7 @@ import { Navbar } from "@/components/landing/navbar";
 import { NewFooter } from "@/components/landing/new-footer";
 import { InvestigationCard } from "@/components/investigations/investigation-card";
 import { getPublishedInvestigations } from "@/lib/investigation-queries";
+import { investigationUrl, SITE_BASE_URL } from "@/lib/investigation-utils";
 import { SearchSlash } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -33,9 +34,14 @@ export default async function InvestigationsPage() {
               <span className="text-primary">Investigations</span>
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">
-              Our team analyzes suspected AI-generated media, providing
-              transparent evidence and verdicts on authenticity.
+              Independent forensic analysis of suspected AI-generated media.
+              Evidence-based verdicts you can cite, share, and trust.
             </p>
+            {investigations.length > 0 && (
+              <p className="text-sm text-muted-foreground mt-3">
+                {investigations.length} investigation{investigations.length !== 1 ? "s" : ""} published
+              </p>
+            )}
           </div>
         </section>
 
@@ -73,11 +79,13 @@ export default async function InvestigationsPage() {
               "@context": "https://schema.org",
               "@type": "CollectionPage",
               name: "Deepfake Investigations",
+              url: `${SITE_BASE_URL}/investigations`,
               description:
                 "Evidence-based deepfake investigations and authenticity analysis by Consented AI.",
               publisher: {
                 "@type": "Organization",
                 name: "Consented AI",
+                url: SITE_BASE_URL,
               },
               mainEntity: {
                 "@type": "ItemList",
@@ -85,7 +93,7 @@ export default async function InvestigationsPage() {
                 itemListElement: investigations.map((inv, i) => ({
                   "@type": "ListItem",
                   position: i + 1,
-                  url: `/investigations/${inv.slug}`,
+                  url: investigationUrl(inv.slug),
                   name: inv.title,
                 })),
               },

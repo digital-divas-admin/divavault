@@ -31,6 +31,25 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
+function getEvidenceExplainer(item: InvestigationEvidence): string | null {
+  const title = (item.title || "").toLowerCase();
+
+  if (title.includes("ela")) return "Error Level Analysis reveals areas with different compression levels, which can indicate edits";
+  if (title.includes("edge detect")) return "Edge detection highlights boundary inconsistencies common in composited images";
+  if (title.includes("sharpen")) return "Sharpening reveals hidden detail that may expose manipulation artifacts";
+  if (title.includes("color amplify")) return "Color amplification exposes subtle color inconsistencies between original and edited regions";
+  if (title.includes("histogram")) return "Histogram equalization reveals hidden tonal patterns that differ between original and manipulated areas";
+  if (title.includes("denoise")) return "Noise removal reveals underlying structure that may differ between authentic and generated content";
+  if (title.includes("annotated")) return "Areas of interest highlighted by the investigating analyst";
+
+  if (item.evidence_type === "ai_detection") return "Automated analysis to determine if this content was AI-generated";
+  if (item.evidence_type === "metadata_anomaly") return "Inconsistency found in the file's technical metadata";
+  if (item.evidence_type === "provenance_check") return "Verification of the content's origin and authenticity chain";
+  if (item.evidence_type === "source_match") return "This content was found to match existing material in known databases";
+
+  return null;
+}
+
 export function EvidenceTimeline({
   evidence,
 }: {
@@ -44,11 +63,12 @@ export function EvidenceTimeline({
       <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
 
       <div className="space-y-6">
-        {evidence.map((item) => {
+        {evidence.map((item, index) => {
           const Icon = EVIDENCE_ICONS[item.evidence_type] || FileText;
+          const explainer = getEvidenceExplainer(item);
 
           return (
-            <div key={item.id} className="relative pl-11">
+            <div key={item.id} id={`exhibit-${index + 1}`} className="relative pl-11">
               {/* Node */}
               <div className="absolute left-2 top-1 w-5 h-5 rounded-full bg-card border-2 border-primary flex items-center justify-center">
                 <Icon className="w-2.5 h-2.5 text-primary" />
@@ -56,6 +76,9 @@ export function EvidenceTimeline({
 
               <div className="bg-card border border-border rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">
+                    Exhibit {index + 1}
+                  </span>
                   <Badge variant="outline" className="text-[11px]">
                     {EVIDENCE_TYPE_LABELS[item.evidence_type]}
                   </Badge>
@@ -70,10 +93,23 @@ export function EvidenceTimeline({
                   </h4>
                 )}
 
+                {explainer && (
+                  <p className="text-xs text-muted-foreground italic mb-1">{explainer}</p>
+                )}
+
                 {item.content && (
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                     {item.content}
                   </p>
+                )}
+
+                {item.attachment_url && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={item.attachment_url}
+                    alt={item.title || "Evidence attachment"}
+                    className="w-full max-h-80 object-contain bg-black/50 rounded-lg mt-3"
+                  />
                 )}
 
                 {item.external_url && (

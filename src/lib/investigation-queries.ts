@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createServiceClient } from "@/lib/supabase/server";
+import { isTweetUrl } from "@/lib/investigation-utils";
 import type {
   Investigation,
   InvestigationMedia,
@@ -180,24 +181,42 @@ export const getInvestigationBySlug = cache(async (slug: string): Promise<Invest
   if (error || !investigation) return null;
 
   const id = investigation.id;
-  const [mediaRes, framesRes, evidenceRes] = await Promise.all([
+  const [mediaRes, framesRes, evidenceRes, searchRes] = await Promise.all([
     supabase.from("deepfake_media").select("*").eq("investigation_id", id).order("created_at"),
-    supabase.from("deepfake_frames").select("*").eq("investigation_id", id).eq("is_key_evidence", true).order("frame_number"),
+    supabase.from("deepfake_frames").select("*").eq("investigation_id", id).or("is_key_evidence.eq.true,annotation_image_path.not.is.null").order("frame_number"),
     supabase.from("deepfake_evidence").select("*").eq("investigation_id", id).order("display_order"),
+    supabase.from("deepfake_reverse_search_results").select("*").eq("investigation_id", id).order("created_at", { ascending: false }),
   ]);
 
-  // Sign media storage URLs for public display
+  // Sign media storage URLs and auto-fetch engagement stats
   const media = mediaRes.data || [];
   if (media.length > 0) {
-    const signMediaPromises = media.map(async (m: Record<string, unknown>) => {
+    const mediaPromises = media.map(async (m: Record<string, unknown>) => {
+      // Sign storage URL
       if (m.storage_path && m.download_status === "completed") {
         const { data } = await supabase.storage
           .from("deepfake-evidence")
           .createSignedUrl(m.storage_path as string, 3600);
         if (data) m.storage_url = data.signedUrl;
       }
+      // Backfill engagement stats in the background (non-blocking) so page renders immediately
+      if (!m.engagement_stats && m.source_url && isTweetUrl(m.source_url as string)) {
+        const mediaId = m.id as string;
+        const sourceUrl = m.source_url as string;
+        import("@/lib/fetch-engagement").then(({ fetchTweetEngagement }) =>
+          fetchTweetEngagement(sourceUrl).then((stats) => {
+            if (stats) {
+              supabase
+                .from("deepfake_media")
+                .update({ engagement_stats: stats })
+                .eq("id", mediaId)
+                .then(() => {});
+            }
+          })
+        ).catch(() => {});
+      }
     });
-    await Promise.all(signMediaPromises);
+    await Promise.all(mediaPromises);
   }
 
   // Sign frame storage URLs for public display
@@ -216,18 +235,42 @@ export const getInvestigationBySlug = cache(async (slug: string): Promise<Invest
           .createSignedUrl(frame.storage_path as string, 3600);
         if (data) frame.storage_url = data.signedUrl;
       }
+      if (frame.annotation_image_path) {
+        const { data } = await supabase.storage
+          .from("deepfake-evidence")
+          .createSignedUrl(frame.annotation_image_path as string, 3600);
+        if (data) frame.annotation_image_url = data.signedUrl;
+      }
     });
     await Promise.all(signPromises);
+  }
+
+  // Sign evidence attachment URLs for public display
+  const evidence = evidenceRes.data || [];
+  if (evidence.length > 0) {
+    try {
+      const signEvidencePromises = evidence.map(async (ev: Record<string, unknown>) => {
+        if (ev.attachment_path) {
+          const { data } = await supabase.storage
+            .from("deepfake-evidence")
+            .createSignedUrl(ev.attachment_path as string, 3600);
+          if (data) ev.attachment_url = data.signedUrl;
+        }
+      });
+      await Promise.all(signEvidencePromises);
+    } catch (e) {
+      console.error("[getInvestigationBySlug] evidence signing error:", e);
+    }
   }
 
   return {
     ...investigation,
     media,
     frames,
-    evidence: evidenceRes.data || [],
+    evidence,
     tasks: [],
     activity: [],
-    reverse_search_results: [],
+    reverse_search_results: searchRes.data || [],
   } as InvestigationDetail;
 });
 
@@ -371,7 +414,7 @@ export async function addMedia(
 
   if (error) throw error;
 
-  // Create a download task
+  // Create a download task (processing is triggered by the UI via the process endpoint)
   await supabase.from("deepfake_tasks").insert({
     investigation_id: investigationId,
     media_id: data.id,
@@ -466,6 +509,10 @@ export async function createEvidence(
     external_url?: string;
     attachment_path?: string;
     display_order?: number;
+    ai_detection_score?: number | null;
+    ai_detection_deepfake_score?: number | null;
+    ai_detection_generator?: string | null;
+    frame_number?: number | null;
   }
 ): Promise<InvestigationEvidence> {
   const supabase = await createServiceClient();
@@ -544,7 +591,7 @@ export async function addSearchResult(
   investigationId: string,
   input: {
     frame_id?: string;
-    engine: "tineye" | "google_lens" | "yandex" | "manual";
+    engine: ReverseSearchResult["engine"];
     result_url: string;
     result_domain?: string;
     result_title?: string;
@@ -573,6 +620,15 @@ export async function addSearchResult(
   return data as ReverseSearchResult;
 }
 
+export async function deleteSearchResult(id: string): Promise<void> {
+  const supabase = await createServiceClient();
+  const { error } = await supabase
+    .from("deepfake_reverse_search_results")
+    .delete()
+    .eq("id", id);
+  if (error) throw error;
+}
+
 // --- Tasks ---
 
 export async function getTasksForInvestigation(
@@ -590,7 +646,7 @@ export async function getTasksForInvestigation(
 
 // --- Activity Log ---
 
-async function logActivity(
+export async function logActivity(
   investigationId: string,
   eventType: ActivityEventType,
   actorId: string | null,
@@ -609,4 +665,40 @@ async function logActivity(
 
 export async function getPublishedInvestigations(): Promise<InvestigationListItem[]> {
   return getInvestigations("published");
+}
+
+/** Fetch up to 3 related published investigations, preferring same category. */
+export async function getRelatedInvestigations(
+  currentId: string,
+  category: InvestigationCategory
+): Promise<InvestigationListItem[]> {
+  const supabase = await createServiceClient();
+
+  // Try same category first
+  const { data: sameCat } = await supabase
+    .from("deepfake_investigations")
+    .select("*")
+    .eq("status", "published")
+    .eq("category", category)
+    .neq("id", currentId)
+    .order("published_at", { ascending: false })
+    .limit(3);
+
+  const results = (sameCat || []) as Investigation[];
+
+  // If fewer than 3, fill with other categories
+  if (results.length < 3) {
+    const excludeIds = [currentId, ...results.map((r) => r.id)];
+    const { data: others } = await supabase
+      .from("deepfake_investigations")
+      .select("*")
+      .eq("status", "published")
+      .not("id", "in", `(${excludeIds.join(",")})`)
+      .order("published_at", { ascending: false })
+      .limit(3 - results.length);
+
+    if (others) results.push(...(others as Investigation[]));
+  }
+
+  return attachCounts(supabase, results);
 }

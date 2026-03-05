@@ -161,6 +161,7 @@ INSTAGRAM_CLIENT_ID=             # Meta/Instagram app client ID
 INSTAGRAM_CLIENT_SECRET=         # Meta/Instagram app client secret
 INSTAGRAM_REDIRECT_URI=          # Must match Meta app config
 NEXT_PUBLIC_SITE_URL=            # Site URL for QR handoff (dev: http://192.168.10.173:3000)
+HIVE_API_KEY=                    # Hive AI API key (for AI-generated content detection)
 ```
 
 ## Database
@@ -219,6 +220,10 @@ Returns a JSON array of result rows, or `[]` for DDL statements.
 - **Instagram API requires Meta app review** — For production, the Meta app needs Basic Display product review. Dev uses test users.
 - **Instagram tokens stored unencrypted** — Should add encryption for production.
 - **Veriff needs live credentials** — Dev bypass available; fill in `VERIFF_API_KEY` and `VERIFF_SHARED_SECRET` for production.
+
+## Deepfake Investigations / Deepfake Lab
+
+Full documentation in `CLAUDE-INVESTIGATIONS.md`. Covers the admin investigation dashboard, media processing pipeline (yt-dlp + ffmpeg), frame extraction & annotation, forensic enhancement filters (ELA, edge detect, etc.), evidence management, and the public-facing investigation article pages. Database tables are prefixed `deepfake_*`, storage bucket is `deepfake-evidence`.
 
 ## Scanner Backend (`apps/scanner/`)
 

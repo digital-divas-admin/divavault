@@ -14,6 +14,7 @@ import { FrameAnnotationCanvas } from "../frame-annotation-canvas";
 import type { InvestigationFrame } from "@/types/investigations";
 
 // Mock fabric.js — provides minimal Canvas/shape stubs
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-function-type */
 vi.mock("fabric", () => {
   const createMockCanvas = () => {
     const objects: any[] = [];
@@ -50,7 +51,7 @@ vi.mock("fabric", () => {
       toJSON: vi.fn(() => ({ objects: [] })),
       toDataURL: vi.fn(() => "data:image/png;base64,"),
       getScenePoint: vi.fn((e: any) => ({ x: e.offsetX || 0, y: e.offsetY || 0 })),
-      forEachObject: vi.fn((fn: Function) => objects.forEach(fn)),
+      forEachObject: vi.fn((fn: (obj: any) => void) => objects.forEach(fn)),
       isDrawingMode: false,
       selection: true,
       defaultCursor: "default",
@@ -79,17 +80,25 @@ vi.mock("fabric", () => {
     },
   };
 });
+/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-function-type */
 
 const mockFrame: InvestigationFrame = {
   id: "frame-1",
+  media_id: "media-1",
   investigation_id: "inv-1",
   frame_number: 1,
+  timestamp_seconds: null,
   storage_path: "frames/test.jpg",
+  thumbnail_path: null,
   storage_url: "https://example.com/test.jpg",
+  admin_notes: null,
+  has_artifacts: false,
+  is_key_evidence: false,
   drawing_data: null,
+  annotation_image_path: null,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
-} as any;
+};
 
 describe("FrameAnnotationCanvas", () => {
   const mockOnOpenChange = vi.fn();
@@ -102,7 +111,7 @@ describe("FrameAnnotationCanvas", () => {
       ok: true,
       blob: () => Promise.resolve(new Blob(["img"], { type: "image/jpeg" })),
       json: () => Promise.resolve({}),
-    }) as any;
+    }) as unknown as typeof fetch;
     global.URL.createObjectURL = vi.fn(() => "blob:test");
     global.URL.revokeObjectURL = vi.fn();
   });
