@@ -13,7 +13,6 @@ import asyncio
 import json
 import os
 import signal
-import subprocess
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -968,38 +967,45 @@ async def _phase_face_detection(job_store: JobStore, pending: int) -> None:
         max_chunks=max_chunks,
     )
 
+    total_timeout = timeout * max_chunks  # total timeout scales with chunks
+    proc = None
+
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout * max_chunks,  # total timeout scales with chunks
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
             cwd=_SCANNER_ROOT,
         )
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            proc.communicate(), timeout=total_timeout,
+        )
+        stdout_str = stdout_bytes.decode(errors="replace")
+        stderr_str = stderr_bytes.decode(errors="replace")
 
-        if result.returncode != 0:
-            log.error("phase_face_detection_error", stderr=result.stderr[-500:])
+        if proc.returncode != 0:
+            log.error("phase_face_detection_error", stderr=stderr_str[-500:])
         else:
             # Parse output for stats
-            for line in reversed(result.stdout.strip().split("\n")):
+            for line in reversed(stdout_str.strip().split("\n")):
                 if "Images processed:" in line:
                     log.info("phase_face_detection_complete", output=line.strip())
                     break
             else:
-                log.info("phase_face_detection_complete", output=result.stdout[-200:])
+                log.info("phase_face_detection_complete", output=stdout_str[-200:])
 
         try:
             await observer.emit("faces_detected", "pipeline", "face_detection", {
                 "pending": pending,
                 "chunk_size": chunk_size,
                 "max_chunks": max_chunks,
-                "returncode": result.returncode,
+                "returncode": proc.returncode,
             })
         except Exception:
             pass
 
         # Refresh section stats after detection so face counts are up-to-date
-        if result.returncode == 0:
+        if proc.returncode == 0:
             try:
                 from sqlalchemy import select as sa_select
                 from src.db.models import PlatformCrawlSchedule as PCS
@@ -1015,11 +1021,18 @@ async def _phase_face_detection(job_store: JobStore, pending: int) -> None:
             except Exception as e:
                 log.error("post_detection_stats_error", error=str(e))
 
-    except subprocess.TimeoutExpired:
-        log.warning("phase_face_detection_timeout", timeout_seconds=timeout * max_chunks)
+    except asyncio.TimeoutError:
+        log.warning("phase_face_detection_timeout", timeout_seconds=total_timeout)
     except Exception as e:
         log.error("phase_face_detection_error", error=str(e))
     finally:
+        # Kill subprocess if still running (timeout, cancellation, or unexpected error)
+        if proc is not None and proc.returncode is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            await proc.wait()
         # Clear phase
         async with async_session() as session:
             from src.db.models import PlatformCrawlSchedule
