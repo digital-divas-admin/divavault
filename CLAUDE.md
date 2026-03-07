@@ -43,6 +43,7 @@ Keep it under 20 lines.
 ## Cross-System Work
 
 The scanner (Python) and dashboard (Next.js) share a Supabase DB.
+The dashboard is deployed on Render; the scanner runs locally on the Windows/4090 machine, exposed via Cloudflare tunnel (`scanner.consentedai.com`). See `apps/scanner/CLAUDE.md` for deployment details.
 Scanner queries from the dashboard live in src/lib/scanner-command-queries.ts.
 When modifying scanner DB schema, check for downstream impacts in the dashboard.
 

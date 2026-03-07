@@ -395,6 +395,35 @@ GOOGLE_CSE_CX=                       # Custom Search Engine ID (optional)
 - `InsightFaceProvider._add_nvidia_dll_paths()` auto-adds nvidia-cudnn + nvidia-cublas to PATH
 - See `SETUP-4090.md` in repo root for full Windows 11 + RTX 4090 setup guide
 
+## Deployment
+
+The scanner runs **locally on the Windows/RTX 4090 machine**, not on Render. Only the Next.js frontend is deployed on Render.
+
+**Cloudflare Tunnel** exposes the local scanner to the internet so the Render frontend can reach it:
+- **Binary:** `C:\Users\alexi\cloudflared.exe` (not on PATH)
+- **Config:** `~/.cloudflared/config.yml` — named tunnel routing `scanner.consentedai.com` → `http://localhost:8000`
+- **Tunnel ID:** `7f8bffb3-bd40-45b0-aa8f-8eeae641e1eb`
+- **Credentials:** `~/.cloudflared/7f8bffb3-bd40-45b0-aa8f-8eeae641e1eb.json`
+
+**Starting the scanner (both required):**
+```bash
+# 1. Start the scanner service
+cd apps/scanner && .venv/Scripts/python.exe -m src.main
+
+# 2. Start the Cloudflare tunnel (separate terminal)
+C:\Users\alexi\cloudflared.exe tunnel run scanner
+```
+
+**Render env var:** `SCANNER_SERVICE_URL=https://scanner.consentedai.com` on the `madeofus` Next.js service. This is a persistent named tunnel — the URL does not change on restart.
+
+**Verifying connectivity:**
+```bash
+curl http://localhost:8000/health          # Local check
+curl https://scanner.consentedai.com/health  # Via tunnel (what Render uses)
+```
+
+If the dashboard shows "Scanner returned 530", check that both the scanner process and `cloudflared` are running.
+
 ## API Endpoints
 
 **Health:** `GET /health` — Returns uptime, metrics, GPU status, ONNX provider info

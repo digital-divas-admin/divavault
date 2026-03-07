@@ -11,12 +11,6 @@ import {
   Target,
   Globe,
   Brain,
-  Activity,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Zap,
-  BarChart3,
   FlaskConical,
   Play,
   Loader2,
@@ -37,79 +31,8 @@ type TabId = "command" | "pipeline" | "crawl-map" | "ml-intelligence" | "test-us
 
 interface CommandTabProps {
   data: CommandCenterData;
-  activity: any[] | null;
   health: Record<string, any> | null;
   onSwitchTab: (tabId: TabId, context?: { platform?: string }) => void;
-}
-
-// --- Signal display map ---
-
-const SIGNAL_ICONS: Record<string, { icon: typeof Activity; label: string }> = {
-  match_confirmed: { icon: CheckCircle2, label: "Match confirmed" },
-  match_rejected: { icon: XCircle, label: "Match rejected" },
-  match_found: { icon: Target, label: "New match" },
-  section_toggle: { icon: Zap, label: "Section toggled" },
-  recommendation_approved: { icon: CheckCircle2, label: "Rec approved" },
-  recommendation_dismissed: { icon: XCircle, label: "Rec dismissed" },
-  threshold_adjusted: { icon: BarChart3, label: "Threshold adjusted" },
-  model_retrained: { icon: Brain, label: "Model retrained" },
-  crawl_completed: { icon: Globe, label: "Crawl completed" },
-  matching_completed: { icon: Fingerprint, label: "Matching finished" },
-  ml_cycle_completed: { icon: Brain, label: "ML cycle completed" },
-};
-
-function getSignalDisplay(signalType: string) {
-  return SIGNAL_ICONS[signalType] || { icon: Activity, label: signalType.replace(/_/g, " ") };
-}
-
-/** Build a human-readable description from signal type + context JSONB. */
-function getSignalDescription(item: any): string | null {
-  const ctx = item.context || {};
-  const entityId = item.entity_id || "";
-
-  switch (item.signal_type) {
-    case "crawl_completed": {
-      const platform = entityId || ctx.platform || "";
-      const count = ctx.total_discovered ?? ctx.images_discovered;
-      const parts = [platform && platform.charAt(0).toUpperCase() + platform.slice(1), "crawl completed"];
-      if (count != null) parts.push(`\u2014 ${Number(count).toLocaleString()} images`);
-      return parts.filter(Boolean).join(" ");
-    }
-    case "matching_completed": {
-      const found = ctx.matches_found ?? ctx.new_matches;
-      if (found != null) return `Matching finished \u2014 ${found} new match${found === 1 ? "" : "es"}`;
-      return "Matching finished";
-    }
-    case "match_found": {
-      const platform = ctx.platform || entityId || "";
-      const confidence = ctx.confidence ?? ctx.similarity;
-      const parts = ["New match"];
-      if (platform) parts.push(`on ${platform}`);
-      if (confidence != null) parts.push(`(${Math.round(confidence * 100)}% confidence)`);
-      return parts.join(" ");
-    }
-    case "ml_cycle_completed": {
-      const analyzers = ctx.analyzers_run;
-      const recs = ctx.recommendations_generated;
-      const parts = ["ML cycle completed"];
-      if (analyzers != null) parts.push(`\u2014 ${analyzers} analyzers`);
-      if (recs != null && recs > 0) parts.push(`, ${recs} rec${recs === 1 ? "" : "s"}`);
-      return parts.join("");
-    }
-    default:
-      return null;
-  }
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
 }
 
 // --- Scanner Health ---
@@ -628,103 +551,6 @@ function BackfillIndicator({
   );
 }
 
-// --- Pending Recommendations ---
-
-function PendingRecommendations({
-  recommendations,
-  pendingRecsCount,
-}: {
-  recommendations: CommandCenterData["recommendations"];
-  pendingRecsCount: number;
-}) {
-  const [optimistic, setOptimistic] = useState<Record<string, string>>({});
-
-  const pending = recommendations.filter(
-    (r) => r.status === "pending" && !optimistic[r.id]
-  );
-
-  if (pending.length === 0) return null;
-
-  async function handleAction(id: string, action: "approve" | "dismiss") {
-    setOptimistic((prev) => ({ ...prev, [id]: action }));
-    try {
-      await fetch(`/api/admin/scanner/ml/recommendations/${id}/${action}`, {
-        method: "POST",
-      });
-    } catch {
-      setOptimistic((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-    }
-  }
-
-  return (
-    <div>
-      <h3 className="text-xs font-medium text-muted-foreground mb-3">
-        ML Recommendations ({pendingRecsCount.toLocaleString()} pending)
-      </h3>
-      <div className="space-y-2">
-        {pending.slice(0, 5).map((rec) => (
-          <Card key={rec.id} className="bg-card border-border/30">
-            <CardContent className="p-3 flex items-start gap-3">
-              <Brain className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">
-                  {rec.recommendation_type.replace(/_/g, " ")}
-                  {rec.target_platform && (
-                    <span className="text-muted-foreground ml-1.5 text-xs capitalize">
-                      {rec.target_platform}
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                  {rec.reasoning || "No reasoning provided"}
-                </p>
-                <div className="flex items-center gap-2 mt-1.5">
-                  {rec.confidence !== null && (
-                    <span className="text-[10px] font-[family-name:var(--font-mono)] text-muted-foreground">
-                      {(rec.confidence * 100).toFixed(0)}% confidence
-                    </span>
-                  )}
-                  {rec.risk_level && (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                        rec.risk_level === "high"
-                          ? "bg-red-500/10 text-red-400"
-                          : rec.risk_level === "medium"
-                            ? "bg-yellow-500/10 text-yellow-400"
-                            : "bg-green-500/10 text-green-400"
-                      }`}
-                    >
-                      {rec.risk_level}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex gap-1.5 shrink-0">
-                <button
-                  onClick={() => handleAction(rec.id, "approve")}
-                  className="px-2 py-1 text-[10px] font-medium rounded bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors"
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={() => handleAction(rec.id, "dismiss")}
-                  className="px-2 py-1 text-[10px] font-medium rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // --- Test User Summary ---
 
 function TestUserSummary({
@@ -777,75 +603,16 @@ function TestUserSummary({
   );
 }
 
-// --- Activity Feed ---
-
-function ActivityFeed({ activity }: { activity: any[] | null }) {
-  if (!activity || activity.length === 0) {
-    return (
-      <div className="text-xs text-muted-foreground text-center py-8">
-        No recent activity
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-1">
-      {activity.map((item: any) => {
-        const display = getSignalDisplay(item.signal_type);
-        const Icon = display.icon;
-        const description = getSignalDescription(item);
-        return (
-          <div
-            key={item.id}
-            className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-muted/20 transition-colors"
-          >
-            <Icon className="h-3 w-3 text-muted-foreground mt-0.5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] text-foreground truncate">
-                {description || display.label}
-              </p>
-              <p className="text-[10px] text-muted-foreground">
-                {timeAgo(item.created_at)}
-              </p>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // --- Main Tab ---
 
-export function CommandTab({ data, activity, health, onSwitchTab }: CommandTabProps) {
+export function CommandTab({ data, health, onSwitchTab }: CommandTabProps) {
   return (
-    <div className="flex gap-6">
-      {/* Main content */}
-      <div className="flex-1 space-y-6 min-w-0">
-        <StatsRow data={data} />
-        <ScannerHealth health={health} />
-        <PipelineFunnel funnel={data.funnel} />
-        <PlatformCards data={data} onSwitchTab={onSwitchTab} />
-        <PendingRecommendations recommendations={data.recommendations} pendingRecsCount={data.pendingRecsCount} />
-        <TestUserSummary summary={data.testUserSummary} onSwitchTab={onSwitchTab} />
-      </div>
-
-      {/* Activity sidebar */}
-      <div className="hidden lg:block w-[260px] shrink-0">
-        <div className="sticky top-4">
-          <Card className="bg-card border-border/30">
-            <CardContent className="p-3">
-              <div className="flex items-center gap-1.5 mb-3">
-                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                <h3 className="text-xs font-medium text-muted-foreground">
-                  Activity Feed
-                </h3>
-              </div>
-              <ActivityFeed activity={activity} />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <StatsRow data={data} />
+      <ScannerHealth health={health} />
+      <PipelineFunnel funnel={data.funnel} />
+      <PlatformCards data={data} onSwitchTab={onSwitchTab} />
+      <TestUserSummary summary={data.testUserSummary} onSwitchTab={onSwitchTab} />
     </div>
   );
 }

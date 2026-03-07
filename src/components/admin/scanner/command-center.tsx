@@ -35,7 +35,6 @@ type TabId = (typeof TABS)[number]["id"];
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type HealthData = Record<string, any> | null;
-type ActivityData = any[] | null;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 interface CommandCenterProps {
@@ -45,19 +44,14 @@ interface CommandCenterProps {
 export function CommandCenter({ initialData }: CommandCenterProps) {
   const [activeTab, setActiveTab] = useState<TabId>("command");
   const [health, setHealth] = useState<HealthData>(null);
-  const [activity, setActivity] = useState<ActivityData>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     async function fetchPollingData() {
       try {
-        const [healthRes, activityRes] = await Promise.all([
-          fetch("/api/admin/scanner/health"),
-          fetch("/api/admin/scanner/activity"),
-        ]);
+        const healthRes = await fetch("/api/admin/scanner/health");
         if (active && healthRes.ok) setHealth(await healthRes.json());
-        if (active && activityRes.ok) setActivity(await activityRes.json());
       } catch {
         // Silently fail — health bar shows degraded state
       }
@@ -106,7 +100,6 @@ export function CommandCenter({ initialData }: CommandCenterProps) {
       {activeTab === "command" && (
         <CommandTab
           data={initialData}
-          activity={activity}
           health={health}
           onSwitchTab={handleSwitchTab}
         />
