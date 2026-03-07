@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Menu, X } from "lucide-react";
 import { InquiryDialogTrigger } from "@/components/landing/v2/inquiry-dialog";
 
@@ -21,8 +22,7 @@ export function Navbar({ variant = "light" }: { variant?: "light" | "dark" }) {
       <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border/50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link href="/">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="Consented AI" className="h-7 w-auto brightness-0 invert" />
+            <Image src="/logo.png" alt="Consented AI" width={120} height={28} className="h-7 w-auto brightness-0 invert" priority />
           </Link>
 
           <div className="hidden md:flex items-center gap-8">
@@ -78,8 +78,7 @@ export function Navbar({ variant = "light" }: { variant?: "light" | "dark" }) {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-[#F0F4FA]/80 backdrop-blur-md border-b border-[#D0D8E6]/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <Link href="/">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="Consented AI" className="h-7 w-auto" />
+          <Image src="/logo.png" alt="Consented AI" width={120} height={28} className="h-7 w-auto" priority />
         </Link>
 
         <div className="hidden md:flex items-center gap-8">
