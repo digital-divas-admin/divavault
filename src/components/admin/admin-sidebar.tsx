@@ -121,8 +121,8 @@ function SidebarContent({ displayName, role }: AdminSidebarProps) {
       {/* Logo */}
       <div className="px-6 py-5 border-b border-border/30 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <ShieldCheck className="w-5 h-5 text-primary" />
-          <span className="font-semibold text-foreground text-lg">consented<span className="text-primary">ai</span></span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="Consented AI" className="h-6 w-auto brightness-0 invert" />
           <span className="text-xs text-muted-foreground">admin</span>
         </Link>
         <AppSwitcher />
