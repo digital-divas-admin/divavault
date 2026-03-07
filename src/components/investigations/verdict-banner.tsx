@@ -29,23 +29,18 @@ export function VerdictBanner({ verdict, confidenceScore }: VerdictBannerProps) 
 
   return (
     <div
-      className={`w-full border-y ${styles.bg} ${styles.border} mb-8 no-print`}
+      className={`w-full border-y ${styles.bg} ${styles.border} no-print`}
     >
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-7 sm:py-9 text-center">
-        <div className="flex items-center justify-center gap-3 mb-2">
-          <VerdictIcon verdict={verdict} className={`w-7 h-7 sm:w-8 sm:h-8 ${styles.icon}`} />
-          <h2 className={`text-2xl sm:text-3xl font-[family-name:var(--font-heading)] ${styles.text}`}>
-            {label}
-          </h2>
-          {confidenceScore !== null && (
-            <span className="text-lg sm:text-xl font-semibold text-muted-foreground">
-              &middot; {confidenceScore}%
-            </span>
-          )}
-        </div>
-        <p className="text-sm sm:text-base text-muted-foreground">
-          Our analysis concludes this content is {label.toLowerCase()}.
-        </p>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-center gap-3">
+        <VerdictIcon verdict={verdict} className={`w-6 h-6 sm:w-7 sm:h-7 ${styles.icon}`} />
+        <h2 className={`text-xl sm:text-2xl font-[family-name:var(--font-heading)] ${styles.text}`}>
+          {label}
+        </h2>
+        {confidenceScore !== null && (
+          <span className="text-base sm:text-lg font-semibold text-muted-foreground">
+            &middot; {confidenceScore}%
+          </span>
+        )}
       </div>
     </div>
   );

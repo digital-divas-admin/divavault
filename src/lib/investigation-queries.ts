@@ -30,13 +30,20 @@ async function attachCounts(
   const ids = investigations.map((d) => d.id);
   if (ids.length === 0) return [];
 
-  const [mediaRes, evidenceRes] = await Promise.all([
+  const [mediaRes, evidenceRes, framesRes] = await Promise.all([
     supabase.from("deepfake_media").select("investigation_id").in("investigation_id", ids),
     supabase.from("deepfake_evidence").select("investigation_id").in("investigation_id", ids),
+    // Fetch first frame per investigation for thumbnail fallback
+    supabase
+      .from("deepfake_frames")
+      .select("investigation_id, storage_path")
+      .in("investigation_id", ids)
+      .order("frame_number", { ascending: true }),
   ]);
 
   const mediaCounts = new Map<string, number>();
   const evidenceCounts = new Map<string, number>();
+  const firstFramePath = new Map<string, string>();
 
   for (const m of mediaRes.data || []) {
     mediaCounts.set(m.investigation_id, (mediaCounts.get(m.investigation_id) || 0) + 1);
@@ -44,12 +51,87 @@ async function attachCounts(
   for (const e of evidenceRes.data || []) {
     evidenceCounts.set(e.investigation_id, (evidenceCounts.get(e.investigation_id) || 0) + 1);
   }
+  for (const f of framesRes.data || []) {
+    if (!firstFramePath.has(f.investigation_id)) {
+      firstFramePath.set(f.investigation_id, f.storage_path);
+    }
+  }
+
+  // Sign thumbnail URLs (use thumbnail_path if set, otherwise first frame)
+  const thumbnailUrls = new Map<string, string>();
+  const pathsToSign: { id: string; path: string }[] = [];
+  for (const d of investigations) {
+    const path = d.thumbnail_path || firstFramePath.get(d.id);
+    if (path) pathsToSign.push({ id: d.id, path });
+  }
+
+  if (pathsToSign.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from("deepfake-evidence")
+      .createSignedUrls(
+        pathsToSign.map((p) => p.path),
+        3600
+      );
+    if (signed) {
+      for (let i = 0; i < signed.length; i++) {
+        if (signed[i].signedUrl) {
+          thumbnailUrls.set(pathsToSign[i].id, signed[i].signedUrl);
+        }
+      }
+    }
+  }
 
   return investigations.map((d) => ({
     ...d,
+    thumbnail_url: thumbnailUrls.get(d.id) || null,
     media_count: mediaCounts.get(d.id) || 0,
     evidence_count: evidenceCounts.get(d.id) || 0,
   }));
+}
+
+/** Sign frame storage/thumbnail/annotation URLs in-place (batched). */
+async function signFrameUrls(supabase: SupabaseClient, frames: Record<string, unknown>[]) {
+  if (frames.length === 0) return;
+
+  // Collect all paths to sign in one batch
+  const entries: { frame: Record<string, unknown>; field: string; path: string }[] = [];
+  for (const frame of frames) {
+    if (frame.thumbnail_path) entries.push({ frame, field: "thumbnail_url", path: frame.thumbnail_path as string });
+    if (frame.storage_path) entries.push({ frame, field: "storage_url", path: frame.storage_path as string });
+    if (frame.annotation_image_path) entries.push({ frame, field: "annotation_image_url", path: frame.annotation_image_path as string });
+  }
+  if (entries.length === 0) return;
+
+  const { data: signed } = await supabase.storage
+    .from("deepfake-evidence")
+    .createSignedUrls(entries.map((e) => e.path), 3600);
+
+  if (signed) {
+    for (let i = 0; i < signed.length; i++) {
+      if (signed[i].signedUrl) entries[i].frame[entries[i].field] = signed[i].signedUrl;
+    }
+  }
+}
+
+/** Sign evidence attachment URLs in-place (batched). */
+async function signEvidenceUrls(supabase: SupabaseClient, evidence: Record<string, unknown>[]) {
+  if (evidence.length === 0) return;
+
+  const entries: { ev: Record<string, unknown>; path: string }[] = [];
+  for (const ev of evidence) {
+    if (ev.attachment_path) entries.push({ ev, path: ev.attachment_path as string });
+  }
+  if (entries.length === 0) return;
+
+  const { data: signed } = await supabase.storage
+    .from("deepfake-evidence")
+    .createSignedUrls(entries.map((e) => e.path), 3600);
+
+  if (signed) {
+    for (let i = 0; i < signed.length; i++) {
+      if (signed[i].signedUrl) entries[i].ev.attachment_url = signed[i].signedUrl;
+    }
+  }
 }
 
 // --- Investigation CRUD ---
@@ -116,45 +198,11 @@ export async function getInvestigationById(id: string): Promise<InvestigationDet
     supabase.from("deepfake_reverse_search_results").select("*").eq("investigation_id", id).order("created_at"),
   ]);
 
-  // Sign frame storage URLs so the admin UI can display images
   const frames = framesRes.data || [];
-  if (frames.length > 0) {
-    const signPromises = frames.map(async (frame: Record<string, unknown>) => {
-      if (frame.thumbnail_path) {
-        const { data } = await supabase.storage
-          .from("deepfake-evidence")
-          .createSignedUrl(frame.thumbnail_path as string, 3600);
-        if (data) frame.thumbnail_url = data.signedUrl;
-      }
-      if (frame.storage_path) {
-        const { data } = await supabase.storage
-          .from("deepfake-evidence")
-          .createSignedUrl(frame.storage_path as string, 3600);
-        if (data) frame.storage_url = data.signedUrl;
-      }
-      if (frame.annotation_image_path) {
-        const { data } = await supabase.storage
-          .from("deepfake-evidence")
-          .createSignedUrl(frame.annotation_image_path as string, 3600);
-        if (data) frame.annotation_image_url = data.signedUrl;
-      }
-    });
-    await Promise.all(signPromises);
-  }
+  await signFrameUrls(supabase, frames);
 
-  // Sign evidence attachment URLs
   const evidence = evidenceRes.data || [];
-  if (evidence.length > 0) {
-    const signEvidencePromises = evidence.map(async (ev: Record<string, unknown>) => {
-      if (ev.attachment_path) {
-        const { data } = await supabase.storage
-          .from("deepfake-evidence")
-          .createSignedUrl(ev.attachment_path as string, 3600);
-        if (data) ev.attachment_url = data.signedUrl;
-      }
-    });
-    await Promise.all(signEvidencePromises);
-  }
+  await signEvidenceUrls(supabase, evidence);
 
   return {
     ...investigation,
@@ -188,18 +236,32 @@ export const getInvestigationBySlug = cache(async (slug: string): Promise<Invest
     supabase.from("deepfake_reverse_search_results").select("*").eq("investigation_id", id).order("created_at", { ascending: false }),
   ]);
 
-  // Sign media storage URLs and auto-fetch engagement stats
+  // Sign media storage URLs (batched) and trigger engagement backfill
   const media = mediaRes.data || [];
   if (media.length > 0) {
-    const mediaPromises = media.map(async (m: Record<string, unknown>) => {
-      // Sign storage URL
+    // Batch-sign all media storage URLs
+    const mediaToSign: { index: number; path: string }[] = [];
+    for (let i = 0; i < media.length; i++) {
+      const m = media[i] as Record<string, unknown>;
       if (m.storage_path && m.download_status === "completed") {
-        const { data } = await supabase.storage
-          .from("deepfake-evidence")
-          .createSignedUrl(m.storage_path as string, 3600);
-        if (data) m.storage_url = data.signedUrl;
+        mediaToSign.push({ index: i, path: m.storage_path as string });
       }
-      // Backfill engagement stats in the background (non-blocking) so page renders immediately
+    }
+    if (mediaToSign.length > 0) {
+      const { data: signed } = await supabase.storage
+        .from("deepfake-evidence")
+        .createSignedUrls(mediaToSign.map((e) => e.path), 3600);
+      if (signed) {
+        for (let i = 0; i < signed.length; i++) {
+          if (signed[i].signedUrl) {
+            (media[mediaToSign[i].index] as Record<string, unknown>).storage_url = signed[i].signedUrl;
+          }
+        }
+      }
+    }
+
+    // Backfill engagement stats in the background (non-blocking) so page renders immediately
+    for (const m of media as Record<string, unknown>[]) {
       if (!m.engagement_stats && m.source_url && isTweetUrl(m.source_url as string)) {
         const mediaId = m.id as string;
         const sourceUrl = m.source_url as string;
@@ -215,53 +277,14 @@ export const getInvestigationBySlug = cache(async (slug: string): Promise<Invest
           })
         ).catch(() => {});
       }
-    });
-    await Promise.all(mediaPromises);
-  }
-
-  // Sign frame storage URLs for public display
-  const frames = framesRes.data || [];
-  if (frames.length > 0) {
-    const signPromises = frames.map(async (frame: Record<string, unknown>) => {
-      if (frame.thumbnail_path) {
-        const { data } = await supabase.storage
-          .from("deepfake-evidence")
-          .createSignedUrl(frame.thumbnail_path as string, 3600);
-        if (data) frame.thumbnail_url = data.signedUrl;
-      }
-      if (frame.storage_path) {
-        const { data } = await supabase.storage
-          .from("deepfake-evidence")
-          .createSignedUrl(frame.storage_path as string, 3600);
-        if (data) frame.storage_url = data.signedUrl;
-      }
-      if (frame.annotation_image_path) {
-        const { data } = await supabase.storage
-          .from("deepfake-evidence")
-          .createSignedUrl(frame.annotation_image_path as string, 3600);
-        if (data) frame.annotation_image_url = data.signedUrl;
-      }
-    });
-    await Promise.all(signPromises);
-  }
-
-  // Sign evidence attachment URLs for public display
-  const evidence = evidenceRes.data || [];
-  if (evidence.length > 0) {
-    try {
-      const signEvidencePromises = evidence.map(async (ev: Record<string, unknown>) => {
-        if (ev.attachment_path) {
-          const { data } = await supabase.storage
-            .from("deepfake-evidence")
-            .createSignedUrl(ev.attachment_path as string, 3600);
-          if (data) ev.attachment_url = data.signedUrl;
-        }
-      });
-      await Promise.all(signEvidencePromises);
-    } catch (e) {
-      console.error("[getInvestigationBySlug] evidence signing error:", e);
     }
   }
+
+  const frames = framesRes.data || [];
+  await signFrameUrls(supabase, frames);
+
+  const evidence = evidenceRes.data || [];
+  await signEvidenceUrls(supabase, evidence);
 
   return {
     ...investigation,
@@ -513,6 +536,9 @@ export async function createEvidence(
     ai_detection_deepfake_score?: number | null;
     ai_detection_generator?: string | null;
     frame_number?: number | null;
+    sentinel_score?: number | null;
+    sentinel_classification?: string | null;
+    detection_sources?: string[];
   }
 ): Promise<InvestigationEvidence> {
   const supabase = await createServiceClient();

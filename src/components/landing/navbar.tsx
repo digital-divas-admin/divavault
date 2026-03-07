@@ -8,8 +8,8 @@ import { InquiryDialogTrigger } from "@/components/landing/v2/inquiry-dialog";
 const navLinks = [
   { href: "/#how-it-works", label: "How It Works" },
   { href: "/#clients", label: "Who We Serve" },
+  { href: "/investigations", label: "Investigations" },
   { href: "/legal-landscape", label: "Legal" },
-  { href: "/developers", label: "Developers" },
   { href: "/login", label: "Sign In" },
 ];
 

@@ -72,6 +72,7 @@ export function FrameComparisonSlider({
       <img
         src={originalUrl}
         alt={`${altText} — Original`}
+        loading="lazy"
         className="w-full block"
         draggable={false}
       />
@@ -85,6 +86,7 @@ export function FrameComparisonSlider({
         <img
           src={annotatedUrl}
           alt={`${altText} — Annotated`}
+          loading="lazy"
           className="w-full block"
           draggable={false}
         />

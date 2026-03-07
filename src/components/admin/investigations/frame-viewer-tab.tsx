@@ -342,14 +342,17 @@ function FrameAnnotationPanel({
 
   return (
     <div className="bg-card rounded-xl border border-border/50 p-5 space-y-4">
-      <h3 className="text-sm font-medium">Annotations</h3>
+      <h3 className="text-sm font-medium">Frame Analysis</h3>
 
-      <Textarea
-        placeholder="Notes about this frame..."
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        rows={3}
-      />
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">Analysis / Description</label>
+        <Textarea
+          placeholder="Describe what you observe in this frame — artifacts, inconsistencies, manipulation signs..."
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={5}
+        />
+      </div>
 
       <div className="space-y-2">
         <label className="flex items-center gap-2 cursor-pointer">
@@ -374,7 +377,7 @@ function FrameAnnotationPanel({
 
       <Button onClick={handleSave} disabled={saving} size="sm" className="w-full gap-2">
         <Save className="h-4 w-4" />
-        {saving ? "Saving..." : "Save Annotations"}
+        {saving ? "Saving..." : "Save Analysis"}
       </Button>
     </div>
   );

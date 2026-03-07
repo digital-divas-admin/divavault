@@ -29,7 +29,7 @@ function getFfprobePath(): string {
   return require("ffprobe-static").path as string;
 }
 
-const YTDLP_CACHE_DIR = path.join("node_modules", ".cache", "yt-dlp");
+const YTDLP_CACHE_DIR = path.join(process.cwd(), "node_modules", ".cache", "yt-dlp");
 
 const YTDLP_RELEASE_URL =
   "https://github.com/yt-dlp/yt-dlp/releases/latest/download";

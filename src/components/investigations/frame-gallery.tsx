@@ -34,6 +34,7 @@ export function FrameGallery({
               <img
                 src={frame.annotation_image_url}
                 alt={`Annotated Frame #${frame.frame_number}`}
+                loading="lazy"
                 className="w-full"
               />
             )}
@@ -89,6 +90,7 @@ export function FrameGallery({
                   <img
                     src={frame.thumbnail_url || frame.storage_url}
                     alt={`Frame #${frame.frame_number}`}
+                    loading="lazy"
                     className="w-full h-full object-cover"
                   />
                 ) : (

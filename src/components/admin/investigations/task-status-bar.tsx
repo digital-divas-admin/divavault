@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import type { DeepfakeTask } from "@/types/investigations";
+import { isTaskActive } from "@/lib/investigation-utils";
 
 interface TaskStatusBarProps {
   tasks: DeepfakeTask[];
@@ -23,9 +24,7 @@ export function TaskStatusBar({ tasks, investigationId, onUpdate }: TaskStatusBa
         const res = await fetch(`/api/admin/investigations/${investigationId}/tasks`);
         if (!res.ok) return;
         const updated = await res.json();
-        const stillActive = updated.some(
-          (t: DeepfakeTask) => t.status === "pending" || t.status === "running"
-        );
+        const stillActive = updated.some(isTaskActive);
 
         // Build a fingerprint of task statuses + progress to detect actual changes
         const statusKey = updated

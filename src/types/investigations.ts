@@ -14,12 +14,12 @@ export type InvestigationCategory = (typeof INVESTIGATION_CATEGORIES)[number];
 export const EVIDENCE_TYPES = ["finding", "note", "external_link", "screenshot", "metadata_anomaly", "timeline_entry", "source_match", "ai_detection", "provenance_check"] as const;
 export type EvidenceType = (typeof EVIDENCE_TYPES)[number];
 
-export const REVERSE_SEARCH_ENGINES = ["tineye", "google_lens", "yandex", "manual", "serpapi", "wayback", "news_search", "ap_archive", "getty_editorial"] as const;
+export const REVERSE_SEARCH_ENGINES = ["tineye", "google_lens", "yandex", "manual", "serpapi", "wayback", "news_search", "wire_search", "ap_archive", "getty_editorial"] as const;
 export type ReverseSearchEngine = (typeof REVERSE_SEARCH_ENGINES)[number];
 
 export type MediaDownloadStatus = "pending" | "downloading" | "completed" | "failed";
 export type TaskStatus = "pending" | "running" | "completed" | "failed";
-export type TaskType = "download_media" | "extract_frames" | "extract_metadata" | "reverse_search" | "ai_detection" | "check_provenance" | "news_search" | "wire_search";
+export type TaskType = "download_media" | "extract_frames" | "extract_metadata" | "reverse_search" | "ai_detection" | "check_provenance" | "news_search" | "wire_search" | "visual_search";
 export type ActivityEventType =
   | "investigation_created"
   | "investigation_updated"
@@ -37,7 +37,9 @@ export type ActivityEventType =
   | "ai_detection_completed"
   | "provenance_checked"
   | "news_search_completed"
-  | "wire_search_completed";
+  | "wire_search_completed"
+  | "visual_search_completed"
+  | "ai_triage_completed";
 
 // --- Main interfaces ---
 
@@ -125,6 +127,7 @@ export interface ReverseSearchResult {
   result_date: string | null;
   relevance_rating: number | null;
   notes: string | null;
+  thumbnail_url: string | null;
   created_at: string;
 }
 
@@ -142,6 +145,9 @@ export interface InvestigationEvidence {
   ai_detection_deepfake_score: number | null;
   ai_detection_generator: string | null;
   frame_number: number | null;
+  sentinel_score: number | null;
+  sentinel_classification: string | null;
+  detection_sources: string[] | null;
   provenance_data: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
@@ -184,6 +190,7 @@ export interface InvestigationListItem {
   verdict: InvestigationVerdict | null;
   confidence_score: number | null;
   thumbnail_path: string | null;
+  thumbnail_url: string | null;
   created_at: string;
   updated_at: string;
   published_at: string | null;

@@ -6,15 +6,30 @@ import { getPublishedInvestigations } from "@/lib/investigation-queries";
 import { investigationUrl, SITE_BASE_URL } from "@/lib/investigation-utils";
 import { SearchSlash } from "lucide-react";
 
+// Ensure fresh signed storage URLs on every request
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Deepfake Investigations | Consented AI",
   description:
     "Browse published deepfake investigations. Our team analyzes suspected AI-generated media, providing evidence-based verdicts on authenticity.",
+  alternates: {
+    canonical: `${SITE_BASE_URL}/investigations`,
+  },
   openGraph: {
     title: "Deepfake Investigations | Consented AI",
     description:
       "Evidence-based deepfake investigations and authenticity analysis.",
     type: "website",
+    url: `${SITE_BASE_URL}/investigations`,
+    siteName: "Consented AI",
+  },
+  twitter: {
+    card: "summary",
+    site: "@consentedai",
+    title: "Deepfake Investigations | Consented AI",
+    description:
+      "Evidence-based deepfake investigations and authenticity analysis.",
   },
 };
 

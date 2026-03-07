@@ -27,6 +27,7 @@ export async function POST(
   const image = formData.get("image") as File | null;
   const createEvidenceFlag = formData.get("create_evidence") === "true";
   const evidenceTitle = formData.get("evidence_title") as string | null;
+  const evidenceDescription = formData.get("evidence_description") as string | null;
 
   if (!image || !(image instanceof File)) {
     return NextResponse.json({ error: "Image file is required" }, { status: 400 });
@@ -72,7 +73,7 @@ export async function POST(
       evidenceRecord = await createEvidence(investigationId, {
         evidence_type: "screenshot",
         title: evidenceTitle || `Annotated Frame #${frameNumber}`,
-        content: `Analyst-annotated frame highlighting areas of interest in frame #${frameNumber}.`,
+        content: evidenceDescription || `Analyst-annotated frame highlighting areas of interest in frame #${frameNumber}.`,
         attachment_path: storagePath,
       });
     }

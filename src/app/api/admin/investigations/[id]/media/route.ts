@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/admin-queries";
 import { getMediaForInvestigation, addMedia } from "@/lib/investigation-queries";
+import { createServiceClient } from "@/lib/supabase/server";
 import { addMediaSchema } from "@/lib/investigation-validators";
 import { detectPlatform } from "@/lib/investigation-utils";
 
@@ -42,6 +43,21 @@ export async function POST(
     const parsed = addMediaSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    }
+
+    // Check for duplicate source_url (service role needed — deepfake_media has no public RLS)
+    const serviceClient = await createServiceClient();
+    const { data: existing } = await serviceClient
+      .from("deepfake_media")
+      .select("id")
+      .eq("investigation_id", id)
+      .eq("source_url", parsed.data.source_url)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      return NextResponse.json(
+        { error: "This URL has already been added to this investigation" },
+        { status: 409 }
+      );
     }
 
     const platform = parsed.data.platform || detectPlatform(parsed.data.source_url);

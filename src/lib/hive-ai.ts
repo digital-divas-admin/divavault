@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { createEvidence, logActivity } from "@/lib/investigation-queries";
+import { analyzeWithSentinel, type SentinelDetectionResult } from "@/lib/sentinel-detection";
 
 // --- Types ---
 
@@ -154,6 +155,7 @@ export async function processAiDetectionTasks(investigationId: string): Promise<
   const frameResults: Array<{
     frameNumber: number;
     result: HiveDetectionResult;
+    sentinelResult: SentinelDetectionResult | null;
   }> = [];
 
   // Process sequentially to avoid Hive API rate limits
@@ -189,20 +191,29 @@ export async function processAiDetectionTasks(investigationId: string): Promise<
         throw new Error(`Failed to sign frame URL: ${signErr?.message}`);
       }
 
-      // Call Hive API
-      const result = await analyzeWithHive(signedData.signedUrl);
+      // Call Hive and Sentinel in parallel (Hive = network API, Sentinel = local subprocess)
+      const [result, sentinelResult] = await Promise.all([
+        analyzeWithHive(signedData.signedUrl),
+        analyzeWithSentinel(signedData.signedUrl).catch((err) => {
+          console.warn("[hive-ai] Sentinel analysis failed, continuing with Hive only:", err);
+          return null;
+        }),
+      ]);
 
       // Store result in task
       await supabase
         .from("deepfake_tasks")
         .update({
           status: "completed",
-          result: result as unknown as Record<string, unknown>,
+          result: {
+            ...(result as unknown as Record<string, unknown>),
+            sentinel: sentinelResult,
+          },
           completed_at: new Date().toISOString(),
         })
         .eq("id", task.id);
 
-      frameResults.push({ frameNumber: frame.frame_number, result });
+      frameResults.push({ frameNumber: frame.frame_number, result, sentinelResult });
 
       await logActivity(investigationId, "ai_detection_completed", null, {
         frame_id: task.frame_id,
@@ -236,15 +247,21 @@ export async function processAiDetectionTasks(investigationId: string): Promise<
     .eq("evidence_type", "ai_detection");
 
   // Create one evidence record per analyzed frame (the public page aggregates them)
-  for (const { frameNumber, result } of frameResults) {
+  for (const { frameNumber, result, sentinelResult } of frameResults) {
     await createEvidence(investigationId, {
       evidence_type: "ai_detection",
       title: `AI Detection — Frame #${frameNumber}`,
-      content: `AI Generated: ${(result.ai_generated_score * 100).toFixed(1)}%${result.top_generator ? ` | Generator: ${result.top_generator}` : ""}`,
+      content: `AI Generated: ${(result.ai_generated_score * 100).toFixed(1)}%${result.top_generator ? ` | Generator: ${result.top_generator}` : ""}${sentinelResult ? ` | Sentinel: ${sentinelResult.prediction} (${(sentinelResult.p_ai * 100).toFixed(1)}%)` : ""}`,
       ai_detection_score: result.ai_generated_score,
       ai_detection_deepfake_score: result.deepfake_score,
       ai_detection_generator: result.top_generator,
       frame_number: frameNumber,
+      sentinel_score: sentinelResult?.p_ai ?? null,
+      sentinel_classification: sentinelResult?.prediction ?? null,
+      detection_sources: [
+        "hive",
+        ...(sentinelResult ? ["sentinel"] : []),
+      ],
     });
   }
 }

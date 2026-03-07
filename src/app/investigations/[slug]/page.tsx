@@ -83,6 +83,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       modifiedTime: investigation.updated_at,
       authors: ["Consented AI Forensic Team"],
     },
+    other: {
+      "article:author": "Consented AI Forensic Team",
+      "article:section": "Deepfake Investigation",
+    },
     twitter: {
       card: "summary_large_image",
       site: "@consentedai",
@@ -112,9 +116,9 @@ export default async function InvestigationDetailPage({ params }: PageProps) {
     (e) => e.evidence_type !== "ai_detection"
   );
 
-  // Filter corroboration-relevant search results
-  const corroborationResults = investigation.reverse_search_results.filter((r) =>
-    CORROBORATION_ENGINES.includes(r.engine)
+  // Only show confirmed corroboration sources on the public page
+  const corroborationResults = investigation.reverse_search_results.filter(
+    (r) => CORROBORATION_ENGINES.includes(r.engine) && r.relevance_rating != null
   );
 
   const verdictText = investigation.verdict
@@ -213,11 +217,22 @@ export default async function InvestigationDetailPage({ params }: PageProps) {
     });
   }
 
+  // Deduplicate media by source_url (prefer non-failed downloads)
+  const uniqueMedia = Array.from(
+    investigation.media.reduce((map, m) => {
+      const existing = map.get(m.source_url);
+      if (!existing || (existing.download_status === "failed" && m.download_status !== "failed")) {
+        map.set(m.source_url, m);
+      }
+      return map;
+    }, new Map<string, typeof investigation.media[number]>()).values()
+  );
+
   // Compute allSources for TOC + Sources section
   const allSources = Array.from(
     new Set([
       ...investigation.source_urls,
-      ...investigation.media.map((m) => m.source_url).filter(Boolean),
+      ...uniqueMedia.map((m) => m.source_url).filter(Boolean),
       ...investigation.evidence
         .filter((e) => e.external_url)
         .map((e) => e.external_url!),
@@ -241,8 +256,106 @@ export default async function InvestigationDetailPage({ params }: PageProps) {
           />
         )}
 
+        {/* Media Under Investigation — immediately after banner */}
+        {uniqueMedia.length > 0 && (
+          <section id="media-under-investigation" className="max-w-4xl mx-auto px-4 sm:px-6 pt-6 pb-10">
+            <h2 className="font-[family-name:var(--font-heading)] text-xl text-foreground mb-4">
+              Media Under Investigation
+            </h2>
+            <div className="space-y-4">
+              {uniqueMedia.map((m) => (
+                <div
+                  key={m.id}
+                  className="bg-card border border-border rounded-xl overflow-hidden"
+                >
+                  {isTweetUrl(m.source_url) ? (
+                    <TwitterEmbed tweetUrl={m.source_url} />
+                  ) : isInstagramUrl(m.source_url) ? (
+                    <InstagramEmbed url={m.source_url} />
+                  ) : null}
+
+                  {m.engagement_stats && (
+                    <div className="px-5 py-3 border-t border-border bg-muted/30">
+                      <div className="flex items-center gap-6 flex-wrap">
+                        {ENGAGEMENT_STATS.map(({ key, icon: StatIcon, color, label }) => {
+                          const val = m.engagement_stats?.[key];
+                          if (val == null) return null;
+                          return (
+                            <div key={key} className="flex items-center gap-1.5 text-sm">
+                              <StatIcon className={`w-4 h-4 ${color}`} />
+                              <span className="font-semibold text-foreground">
+                                {formatCompactNumber(val)}
+                              </span>
+                              <span className="text-muted-foreground">{label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {m.engagement_stats.captured_at && (
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Stats captured {formatDate(m.engagement_stats.captured_at)}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {m.storage_url && (m.media_type === "video" || m.media_type === "image") ? (
+                    (isTweetUrl(m.source_url) || isInstagramUrl(m.source_url)) ? (
+                      <ArchivedMediaToggle storageUrl={m.storage_url} mediaType={m.media_type} />
+                    ) : (
+                      <div>
+                        {m.media_type === "video" ? (
+                          <video
+                            src={m.storage_url}
+                            controls
+                            playsInline
+                            className="w-full max-h-[500px] bg-black"
+                          />
+                        ) : (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={m.storage_url}
+                            alt="Media under investigation"
+                            className="w-full max-h-[500px] object-contain bg-black"
+                          />
+                        )}
+                      </div>
+                    )
+                  ) : !isTweetUrl(m.source_url) && !isInstagramUrl(m.source_url) && m.source_url ? (
+                    <div className="flex flex-col items-center gap-2 p-8 bg-black/30">
+                      <span className="text-xs text-muted-foreground capitalize">
+                        {m.platform || "External"}
+                      </span>
+                      <a
+                        href={m.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm font-medium bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        View on {m.platform || "source"}
+                      </a>
+                    </div>
+                  ) : null}
+                  <div className="px-5 py-3 flex items-center justify-end">
+                    <a
+                      href={m.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Original source
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-16 sm:pb-24 space-y-10">
-          {/* 2. Executive Summary */}
+          {/* Executive Summary */}
           {investigation.summary && (
             <section id="executive-summary">
               <ExecutiveSummary summary={investigation.summary} />
@@ -267,7 +380,7 @@ export default async function InvestigationDetailPage({ params }: PageProps) {
             evidenceItems={displayEvidence.map((e, i) => ({ index: i + 1, title: e.title }))}
           />
 
-          {/* 3. Claim Under Review */}
+          {/* Claim Under Review */}
           <section id="claim-under-review">
             <ClaimUnderReview
               sourceUrls={investigation.source_urls}
@@ -276,105 +389,7 @@ export default async function InvestigationDetailPage({ params }: PageProps) {
             />
           </section>
 
-          {/* 4. Media Under Investigation */}
-          {investigation.media.length > 0 && (
-            <section id="media-under-investigation">
-              <h2 className="font-[family-name:var(--font-heading)] text-2xl text-foreground mb-6">
-                Media Under Investigation
-              </h2>
-              <div className="space-y-4">
-                {investigation.media.map((m) => (
-                  <div
-                    key={m.id}
-                    className="bg-card border border-border rounded-xl overflow-hidden"
-                  >
-                    {isTweetUrl(m.source_url) ? (
-                      <TwitterEmbed tweetUrl={m.source_url} />
-                    ) : isInstagramUrl(m.source_url) ? (
-                      <InstagramEmbed url={m.source_url} />
-                    ) : null}
-
-                    {m.engagement_stats && (
-                      <div className="px-5 py-3 border-t border-border bg-muted/30">
-                        <div className="flex items-center gap-6 flex-wrap">
-                          {ENGAGEMENT_STATS.map(({ key, icon: StatIcon, color, label }) => {
-                            const val = m.engagement_stats?.[key];
-                            if (val == null) return null;
-                            return (
-                              <div key={key} className="flex items-center gap-1.5 text-sm">
-                                <StatIcon className={`w-4 h-4 ${color}`} />
-                                <span className="font-semibold text-foreground">
-                                  {formatCompactNumber(val)}
-                                </span>
-                                <span className="text-muted-foreground">{label}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {m.engagement_stats.captured_at && (
-                          <p className="text-[11px] text-muted-foreground mt-1">
-                            Stats captured {formatDate(m.engagement_stats.captured_at)}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {m.storage_url && (m.media_type === "video" || m.media_type === "image") ? (
-                      (isTweetUrl(m.source_url) || isInstagramUrl(m.source_url)) ? (
-                        <ArchivedMediaToggle storageUrl={m.storage_url} mediaType={m.media_type} />
-                      ) : (
-                        <div>
-                          {m.media_type === "video" ? (
-                            <video
-                              src={m.storage_url}
-                              controls
-                              playsInline
-                              className="w-full max-h-[500px] bg-black"
-                            />
-                          ) : (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img
-                              src={m.storage_url}
-                              alt="Media under investigation"
-                              className="w-full max-h-[500px] object-contain bg-black"
-                            />
-                          )}
-                        </div>
-                      )
-                    ) : !isTweetUrl(m.source_url) && !isInstagramUrl(m.source_url) && m.source_url ? (
-                      <div className="flex flex-col items-center gap-2 p-8 bg-black/30">
-                        <span className="text-xs text-muted-foreground capitalize">
-                          {m.platform || "External"}
-                        </span>
-                        <a
-                          href={m.source_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 text-sm font-medium bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          View on {m.platform || "source"}
-                        </a>
-                      </div>
-                    ) : null}
-                    <div className="px-5 py-3 flex items-center justify-end">
-                      <a
-                        href={m.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        Original source
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* 5. Evidence Timeline */}
+          {/* Evidence Timeline */}
           {displayEvidence.length > 0 && (
             <section id="evidence">
               <h2 className="font-[family-name:var(--font-heading)] text-2xl text-foreground mb-6">

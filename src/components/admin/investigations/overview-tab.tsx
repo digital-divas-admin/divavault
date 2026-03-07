@@ -16,7 +16,7 @@ import { Save, FileText, Image as ImageIcon, Search, Clock, Globe, ExternalLink,
 import { VerdictSelector } from "./verdict-selector";
 import type { InvestigationDetail, InvestigationVerdict, InvestigationCategory, ReverseSearchEngine, DeepfakeTask, TaskType } from "@/types/investigations";
 import { STATUS_LABELS, STATUS_COLORS, CATEGORY_LABELS, INVESTIGATION_CATEGORIES } from "@/types/investigations";
-import { formatDuration, isAiGeneratorDuration, computeTechnicalFingerprint, getAiScoreTextColor, MIN_CANDIDATE_MATCHES } from "@/lib/investigation-utils";
+import { formatDuration, isAiGeneratorDuration, computeTechnicalFingerprint, getAiScoreTextColor, MIN_CANDIDATE_MATCHES, isTaskActive } from "@/lib/investigation-utils";
 
 function safeDomain(url: string): string {
   try { return new URL(url).hostname; } catch { return url; }
@@ -366,7 +366,7 @@ export function OverviewTab({ data, onUpdate }: OverviewTabProps) {
                 )}
               </>
             )}
-            <StatRow icon={<Clock className="h-3.5 w-3.5" />} label="Active Tasks" value={data.tasks.filter((t) => t.status === "running" || t.status === "pending").length} />
+            <StatRow icon={<Clock className="h-3.5 w-3.5" />} label="Active Tasks" value={data.tasks.filter(isTaskActive).length} />
           </div>
         </div>
 
@@ -509,6 +509,7 @@ const TASK_TYPE_LABELS: Record<TaskType, string> = {
   check_provenance: "Provenance Check",
   news_search: "News Search",
   wire_search: "AP / Getty Check",
+  visual_search: "Visual Search",
 };
 
 function RecentTasksSection({ tasks }: { tasks: DeepfakeTask[] }) {

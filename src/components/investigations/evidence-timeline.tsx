@@ -82,9 +82,9 @@ export function EvidenceTimeline({
                   <Badge variant="outline" className="text-[11px]">
                     {EVIDENCE_TYPE_LABELS[item.evidence_type]}
                   </Badge>
-                  <span className="text-xs text-muted-foreground">
+                  <time dateTime={item.created_at} className="text-xs text-muted-foreground">
                     {dateFormatter.format(new Date(item.created_at))}
-                  </span>
+                  </time>
                 </div>
 
                 {item.title && (
@@ -108,6 +108,7 @@ export function EvidenceTimeline({
                   <img
                     src={item.attachment_url}
                     alt={item.title || "Evidence attachment"}
+                    loading="lazy"
                     className="w-full max-h-80 object-contain bg-black/50 rounded-lg mt-3"
                   />
                 )}

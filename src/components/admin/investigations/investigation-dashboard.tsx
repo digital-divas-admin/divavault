@@ -5,16 +5,19 @@ import type { InvestigationDetail } from "@/types/investigations";
 import { OverviewTab } from "./overview-tab";
 import { MediaTab } from "./media-tab";
 import { FrameViewerTab } from "./frame-viewer-tab";
+import { AnalysisTab } from "./analysis-tab";
 import { MetadataTab } from "./metadata-tab";
 import { EvidenceTab } from "./evidence-tab";
 import { PublishTab } from "./publish-tab";
 import { CorroborationTab } from "./corroboration-tab";
 import { TaskStatusBar } from "./task-status-bar";
+import { isTaskActive } from "@/lib/investigation-utils";
 
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "media", label: "Media" },
   { key: "frames", label: "Frame Analysis" },
+  { key: "analysis", label: "Analysis" },
   { key: "metadata", label: "Metadata" },
   { key: "evidence", label: "Evidence" },
   { key: "corroboration", label: "Corroboration" },
@@ -63,9 +66,7 @@ export function InvestigationDashboard({ id }: { id: string }) {
     );
   }
 
-  const activeTasks = data.tasks.filter(
-    (t) => t.status === "pending" || t.status === "running"
-  );
+  const activeTasks = data.tasks.filter(isTaskActive);
 
   return (
     <div className="space-y-4">
@@ -108,6 +109,7 @@ export function InvestigationDashboard({ id }: { id: string }) {
         {activeTab === "overview" && <OverviewTab data={data} onUpdate={loadData} />}
         {activeTab === "media" && <MediaTab data={data} onUpdate={loadData} />}
         {activeTab === "frames" && <FrameViewerTab data={data} onUpdate={loadData} />}
+        {activeTab === "analysis" && <AnalysisTab data={data} onUpdate={loadData} />}
         {activeTab === "metadata" && <MetadataTab data={data} onUpdate={loadData} />}
         {activeTab === "evidence" && <EvidenceTab data={data} onUpdate={loadData} />}
         {activeTab === "corroboration" && <CorroborationTab data={data} onUpdate={loadData} />}

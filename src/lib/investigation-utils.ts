@@ -294,6 +294,41 @@ export function estimateReadTime(investigation: {
   return Math.max(1, Math.ceil(words / 200));
 }
 
+/** Extract the bare domain from a URL, stripping `www.` prefix. Returns "" on invalid URLs. */
+export function extractDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+/** AI detection verdict label from a 0-1 score (Hive-style thresholds). */
+export function getAiVerdictLabel(score: number): string {
+  if (score >= 0.85) return "Very likely AI-generated";
+  if (score >= 0.7) return "Likely AI-generated";
+  if (score >= 0.4) return "Possibly AI-generated";
+  if (score >= 0.15) return "Unlikely AI-generated";
+  return "No AI generation detected";
+}
+
+/** Tasks pending/running longer than this are considered stale. */
+export const TASK_STALE_MS = 30 * 60 * 1000; // 30 minutes
+
+/** Check whether a task is actively pending or running (not stale). */
+export function isTaskActive(task: { status: string; created_at: string }): boolean {
+  return (
+    (task.status === "pending" || task.status === "running") &&
+    Date.now() - new Date(task.created_at).getTime() < TASK_STALE_MS
+  );
+}
+
+/** Parse the AI triage note format `[AI:high|medium|low] reason`. */
+export function parseTriageNote(notes: string | null): { relevance: "high" | "medium" | "low"; reason: string } | null {
+  const match = notes?.match(/^\[AI:(high|medium|low)\]\s*(.*)/);
+  return match ? { relevance: match[1] as "high" | "medium" | "low", reason: match[2] } : null;
+}
+
 // --- Media Corroboration ---
 
 import type { ReverseSearchResult, ReverseSearchEngine } from "@/types/investigations";
@@ -302,6 +337,8 @@ export type OutletTier = "major" | "national" | "local" | "social" | "unknown";
 
 export const CORROBORATION_ENGINES: readonly ReverseSearchEngine[] = [
   "news_search",
+  "wire_search",
+  "google_lens",
   "ap_archive",
   "getty_editorial",
   "manual",

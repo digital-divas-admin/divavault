@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -41,7 +41,11 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  Crop,
+  X,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { InvestigationFrame } from "@/types/investigations";
 
 type DrawingTool = "select" | "pen" | "rect" | "circle" | "arrow" | "eraser";
@@ -167,6 +171,36 @@ export function FrameAnnotationCanvas({
   const [savingEvidence, setSavingEvidence] = useState(false);
   const [enhanceError, setEnhanceError] = useState<string | null>(null);
   const [fabricLoaded, setFabricLoaded] = useState(false);
+
+  // Crop-to-evidence state
+  const [cropPreview, setCropPreview] = useState(false);
+  const [cropFullBlob, setCropFullBlob] = useState<Blob | null>(null);
+  const [cropRegionBlob, setCropRegionBlob] = useState<Blob | null>(null);
+  const [cropTitle, setCropTitle] = useState("");
+  const [cropDescription, setCropDescription] = useState("");
+  const [savingCrop, setSavingCrop] = useState(false);
+
+  // Stable blob URLs for crop preview (avoid creating new URLs on every render)
+  const cropFullBlobUrl = useMemo(
+    () => (cropFullBlob ? URL.createObjectURL(cropFullBlob) : null),
+    [cropFullBlob]
+  );
+  const cropRegionBlobUrl = useMemo(
+    () => (cropRegionBlob ? URL.createObjectURL(cropRegionBlob) : null),
+    [cropRegionBlob]
+  );
+  useEffect(() => {
+    return () => { if (cropFullBlobUrl) URL.revokeObjectURL(cropFullBlobUrl); };
+  }, [cropFullBlobUrl]);
+  useEffect(() => {
+    return () => { if (cropRegionBlobUrl) URL.revokeObjectURL(cropRegionBlobUrl); };
+  }, [cropRegionBlobUrl]);
+
+  function closeCropPreview() {
+    setCropPreview(false);
+    setCropFullBlob(null);
+    setCropRegionBlob(null);
+  }
 
   // Forensic filter state
   const [forensicFilter, setForensicFilter] = useState<string | null>(null);
@@ -902,6 +936,258 @@ export function FrameAnnotationCanvas({
     }
   }
 
+  /** Extract a cropped region from the background image using a rect's canvas coordinates. */
+  function cropRegionFromCanvas(rect: any): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const bgImage = bgImageRef.current;
+      if (!bgImage) return reject(new Error("No background image"));
+
+      // Use the rect's actual bounding rect in scene coordinates (accounts for
+      // originX/Y, scaleX/Y, angle, strokeWidth, and any group transforms).
+      // We need scene coords (not screen coords), so temporarily reset viewport.
+      const canvas = fabricRef.current;
+      if (!canvas) return reject(new Error("No canvas"));
+
+      const prevTransform = canvas.viewportTransform
+        ? [...canvas.viewportTransform]
+        : [1, 0, 0, 1, 0, 0];
+      canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+
+      const bound = rect.getBoundingRect(true);
+      const rLeft = bound.left;
+      const rTop = bound.top;
+      const rWidth = bound.width;
+      const rHeight = bound.height;
+
+      canvas.setViewportTransform(prevTransform);
+
+      // Convert to source image pixel coordinates
+      const bgLeft = bgImage.left ?? 0;
+      const bgTop = bgImage.top ?? 0;
+      const bgScaleX = bgImage.scaleX ?? 1;
+      const bgScaleY = bgImage.scaleY ?? 1;
+
+      const sourceX = (rLeft - bgLeft) / bgScaleX;
+      const sourceY = (rTop - bgTop) / bgScaleY;
+      const sourceW = rWidth / bgScaleX;
+      const sourceH = rHeight / bgScaleY;
+
+      // Get the underlying image element
+      const imgEl = bgImage.getElement?.() || bgImage._element;
+      if (!imgEl) return reject(new Error("Cannot access image element"));
+
+      // Clamp source coords to image bounds
+      const imgW = imgEl.naturalWidth || imgEl.width;
+      const imgH = imgEl.naturalHeight || imgEl.height;
+      const clampedX = Math.max(0, Math.min(sourceX, imgW));
+      const clampedY = Math.max(0, Math.min(sourceY, imgH));
+      const clampedW = Math.min(sourceW, imgW - clampedX);
+      const clampedH = Math.min(sourceH, imgH - clampedY);
+
+      if (clampedW <= 0 || clampedH <= 0) {
+        return reject(new Error("Crop region is outside the image"));
+      }
+
+      // Draw crop on offscreen canvas, scaled up to min 800px wide
+      const scale = Math.max(1, 800 / clampedW);
+      const outW = Math.round(clampedW * scale);
+      const outH = Math.round(clampedH * scale);
+
+      const offscreen = document.createElement("canvas");
+      offscreen.width = outW;
+      offscreen.height = outH;
+      const ctx = offscreen.getContext("2d");
+      if (!ctx) return reject(new Error("Cannot get 2d context"));
+
+      // Use high-quality interpolation
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(imgEl, clampedX, clampedY, clampedW, clampedH, 0, 0, outW, outH);
+
+      offscreen.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Failed to create crop blob"));
+      }, "image/png");
+    });
+  }
+
+  /** Capture the full annotated frame as a blob (shared between save-as-evidence and crop flow). */
+  function captureFullFrameBlob(): Promise<Blob> {
+    const canvas = fabricRef.current;
+    if (!canvas) return Promise.reject(new Error("No canvas"));
+
+    const prevTransform = canvas.viewportTransform
+      ? [...canvas.viewportTransform]
+      : [1, 0, 0, 1, 0, 0];
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    canvas.renderAll();
+
+    const bgImg = canvas.getObjects()[0];
+    const cropLeft = bgImg?.left ?? 0;
+    const cropTop = bgImg?.top ?? 0;
+    const cropWidth = (bgImg?.width ?? canvas.getWidth()) * (bgImg?.scaleX ?? 1);
+    const cropHeight = (bgImg?.height ?? canvas.getHeight()) * (bgImg?.scaleY ?? 1);
+
+    const dataUrl = canvas.toDataURL({
+      format: "png",
+      left: cropLeft,
+      top: cropTop,
+      width: cropWidth,
+      height: cropHeight,
+      ...(enhanced ? {} : { multiplier: 2 }),
+    });
+
+    canvas.setViewportTransform(prevTransform);
+    canvas.renderAll();
+
+    return fetch(dataUrl).then((r) => r.blob());
+  }
+
+  /** Find the most recently drawn rect on the canvas. */
+  function findLastRect(): any | null {
+    const canvas = fabricRef.current;
+    if (!canvas) return null;
+    const objects = canvas.getObjects();
+    for (let i = objects.length - 1; i > 0; i--) {
+      const obj = objects[i];
+      if (obj.type === "rect" && obj !== bgImageRef.current) {
+        return obj;
+      }
+    }
+    return null;
+  }
+
+  /** Check if any rect exists on the canvas. */
+  function hasRectOnCanvas(): boolean {
+    return findLastRect() !== null;
+  }
+
+  async function handleCropToEvidence() {
+    const rect = findLastRect();
+    if (!rect) return;
+
+    try {
+      const [fullBlob, regionBlob] = await Promise.all([
+        captureFullFrameBlob(),
+        cropRegionFromCanvas(rect),
+      ]);
+
+      setCropFullBlob(fullBlob);
+      setCropRegionBlob(regionBlob);
+      setCropTitle(`Detail — Frame #${frame.frame_number}`);
+      setCropDescription("");
+      setCropPreview(true);
+    } catch (err) {
+      console.error("Crop preview failed:", err);
+    }
+  }
+
+  /** Compose two blobs into a single side-by-side image (full frame | crop detail). */
+  function composeSideBySide(leftBlob: Blob, rightBlob: Blob): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const leftImg = new Image();
+      const rightImg = new Image();
+      let loaded = 0;
+
+      function onLoad() {
+        loaded++;
+        if (loaded < 2) return;
+
+        // Normalize both to the same height, then place side-by-side with a gap
+        const gap = 12;
+        const labelHeight = 28;
+        const padding = 16;
+        const targetH = Math.max(leftImg.height, rightImg.height, 400);
+        const leftScale = targetH / leftImg.height;
+        const rightScale = targetH / rightImg.height;
+        const leftW = Math.round(leftImg.width * leftScale);
+        const rightW = Math.round(rightImg.width * rightScale);
+
+        const totalW = padding + leftW + gap + rightW + padding;
+        const totalH = padding + labelHeight + targetH + padding;
+
+        const off = document.createElement("canvas");
+        off.width = totalW;
+        off.height = totalH;
+        const ctx = off.getContext("2d");
+        if (!ctx) return reject(new Error("Cannot get 2d context"));
+
+        // Background
+        ctx.fillStyle = "#09090B";
+        ctx.fillRect(0, 0, totalW, totalH);
+
+        // Labels
+        ctx.fillStyle = "#a1a1aa";
+        ctx.font = "bold 13px sans-serif";
+        ctx.fillText("Annotated Frame", padding, padding + 16);
+        ctx.fillText("Enlarged Detail", padding + leftW + gap, padding + 16);
+
+        // Draw images
+        const imgY = padding + labelHeight;
+        ctx.drawImage(leftImg, padding, imgY, leftW, targetH);
+        ctx.drawImage(rightImg, padding + leftW + gap, imgY, rightW, targetH);
+
+        off.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("Failed to compose side-by-side"));
+        }, "image/png");
+      }
+
+      leftImg.onload = onLoad;
+      rightImg.onload = onLoad;
+      leftImg.onerror = reject;
+      rightImg.onerror = reject;
+      leftImg.src = URL.createObjectURL(leftBlob);
+      rightImg.src = URL.createObjectURL(rightBlob);
+    });
+  }
+
+  async function handleSaveCropEvidence() {
+    if (!cropFullBlob || !cropRegionBlob) return;
+    setSavingCrop(true);
+    try {
+      const canvas = fabricRef.current;
+
+      // Compose a single side-by-side image
+      const compositeBlob = await composeSideBySide(cropFullBlob, cropRegionBlob);
+
+      const formData = new FormData();
+      formData.append("image", compositeBlob, "crop-evidence.png");
+      formData.append("create_evidence", "true");
+      formData.append(
+        "evidence_title",
+        cropTitle || `Detail — Frame #${frame.frame_number}`
+      );
+      if (cropDescription) {
+        formData.append("evidence_description", cropDescription);
+      }
+
+      const uploadUrl = `/api/admin/investigations/${investigationId}/frames/${frame.id}/annotation-image`;
+
+      // Save drawing data + upload composite image
+      await Promise.all([
+        canvas
+          ? fetch(
+              `/api/admin/investigations/${investigationId}/frames/${frame.id}`,
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ drawing_data: canvas.toJSON() }),
+              }
+            )
+          : Promise.resolve(),
+        fetch(uploadUrl, { method: "POST", body: formData }),
+      ]);
+
+      closeCropPreview();
+      onSaved();
+    } catch (err) {
+      console.error("Save crop evidence failed:", err);
+    } finally {
+      setSavingCrop(false);
+    }
+  }
+
   async function handleSaveAnnotations() {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -925,37 +1211,7 @@ export function FrameAnnotationCanvas({
     if (!canvas) return;
     setSavingEvidence(true);
     try {
-      // Reset zoom to capture full canvas
-      const prevTransform = canvas.viewportTransform
-        ? [...canvas.viewportTransform]
-        : [1, 0, 0, 1, 0, 0];
-      canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-      canvas.renderAll();
-
-      // Crop to background image bounds (exclude letterbox bars)
-      const bgImage = canvas.getObjects()[0];
-      const cropLeft = bgImage?.left ?? 0;
-      const cropTop = bgImage?.top ?? 0;
-      const cropWidth = (bgImage?.width ?? canvas.getWidth()) * (bgImage?.scaleX ?? 1);
-      const cropHeight = (bgImage?.height ?? canvas.getHeight()) * (bgImage?.scaleY ?? 1);
-
-      // Skip 2x multiplier when already enhanced (4x image would be enormous)
-      const dataUrl = canvas.toDataURL({
-        format: "png",
-        left: cropLeft,
-        top: cropTop,
-        width: cropWidth,
-        height: cropHeight,
-        ...(enhanced ? {} : { multiplier: 2 }),
-      });
-
-      // Restore zoom
-      canvas.setViewportTransform(prevTransform);
-      canvas.renderAll();
-
-      // Convert data URL to blob
-      const blobRes = await fetch(dataUrl);
-      const blob = await blobRes.blob();
+      const blob = await captureFullFrameBlob();
 
       // Upload annotated image as evidence
       const formData = new FormData();
@@ -1297,49 +1553,155 @@ export function FrameAnnotationCanvas({
           </div>
         </TooltipProvider>
 
-        {/* Canvas area */}
+        {/* Canvas area — always mounted to avoid Fabric.js DOM conflicts */}
         <div
           ref={containerCallbackRef}
-          className="flex-1 overflow-hidden relative"
+          className={`flex-1 overflow-hidden relative ${cropPreview ? "hidden" : ""}`}
         >
           <canvas ref={canvasCallbackRef} />
         </div>
 
-        {/* Footer */}
-        <div className="px-4 py-2.5 border-t border-border/30 flex items-center justify-between shrink-0">
-          <span className="text-xs text-muted-foreground">
-            Space+drag to pan &middot; Scroll to zoom
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1.5"
-              onClick={handleSaveAnnotations}
-              disabled={saving}
-            >
-              {saving ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Save className="h-3.5 w-3.5" />
-              )}
-              {saving ? "Saving..." : "Save Annotations"}
-            </Button>
-            <Button
-              size="sm"
-              className="gap-1.5"
-              onClick={handleSaveAsEvidence}
-              disabled={savingEvidence}
-            >
-              {savingEvidence ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Camera className="h-3.5 w-3.5" />
-              )}
-              {savingEvidence ? "Saving..." : "Save as Evidence"}
-            </Button>
+        {/* Crop preview panel — overlays canvas area when active */}
+        {cropPreview && (
+          <div className="flex-1 overflow-auto p-6">
+            <div className="max-w-4xl mx-auto space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">Crop & Save as Evidence</h3>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  onClick={closeCropPreview}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Full annotated frame */}
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Full Annotated Frame</p>
+                  <div className="rounded-lg border border-border/30 bg-black/50 overflow-hidden">
+                    {cropFullBlobUrl && (
+                      <img
+                        src={cropFullBlobUrl}
+                        alt="Full annotated frame"
+                        className="w-full h-auto"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Cropped/enlarged region */}
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Cropped &amp; Enlarged Region</p>
+                  <div className="rounded-lg border border-purple-500/30 bg-black/50 overflow-hidden">
+                    {cropRegionBlobUrl && (
+                      <img
+                        src={cropRegionBlobUrl}
+                        alt="Cropped region"
+                        className="w-full h-auto"
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1.5 block">Title</label>
+                  <Input
+                    value={cropTitle}
+                    onChange={(e) => setCropTitle(e.target.value)}
+                    placeholder="Detail description..."
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1.5 block">Description (optional)</label>
+                  <Textarea
+                    value={cropDescription}
+                    onChange={(e) => setCropDescription(e.target.value)}
+                    placeholder="What does this crop highlight?"
+                    className="text-sm resize-none"
+                    rows={2}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={closeCropPreview}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleSaveCropEvidence}
+                  disabled={savingCrop}
+                >
+                  {savingCrop ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Camera className="h-3.5 w-3.5" />
+                  )}
+                  {savingCrop ? "Saving..." : "Save as Evidence"}
+                </Button>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Footer */}
+        {!cropPreview && (
+          <div className="px-4 py-2.5 border-t border-border/30 flex items-center justify-between shrink-0">
+            <span className="text-xs text-muted-foreground">
+              Space+drag to pan &middot; Scroll to zoom
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={handleSaveAnnotations}
+                disabled={saving}
+              >
+                {saving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="h-3.5 w-3.5" />
+                )}
+                {saving ? "Saving..." : "Save Annotations"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={handleCropToEvidence}
+                disabled={!hasRectOnCanvas()}
+              >
+                <Crop className="h-3.5 w-3.5" />
+                Crop to Evidence
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={handleSaveAsEvidence}
+                disabled={savingEvidence}
+              >
+                {savingEvidence ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Camera className="h-3.5 w-3.5" />
+                )}
+                {savingEvidence ? "Saving..." : "Save as Evidence"}
+              </Button>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

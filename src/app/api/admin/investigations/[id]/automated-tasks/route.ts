@@ -28,7 +28,7 @@ export async function POST(
     const createdTasks: Array<{ id: string; task_type: string }> = [];
 
     // Resolve frame IDs once for all per-frame task types
-    const needsFrames = task_types.some((t) => t === "reverse_search" || t === "ai_detection");
+    const needsFrames = task_types.some((t) => t === "reverse_search" || t === "ai_detection" || t === "visual_search");
     let targetFrameIds: string[] = [];
     if (needsFrames) {
       targetFrameIds = frame_ids || [];
@@ -62,8 +62,8 @@ export async function POST(
     }
 
     for (const taskType of task_types) {
-      if (taskType === "reverse_search" || taskType === "ai_detection") {
-        const frameIds = taskType === "ai_detection" ? aiDetectionFrameIds : targetFrameIds;
+      if (taskType === "reverse_search" || taskType === "ai_detection" || taskType === "visual_search") {
+        const frameIds = (taskType === "ai_detection" || taskType === "visual_search") ? aiDetectionFrameIds : targetFrameIds;
         if (frameIds.length > 0) {
           const rows = frameIds.map((frameId) => ({
             investigation_id: id,
@@ -111,19 +111,37 @@ export async function POST(
       }
     }
 
-    // Fire-and-forget: trigger scanner to process newly created tasks
-    const scannerUrl = process.env.SCANNER_SERVICE_URL || "http://localhost:8000";
-    fetch(`${scannerUrl}/admin/deepfake/process`, {
-      method: "POST",
-      headers: { "x-service-key": process.env.SUPABASE_SERVICE_ROLE_KEY || "" },
-    }).catch((err) => console.error("Failed to trigger scanner:", err));
+    // Fire-and-forget: trigger scanner only for tasks that need it
+    const scannerTaskTypes = ["reverse_search", "check_provenance"];
+    if (createdTasks.some(t => scannerTaskTypes.includes(t.task_type))) {
+      const scannerUrl = process.env.SCANNER_SERVICE_URL || "http://localhost:8000";
+      fetch(`${scannerUrl}/admin/deepfake/process`, {
+        method: "POST",
+        headers: { "x-service-key": process.env.SUPABASE_SERVICE_ROLE_KEY || "" },
+      }).catch((err) => console.error("Failed to trigger scanner:", err));
+    }
 
-    // Fire-and-forget: process AI detection tasks via Hive API
-    if (task_types.includes("ai_detection") && createdTasks.some(t => t.task_type === "ai_detection")) {
+    // Fire-and-forget: process background tasks with literal imports for bundler analysis
+    const created = new Set(createdTasks.map(t => t.task_type));
+
+    if (created.has("ai_detection")) {
       import("@/lib/hive-ai").then(({ processAiDetectionTasks }) =>
-        processAiDetectionTasks(id).catch((err) =>
-          console.error("[automated-tasks] AI detection processing error:", err)
-        )
+        processAiDetectionTasks(id).catch((err) => console.error("[automated-tasks] ai_detection error:", err))
+      );
+    }
+    if (created.has("visual_search")) {
+      import("@/lib/visual-search").then(({ processVisualSearchTasks }) =>
+        processVisualSearchTasks(id).catch((err) => console.error("[automated-tasks] visual_search error:", err))
+      );
+    }
+    if (created.has("wire_search")) {
+      import("@/lib/wire-search").then(({ processWireSearchTask }) =>
+        processWireSearchTask(id).catch((err) => console.error("[automated-tasks] wire_search error:", err))
+      );
+    }
+    if (created.has("news_search")) {
+      import("@/lib/news-search").then(({ processNewsSearchTask }) =>
+        processNewsSearchTask(id).catch((err) => console.error("[automated-tasks] news_search error:", err))
       );
     }
 

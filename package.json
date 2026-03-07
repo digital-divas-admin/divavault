@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@hookform/resolvers": "^5.2.2",
     "@mediapipe/face_detection": "^0.4.1646425229",
     "@supabase/ssr": "^0.8.0",

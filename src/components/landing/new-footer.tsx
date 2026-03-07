@@ -8,9 +8,14 @@ export function NewFooter() {
           <span className="text-[#0C1424]">consented</span>
           <span className="text-[#DC2626]">ai</span>
         </Link>
-        <p className="text-sm text-[#6A80A0]">
-          &copy; 2026 Consented AI, Inc.
-        </p>
+        <div className="flex items-center gap-6">
+          <Link href="/developers" className="text-sm text-[#6A80A0] hover:text-[#0C1424] transition-colors">
+            Developers
+          </Link>
+          <p className="text-sm text-[#6A80A0]">
+            &copy; 2026 Consented AI, Inc.
+          </p>
+        </div>
       </div>
     </footer>
   );

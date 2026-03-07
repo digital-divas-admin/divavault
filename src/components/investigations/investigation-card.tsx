@@ -19,17 +19,22 @@ export function InvestigationCard({
 }: {
   investigation: InvestigationListItem;
 }) {
-  const publishedDate = investigation.published_at
-    ? dateFormatter.format(new Date(investigation.published_at))
-    : dateFormatter.format(new Date(investigation.created_at));
+  const dateIso = investigation.published_at || investigation.created_at;
+  const publishedDate = dateFormatter.format(new Date(dateIso));
 
   return (
     <Link href={`/investigations/${investigation.slug}`} className="block group">
       <div className="bg-card border border-border rounded-xl overflow-hidden card-hover h-full flex flex-col">
         {/* Thumbnail */}
-        <div className="aspect-video bg-muted flex items-center justify-center">
-          {investigation.thumbnail_path ? (
-            <div className="w-full h-full bg-muted" />
+        <div className="aspect-video bg-muted flex items-center justify-center overflow-hidden">
+          {investigation.thumbnail_url ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={investigation.thumbnail_url}
+              alt={investigation.title}
+              loading="lazy"
+              className="w-full h-full object-cover"
+            />
           ) : (
             <SearchSlash className="w-10 h-10 text-muted-foreground/40" />
           )}
@@ -59,7 +64,7 @@ export function InvestigationCard({
 
           <div className="mt-auto flex items-center justify-between text-xs text-muted-foreground">
             <div className="flex items-center gap-2">
-              <span>{publishedDate}</span>
+              <time dateTime={dateIso}>{publishedDate}</time>
               {(investigation.evidence_count > 0 || investigation.media_count > 0) && (
                 <>
                   <span className="text-muted-foreground/40">&middot;</span>

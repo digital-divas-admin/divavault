@@ -19,6 +19,8 @@ import {
   Search,
   Bot,
   ShieldCheck,
+  Pencil,
+  Save,
 } from "lucide-react";
 import type {
   InvestigationDetail,
@@ -108,6 +110,11 @@ function EvidenceCard({
   onUpdate: () => void;
 }) {
   const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(evidence.title || "");
+  const [editContent, setEditContent] = useState(evidence.content || "");
+  const [editUrl, setEditUrl] = useState(evidence.external_url || "");
+  const [saving, setSaving] = useState(false);
 
   async function handleDelete() {
     if (!confirm("Delete this evidence item?")) return;
@@ -116,6 +123,25 @@ function EvidenceCard({
       `/api/admin/investigations/${investigationId}/evidence/${evidence.id}`,
       { method: "DELETE" }
     );
+    onUpdate();
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    await fetch(
+      `/api/admin/investigations/${investigationId}/evidence/${evidence.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editTitle || null,
+          content: editContent || null,
+          external_url: editUrl || null,
+        }),
+      }
+    );
+    setSaving(false);
+    setEditing(false);
     onUpdate();
   }
 
@@ -133,47 +159,110 @@ function EvidenceCard({
             <Badge variant="outline" className="text-[10px]">
               {EVIDENCE_TYPE_LABELS[evidence.evidence_type]}
             </Badge>
-            {evidence.title && (
+            {!editing && evidence.title && (
               <span className="text-sm font-medium">{evidence.title}</span>
             )}
           </div>
-          {evidence.content && (
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-              {evidence.content}
-            </p>
+
+          {editing ? (
+            <div className="space-y-3 mt-2">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Title</label>
+                <Input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  placeholder="Evidence title..."
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Content / Analysis</label>
+                <Textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  placeholder="Write your analysis or description..."
+                  rows={4}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">External URL</label>
+                <Input
+                  value={editUrl}
+                  onChange={(e) => setEditUrl(e.target.value)}
+                  placeholder="https://..."
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditing(false);
+                    setEditTitle(evidence.title || "");
+                    setEditContent(evidence.content || "");
+                    setEditUrl(evidence.external_url || "");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
+                  <Save className="h-3.5 w-3.5" />
+                  {saving ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {evidence.content && (
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  {evidence.content}
+                </p>
+              )}
+              {evidence.attachment_url && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={evidence.attachment_url}
+                  alt={evidence.title || "Evidence attachment"}
+                  className="w-full max-h-60 object-contain bg-black rounded-lg mt-2"
+                />
+              )}
+              {evidence.external_url && (
+                <a
+                  href={evidence.external_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-1"
+                >
+                  {evidence.external_url}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+              <p className="text-[10px] text-muted-foreground mt-2">
+                {new Date(evidence.created_at).toLocaleString()}
+              </p>
+            </>
           )}
-          {evidence.attachment_url && (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={evidence.attachment_url}
-              alt={evidence.title || "Evidence attachment"}
-              className="w-full max-h-60 object-contain bg-black rounded-lg mt-2"
-            />
-          )}
-          {evidence.external_url && (
-            <a
-              href={evidence.external_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-1"
-            >
-              {evidence.external_url}
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          )}
-          <p className="text-[10px] text-muted-foreground mt-2">
-            {new Date(evidence.created_at).toLocaleString()}
-          </p>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-          onClick={handleDelete}
-          disabled={deleting}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex flex-col gap-1 shrink-0">
+          {!editing && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-primary"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
     </div>
   );

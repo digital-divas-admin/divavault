@@ -91,6 +91,7 @@ export const AUTOMATED_TASK_TYPES = [
   "check_provenance",
   "news_search",
   "wire_search",
+  "visual_search",
 ] as const;
 
 export const triggerAutomatedSearchSchema = z.object({
