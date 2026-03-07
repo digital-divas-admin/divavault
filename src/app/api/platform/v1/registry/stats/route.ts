@@ -7,6 +7,7 @@ import {
   platformCorsResponse,
 } from "@/lib/platform-auth";
 import { getRegistryStats } from "@/lib/registry";
+import { logApiError } from "@/lib/api-logger";
 
 export async function OPTIONS(request: Request) {
   return platformCorsResponse(request);
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
 
     return platformJsonResponse(stats, request);
   } catch (err) {
-    console.error("Registry stats error:", err);
+    logApiError("GET", "/api/platform/v1/registry/stats", "fetch stats", err);
     return platformJsonResponse(
       { error: "Internal server error" },
       request,

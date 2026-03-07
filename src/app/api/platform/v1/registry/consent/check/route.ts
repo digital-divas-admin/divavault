@@ -7,6 +7,7 @@ import {
   platformCorsResponse,
 } from "@/lib/platform-auth";
 import { validateCID, checkConsent } from "@/lib/registry";
+import { logApiError } from "@/lib/api-logger";
 
 export async function OPTIONS(request: Request) {
   return platformCorsResponse(request);
@@ -48,7 +49,7 @@ export async function GET(request: Request) {
 
     return platformJsonResponse(result, request);
   } catch (err) {
-    console.error("Consent check error:", err);
+    logApiError("GET", "/api/platform/v1/registry/consent/check", "check consent", err);
     return platformJsonResponse(
       { error: "Internal server error" },
       request,

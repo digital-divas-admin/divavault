@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/dashboard-queries";
 import { dispatchWebhook } from "@/lib/webhooks";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST() {
   const supabase = await createClient();
@@ -52,7 +53,7 @@ export async function POST() {
     dispatchWebhook("contributor.opted_out", {
       contributor_id: user.id,
       opted_out_at: new Date().toISOString(),
-    }).catch((err) => console.error("Webhook dispatch error:", err));
+    }).catch((err) => logApiError("POST", "/api/dashboard/opt-out", "webhook dispatch", err));
   }
 
   // Send security alert email (fire and forget)
@@ -66,7 +67,7 @@ export async function POST() {
             : "You have opted back in to AI training protection. We will resume scanning AI platforms for unauthorized use of your likeness.",
         })
       )
-      .catch((err) => console.error("Opt-out email error:", err));
+      .catch((err) => logApiError("POST", "/api/dashboard/opt-out", "security alert email", err));
   }
 
   // Registry consent event (non-blocking)
@@ -89,9 +90,9 @@ export async function POST() {
       dispatchWebhook(
         newOptedOut ? "registry.consent_revoked" : "registry.consent_updated",
         { cid: identity.cid, event_type: newOptedOut ? "revoke" : "reinstate" }
-      ).catch((err) => console.error("Registry webhook error:", err));
+      ).catch((err) => logApiError("POST", "/api/dashboard/opt-out", "registry webhook", err));
     } catch (err) {
-      console.error("Registry opt-out event error:", err);
+      logApiError("POST", "/api/dashboard/opt-out", "registry opt-out event", err);
     }
   })();
 

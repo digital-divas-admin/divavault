@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendRegistryMatchAlert } from "@/lib/email";
+import { logApiError } from "@/lib/api-logger";
 
 const BATCH_SIZE = 50;
 
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
     .limit(BATCH_SIZE);
 
   if (fetchError) {
-    console.error("[registry-notifications] Fetch error:", fetchError.message);
+    logApiError("GET", "/api/cron/registry-notifications", "fetch matches", fetchError);
     return NextResponse.json(
       { error: "Failed to fetch matches" },
       { status: 500 }
@@ -88,10 +89,7 @@ export async function GET(request: Request) {
       .in("id", notifiedIds);
 
     if (updateError) {
-      console.error(
-        "[registry-notifications] Update error:",
-        updateError.message
-      );
+      logApiError("GET", "/api/cron/registry-notifications", "update notified_at", updateError);
     }
   }
 

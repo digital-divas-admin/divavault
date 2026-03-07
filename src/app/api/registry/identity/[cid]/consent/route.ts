@@ -12,6 +12,7 @@ import {
   getCurrentConsent,
   getConsentHistory,
 } from "@/lib/registry";
+import { logApiError } from "@/lib/api-logger";
 
 export async function OPTIONS(request: Request) {
   return platformCorsResponse(request);
@@ -64,7 +65,7 @@ export async function GET(
       request
     );
   } catch (err) {
-    console.error("Registry consent lookup error:", err);
+    logApiError("GET", "/api/registry/identity/[cid]/consent", "consent lookup", err);
     return platformJsonResponse(
       { error: "Internal server error" },
       request,

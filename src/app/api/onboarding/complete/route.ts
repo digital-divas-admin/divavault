@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { dispatchWebhook } from "@/lib/webhooks";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST() {
   const supabase = await createClient();
@@ -82,7 +83,7 @@ export async function POST() {
       .eq("id", user.id);
 
     if (updateErr) {
-      console.error("Onboarding complete error:", updateErr.message);
+      logApiError("POST", "/api/onboarding/complete", "mark onboarding complete", updateErr);
       return NextResponse.json(
         { error: "Failed to finalize onboarding" },
         { status: 500 }
@@ -93,7 +94,7 @@ export async function POST() {
     dispatchWebhook("contributor.onboarded", {
       contributor_id: user.id,
       completed_at: new Date().toISOString(),
-    }).catch((err) => console.error("Webhook dispatch error:", err));
+    }).catch((err) => logApiError("POST", "/api/onboarding/complete", "webhook dispatch", err));
 
     // Create registry identity (non-blocking — every user gets one)
     try {
@@ -144,9 +145,9 @@ export async function POST() {
       dispatchRegistryWebhook("registry.identity_created", {
         cid: identity.cid,
         contributor_id: user.id,
-      }).catch((err) => console.error("Registry webhook error:", err));
+      }).catch((err) => logApiError("POST", "/api/onboarding/complete", "registry webhook", err));
     } catch (err) {
-      console.error("Registry identity creation error:", err);
+      logApiError("POST", "/api/onboarding/complete", "registry identity creation", err);
     }
 
     return NextResponse.json({ success: true });

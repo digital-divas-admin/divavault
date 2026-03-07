@@ -7,6 +7,7 @@ import {
   platformCorsResponse,
 } from "@/lib/platform-auth";
 import { bulkConsentSchema, bulkConsentCheck } from "@/lib/registry";
+import { logApiError } from "@/lib/api-logger";
 
 export async function OPTIONS(request: Request) {
   return platformCorsResponse(request);
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
 
     return platformJsonResponse(result, request);
   } catch (err) {
-    console.error("Bulk consent check error:", err);
+    logApiError("POST", "/api/platform/v1/registry/batch/consent", "bulk consent check", err);
     return platformJsonResponse(
       { error: "Internal server error" },
       request,

@@ -5,6 +5,7 @@ import {
   mapVeriffStatus,
   type VeriffDecisionPayload,
 } from "@/lib/veriff";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     const userId = payload.verification.vendorData;
 
     if (!userId) {
-      console.error("Veriff webhook missing vendorData (user ID)");
+      logApiError("POST", "/api/veriff-webhook", "missing vendorData (user ID)", new Error("vendorData is empty"));
       return NextResponse.json(
         { error: "Missing vendor data" },
         { status: 400 }
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
       .eq("id", userId);
 
     if (error) {
-      console.error("Veriff webhook DB update error:", error);
+      logApiError("POST", "/api/veriff-webhook", "DB update", error);
       return NextResponse.json(
         { error: "Database update failed" },
         { status: 500 }
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("Veriff webhook error:", err);
+    logApiError("POST", "/api/veriff-webhook", "webhook processing", err);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

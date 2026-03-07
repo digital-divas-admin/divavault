@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/admin-queries";
 import { annotateFrame, createEvidence } from "@/lib/investigation-queries";
+import { logApiError } from "@/lib/api-logger";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export async function POST(
       });
 
     if (uploadError) {
-      console.error("Annotation image upload error:", uploadError.message);
+      logApiError("POST", "/api/admin/investigations/[id]/frames/[frameId]/annotation-image", "upload annotation", uploadError);
       return NextResponse.json({ error: "Failed to upload annotation image" }, { status: 500 });
     }
 
@@ -89,7 +90,7 @@ export async function POST(
       evidence: evidenceRecord,
     });
   } catch (e) {
-    console.error("Annotation image error:", e);
+    logApiError("POST", "/api/admin/investigations/[id]/frames/[frameId]/annotation-image", "annotation image", e);
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

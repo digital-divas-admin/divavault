@@ -7,6 +7,7 @@ import {
   platformCorsResponse,
 } from "@/lib/platform-auth";
 import { validateCID, getIdentityByCID } from "@/lib/registry";
+import { logApiError } from "@/lib/api-logger";
 
 export async function OPTIONS(request: Request) {
   return platformCorsResponse(request);
@@ -46,7 +47,7 @@ export async function GET(
 
     return platformJsonResponse(identity, request);
   } catch (err) {
-    console.error("Registry CID lookup error:", err);
+    logApiError("GET", "/api/registry/identity/[cid]", "CID lookup", err);
     return platformJsonResponse(
       { error: "Internal server error" },
       request,

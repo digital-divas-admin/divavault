@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 export interface SsoClient {
   clientId: string;
   clientSecretHash: string;
@@ -5,6 +7,8 @@ export interface SsoClient {
   name: string;
   logoUrl: string;
 }
+
+let cachedExpectedHashPromise: Promise<string> | null = null;
 
 async function hashSecret(secret: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -48,10 +52,13 @@ export async function verifySsoClient(
   const client = clients.find((c) => c.clientId === clientId);
   if (!client) return null;
 
-  // Verify secret using constant-time comparison via hash
+  // Verify secret using constant-time comparison
   const providedHash = await hashSecret(clientSecret);
-  const expectedHash = await hashSecret(expectedSecret);
-  if (providedHash !== expectedHash) return null;
+  if (!cachedExpectedHashPromise) {
+    cachedExpectedHashPromise = hashSecret(expectedSecret);
+  }
+  const expectedHash = await cachedExpectedHashPromise;
+  if (!crypto.timingSafeEqual(Buffer.from(providedHash, "hex"), Buffer.from(expectedHash, "hex"))) return null;
 
   // Verify redirect URI is allowed
   if (!client.allowedRedirectUris.includes(redirectUri)) return null;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getProtectionScore } from "@/lib/protection-queries";
+import { logApiError } from "@/lib/api-logger";
 
 export async function GET() {
   const supabase = await createClient();
@@ -16,7 +17,7 @@ export async function GET() {
     const result = await getProtectionScore(user.id);
     return NextResponse.json(result);
   } catch (error) {
-    console.error("Error computing protection score:", error);
+    logApiError("GET", "/api/protection-score", "compute score", error);
     return NextResponse.json(
       { error: "Failed to compute protection score" },
       { status: 500 }

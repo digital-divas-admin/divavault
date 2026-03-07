@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createServiceClient } from "@/lib/supabase/server";
+import { logApiError } from "@/lib/api-logger";
 
 const notifySchema = z.object({
   email: z.string().email({ message: "Invalid email" }),
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
       );
 
     if (error) {
-      console.error("Legal notify upsert error:", error.message);
+      logApiError("POST", "/api/legal-landscape/notify", "upsert subscription", error);
       return NextResponse.json(
         { error: "Failed to save subscription" },
         { status: 500 }

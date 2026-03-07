@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { completeOptOutSchema } from "@/lib/optout-validators";
 import { getAICompany } from "@/lib/ai-companies";
 import { hashContent } from "@/lib/optout-email";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (upsertErr || !optoutRequest) {
-      console.error("Complete opt-out upsert error:", upsertErr?.message);
+      logApiError("POST", "/api/dashboard/opt-outs/complete", "upsert opt-out", upsertErr);
       return NextResponse.json(
         { error: "Failed to update opt-out request" },
         { status: 500 }
@@ -87,13 +88,13 @@ export async function POST(request: NextRequest) {
       });
 
     if (commErr) {
-      console.error("Complete communication insert error:", commErr.message);
+      logApiError("POST", "/api/dashboard/opt-outs/complete", "insert communication", commErr);
       // Non-fatal
     }
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("Complete opt-out error:", err);
+    logApiError("POST", "/api/dashboard/opt-outs/complete", "complete opt-out", err);
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
       { status: 500 }

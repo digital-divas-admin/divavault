@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCodeForToken } from "@/lib/instagram";
 import { createClient } from "@/lib/supabase/server";
+import { logApiError } from "@/lib/api-logger";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
 
     return response;
   } catch (err) {
-    console.error("Instagram callback error:", err);
+    logApiError("GET", "/api/instagram/callback", "token exchange", err);
     return NextResponse.redirect(
       new URL("/onboarding?ig_error=exchange_failed", request.url)
     );

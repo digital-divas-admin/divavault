@@ -5,6 +5,7 @@ import { applyForensicFilter, FILTER_PRESETS } from "@/lib/forensic-filters";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { logApiError } from "@/lib/api-logger";
 
 export const dynamic = "force-dynamic";
 
@@ -105,7 +106,7 @@ export async function POST(
       filter,
     });
   } catch (e) {
-    console.error("[forensic-enhance] Error:", (e as Error).message);
+    logApiError("POST", "/api/admin/investigations/[id]/frames/[frameId]/enhance", "forensic enhance", e);
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   } finally {
     if (tmpDir) {

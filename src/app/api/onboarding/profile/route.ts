@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { profileSchema } from "@/lib/validators";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
       );
 
     if (ensureErr) {
-      console.error("Ensure contributor error:", ensureErr.message);
+      logApiError("POST", "/api/onboarding/profile", "ensure contributor", ensureErr);
       return NextResponse.json(
         { error: "Failed to initialize contributor record" },
         { status: 500 }
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
       });
 
     if (attrErr) {
-      console.error("Profile upsert error:", attrErr.message);
+      logApiError("POST", "/api/onboarding/profile", "profile upsert", attrErr);
       return NextResponse.json(
         { error: "Failed to save profile" },
         { status: 500 }
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id);
 
     if (updateErr) {
-      console.error("Contributor update error:", updateErr.message);
+      logApiError("POST", "/api/onboarding/profile", "contributor update", updateErr);
       return NextResponse.json(
         { error: "Failed to update contributor" },
         { status: 500 }
@@ -110,7 +111,8 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (e) {
+    logApiError("POST", "/api/onboarding/profile", "unexpected error", e);
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
       { status: 500 }

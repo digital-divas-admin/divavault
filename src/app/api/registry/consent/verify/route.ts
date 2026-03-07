@@ -4,6 +4,7 @@ import {
   getIdentityByContributorId,
   verifyConsentChain,
 } from "@/lib/registry";
+import { logApiError } from "@/lib/api-logger";
 
 export async function GET() {
   const supabase = await createClient();
@@ -33,7 +34,7 @@ export async function GET() {
       event_count: errors.length === 0 ? undefined : errors.length,
     });
   } catch (err) {
-    console.error("Registry consent chain verification error:", err);
+    logApiError("GET", "/api/registry/consent/verify", "verify consent chain", err);
     return NextResponse.json(
       { error: "Failed to verify consent chain" },
       { status: 500 }

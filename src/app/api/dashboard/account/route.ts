@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/dashboard-queries";
 import { z } from "zod";
+import { logApiError } from "@/lib/api-logger";
 
 const accountUpdateSchema = z.object({
   display_name: z.string().min(1).max(100).optional(),
@@ -50,7 +51,7 @@ export async function PATCH(request: NextRequest) {
       .eq("id", user.id);
 
     if (error) {
-      console.error("Display name update error:", error.message);
+      logApiError("PATCH", "/api/dashboard/account", "update display name", error);
       return NextResponse.json(
         { error: "Failed to update display name" },
         { status: 500 }
@@ -71,7 +72,7 @@ export async function PATCH(request: NextRequest) {
       });
 
     if (error) {
-      console.error("Notification preferences error:", error.message);
+      logApiError("PATCH", "/api/dashboard/account", "update notification preferences", error);
       return NextResponse.json(
         { error: "Failed to update notification preferences" },
         { status: 500 }

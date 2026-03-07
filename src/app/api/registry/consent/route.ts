@@ -7,6 +7,7 @@ import {
   consentEventInputSchema,
 } from "@/lib/registry";
 import { dispatchWebhook } from "@/lib/webhooks";
+import { logApiError } from "@/lib/api-logger";
 
 export async function GET() {
   const supabase = await createClient();
@@ -29,7 +30,7 @@ export async function GET() {
 
     return NextResponse.json({ events });
   } catch (err) {
-    console.error("Registry consent history error:", err);
+    logApiError("GET", "/api/registry/consent", "fetch consent history", err);
     return NextResponse.json(
       { error: "Failed to retrieve consent history" },
       { status: 500 }
@@ -100,11 +101,11 @@ export async function POST(request: Request) {
         event_type: parsed.data.eventType,
         event_id: event.event_id,
       }
-    ).catch((err) => console.error("Registry consent webhook error:", err));
+    ).catch((err) => logApiError("POST", "/api/registry/consent", "webhook dispatch", err));
 
     return NextResponse.json({ success: true, event });
   } catch (err) {
-    console.error("Registry consent event error:", err);
+    logApiError("POST", "/api/registry/consent", "record consent event", err);
     return NextResponse.json(
       { error: "Failed to record consent event" },
       { status: 500 }

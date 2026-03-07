@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { z } from "zod/v4";
+import { logApiError } from "@/lib/api-logger";
+
+const patchSessionSchema = z.object({
+  sessionId: z.string().uuid(),
+  status: z.enum(["active", "paused", "completed", "abandoned"]).optional(),
+  imagesCaptured: z.number().int().min(0).optional(),
+});
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -44,7 +52,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error("Create session error:", error.message);
+      logApiError("POST", "/api/capture/session", "create session", error);
       return NextResponse.json(
         { error: "Failed to create capture session" },
         { status: 500 }
@@ -52,7 +60,8 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ sessionId: data.id });
-  } catch {
+  } catch (e) {
+    logApiError("POST", "/api/capture/session", "unexpected error", e);
     return NextResponse.json(
       { error: "Something went wrong" },
       { status: 500 }
@@ -70,20 +79,22 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: Record<string, unknown>;
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const sessionId = body.sessionId as string;
-  const status = body.status as string;
-  const imagesCaptured = body.imagesCaptured as number | undefined;
-
-  if (!sessionId) {
-    return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
+  const parsed = patchSessionSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0].message },
+      { status: 400 }
+    );
   }
+
+  const { sessionId, status, imagesCaptured } = parsed.data;
 
   try {
     const updateData: Record<string, unknown> = {};
@@ -98,7 +109,7 @@ export async function PATCH(request: NextRequest) {
       .eq("contributor_id", user.id);
 
     if (error) {
-      console.error("Update session error:", error.message);
+      logApiError("PATCH", "/api/capture/session", "update session", error);
       return NextResponse.json(
         { error: "Failed to update session" },
         { status: 500 }
@@ -125,7 +136,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (e) {
+    logApiError("PATCH", "/api/capture/session", "unexpected error", e);
     return NextResponse.json(
       { error: "Something went wrong" },
       { status: 500 }

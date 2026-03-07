@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendInquiryAlert, sendInquiryConfirmation } from "@/lib/email";
+import { logApiError } from "@/lib/api-logger";
 
 const inquirySchema = z.object({
   name: z.string().min(1, { message: "Name is required" }),
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
       .insert(parsed.data);
 
     if (error) {
-      console.error("Case inquiry insert error:", error.message);
+      logApiError("POST", "/api/inquiries", "insert inquiry", error);
       return NextResponse.json(
         { error: "Failed to submit inquiry" },
         { status: 500 }
@@ -49,10 +50,10 @@ export async function POST(request: Request) {
     // Send emails (awaited so they complete before the response closes the execution context)
     await Promise.all([
       sendInquiryAlert(parsed.data).catch((err) =>
-        console.error("Inquiry alert email error:", err)
+        logApiError("POST", "/api/inquiries", "alert email", err)
       ),
       sendInquiryConfirmation(parsed.data).catch((err) =>
-        console.error("Inquiry confirmation email error:", err)
+        logApiError("POST", "/api/inquiries", "confirmation email", err)
       ),
     ]);
 

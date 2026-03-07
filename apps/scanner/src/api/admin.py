@@ -4,6 +4,7 @@ Auth: x-service-key header checked against settings.supabase_service_role_key.
 """
 
 import asyncio
+import hmac
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -25,7 +26,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 async def verify_service_key(request: Request) -> None:
     """Verify the x-service-key header matches the service role key."""
     key = request.headers.get("x-service-key")
-    if not key or key != settings.supabase_service_role_key:
+    if not key or not hmac.compare_digest(key, settings.supabase_service_role_key):
         raise HTTPException(status_code=401, detail="Invalid service key")
 
 

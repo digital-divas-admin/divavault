@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/admin-queries";
 import { triggerAutomatedSearchSchema } from "@/lib/investigation-validators";
+import { logApiError } from "@/lib/api-logger";
 
 export const dynamic = "force-dynamic";
 
@@ -118,7 +119,7 @@ export async function POST(
       fetch(`${scannerUrl}/admin/deepfake/process`, {
         method: "POST",
         headers: { "x-service-key": process.env.SUPABASE_SERVICE_ROLE_KEY || "" },
-      }).catch((err) => console.error("Failed to trigger scanner:", err));
+      }).catch((err) => logApiError("POST", "/api/admin/investigations/[id]/automated-tasks", "trigger scanner", err));
     }
 
     // Fire-and-forget: process background tasks with literal imports for bundler analysis
@@ -126,22 +127,22 @@ export async function POST(
 
     if (created.has("ai_detection")) {
       import("@/lib/hive-ai").then(({ processAiDetectionTasks }) =>
-        processAiDetectionTasks(id).catch((err) => console.error("[automated-tasks] ai_detection error:", err))
+        processAiDetectionTasks(id).catch((err) => logApiError("POST", "/api/admin/investigations/[id]/automated-tasks", "ai_detection", err))
       );
     }
     if (created.has("visual_search")) {
       import("@/lib/visual-search").then(({ processVisualSearchTasks }) =>
-        processVisualSearchTasks(id).catch((err) => console.error("[automated-tasks] visual_search error:", err))
+        processVisualSearchTasks(id).catch((err) => logApiError("POST", "/api/admin/investigations/[id]/automated-tasks", "visual_search", err))
       );
     }
     if (created.has("wire_search")) {
       import("@/lib/wire-search").then(({ processWireSearchTask }) =>
-        processWireSearchTask(id).catch((err) => console.error("[automated-tasks] wire_search error:", err))
+        processWireSearchTask(id).catch((err) => logApiError("POST", "/api/admin/investigations/[id]/automated-tasks", "wire_search", err))
       );
     }
     if (created.has("news_search")) {
       import("@/lib/news-search").then(({ processNewsSearchTask }) =>
-        processNewsSearchTask(id).catch((err) => console.error("[automated-tasks] news_search error:", err))
+        processNewsSearchTask(id).catch((err) => logApiError("POST", "/api/admin/investigations/[id]/automated-tasks", "news_search", err))
       );
     }
 

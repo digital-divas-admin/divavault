@@ -8,6 +8,7 @@ import {
   hashContent,
 } from "@/lib/optout-email";
 import { sendOptOutNotice } from "@/lib/email";
+import { logApiError } from "@/lib/api-logger";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function POST(_req: NextRequest) {
@@ -42,7 +43,7 @@ export async function POST(_req: NextRequest) {
       .eq("contributor_id", user.id);
 
     if (fetchErr) {
-      console.error("Fetch existing requests error:", fetchErr.message);
+      logApiError("POST", "/api/dashboard/opt-outs/send-batch", "fetch existing requests", fetchErr);
       return NextResponse.json(
         { error: "Failed to fetch existing requests" },
         { status: 500 }
@@ -110,10 +111,7 @@ export async function POST(_req: NextRequest) {
           .single();
 
         if (upsertErr || !optoutRequest) {
-          console.error(
-            `Batch opt-out upsert error for ${company.slug}:`,
-            upsertErr?.message
-          );
+          logApiError("POST", "/api/dashboard/opt-outs/send-batch", `upsert for ${company.slug}`, upsertErr);
           continue;
         }
 
@@ -135,15 +133,12 @@ export async function POST(_req: NextRequest) {
           });
 
         if (commErr) {
-          console.error(
-            `Batch communication insert error for ${company.slug}:`,
-            commErr.message
-          );
+          logApiError("POST", "/api/dashboard/opt-outs/send-batch", `communication insert for ${company.slug}`, commErr);
         }
 
         sentCompanies.push(company.slug);
       } catch (err) {
-        console.error(`Batch send error for ${company.slug}:`, err);
+        logApiError("POST", "/api/dashboard/opt-outs/send-batch", `send for ${company.slug}`, err);
         // Continue with remaining companies
       }
     }
@@ -154,7 +149,7 @@ export async function POST(_req: NextRequest) {
       companies: sentCompanies,
     });
   } catch (err) {
-    console.error("Batch opt-out error:", err);
+    logApiError("POST", "/api/dashboard/opt-outs/send-batch", "batch opt-out", err);
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
       { status: 500 }

@@ -9,6 +9,7 @@ import {
   hashContent,
 } from "@/lib/optout-email";
 import { sendOptOutNotice } from "@/lib/email";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (upsertErr || !optoutRequest) {
-      console.error("Opt-out request upsert error:", upsertErr?.message);
+      logApiError("POST", "/api/dashboard/opt-outs/send", "upsert opt-out request", upsertErr);
       return NextResponse.json(
         { error: "Failed to create opt-out request" },
         { status: 500 }
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
       });
 
     if (commErr) {
-      console.error("Communication insert error:", commErr.message);
+      logApiError("POST", "/api/dashboard/opt-outs/send", "insert communication", commErr);
       // Non-fatal: the email was already sent, so still return success
     }
 
@@ -149,7 +150,7 @@ export async function POST(request: NextRequest) {
       message_id: result?.id,
     });
   } catch (err) {
-    console.error("Send opt-out error:", err);
+    logApiError("POST", "/api/dashboard/opt-outs/send", "send opt-out", err);
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
       { status: 500 }

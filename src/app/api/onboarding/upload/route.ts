@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) {
-      console.error("Insert upload error:", error.message);
+      logApiError("POST", "/api/onboarding/upload", "insert upload", error);
       return NextResponse.json(
         { error: "Failed to save upload record" },
         { status: 500 }

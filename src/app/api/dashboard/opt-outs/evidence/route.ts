@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
       .upload(filePath, file);
 
     if (uploadErr) {
-      console.error("Evidence upload error:", uploadErr.message);
+      logApiError("POST", "/api/dashboard/opt-outs/evidence", "upload evidence file", uploadErr);
       return NextResponse.json(
         { error: "Failed to upload evidence file" },
         { status: 500 }
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
       .eq("contributor_id", user.id);
 
     if (updateErr) {
-      console.error("Evidence record update error:", updateErr.message);
+      logApiError("POST", "/api/dashboard/opt-outs/evidence", "update evidence record", updateErr);
       return NextResponse.json(
         { error: "Failed to update communication record" },
         { status: 500 }
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
       file_path: filePath,
     });
   } catch (err) {
-    console.error("Evidence upload error:", err);
+    logApiError("POST", "/api/dashboard/opt-outs/evidence", "evidence upload", err);
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
       { status: 500 }

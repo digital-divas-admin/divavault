@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logApiError } from "@/lib/api-logger";
 
 const VERIFF_API_KEY = process.env.VERIFF_API_KEY!;
 const VERIFF_BASE_URL = "https://stationapi.veriff.com/v1";
@@ -35,7 +36,7 @@ export async function POST() {
 
     if (!res.ok) {
       const err = await res.text();
-      console.error("Veriff session creation error:", err);
+      logApiError("POST", "/api/veriff/session", "session creation", err);
       return NextResponse.json(
         { error: "Failed to create verification session" },
         { status: 500 }
@@ -47,7 +48,7 @@ export async function POST() {
     const sessionId = data.verification?.id;
 
     if (!sessionUrl || !sessionId) {
-      console.error("Veriff response missing url or id:", data);
+      logApiError("POST", "/api/veriff/session", "response missing url or id", new Error(JSON.stringify(data)));
       return NextResponse.json(
         { error: "Invalid response from verification provider" },
         { status: 500 }
@@ -62,7 +63,7 @@ export async function POST() {
 
     return NextResponse.json({ sessionUrl });
   } catch (err) {
-    console.error("Veriff session error:", err);
+    logApiError("POST", "/api/veriff/session", "unexpected error", err);
     return NextResponse.json(
       { error: "Failed to create verification session" },
       { status: 500 }

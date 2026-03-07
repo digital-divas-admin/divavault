@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveOrigin } from "@/lib/origin";
 import crypto from "crypto";
 
 const HANDOFF_SECRET = process.env.HANDOFF_SECRET || process.env.VERIFF_SHARED_SECRET!;
@@ -37,11 +38,10 @@ export async function POST(request: Request) {
 
   const token = `${payloadStr}.${signature}`;
 
-  // Build handoff URL — use NEXT_PUBLIC_SITE_URL if set, otherwise
-  // derive from request. In dev, prefer the network IP so phones can reach it.
+  // Build handoff URL
   const requestOrigin = request.headers.get("origin")
     || request.headers.get("referer")?.replace(/\/[^/]*$/, "");
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || requestOrigin;
+  const origin = resolveOrigin(requestOrigin);
 
   if (!origin) {
     return NextResponse.json(
@@ -81,11 +81,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 
+  // Decode and parse payload
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(Buffer.from(payloadStr, "base64url").toString());
+  } catch {
+    return NextResponse.json({ valid: false, error: "Invalid token" }, { status: 400 });
+  }
+
   // Check expiry
-  const payload = JSON.parse(Buffer.from(payloadStr, "base64url").toString());
-  if (payload.exp < Math.floor(Date.now() / 1000)) {
+  if ((payload.exp as number) < Math.floor(Date.now() / 1000)) {
     return NextResponse.json({ error: "Token expired" }, { status: 401 });
   }
 
-  return NextResponse.json({ userId: payload.userId, step: payload.step || 1, valid: true });
+  return NextResponse.json({ userId: payload.userId, step: (payload.step as number) || 1, valid: true });
 }

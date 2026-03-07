@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { consentConfigSchema } from "@/lib/validators";
 import { dispatchWebhook } from "@/lib/webhooks";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
       );
 
     if (upsertError) {
-      console.error("Contributor upsert error:", upsertError.message);
+      logApiError("POST", "/api/onboarding/consent", "contributor upsert", upsertError);
       return NextResponse.json(
         { error: "Failed to initialize contributor record" },
         { status: 500 }
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
       });
 
     if (consentErr) {
-      console.error("Consent insert error:", consentErr.message);
+      logApiError("POST", "/api/onboarding/consent", "consent insert", consentErr);
       return NextResponse.json(
         { error: "Failed to save consent" },
         { status: 500 }
@@ -135,7 +136,7 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id);
 
     if (updateErr) {
-      console.error("Contributor update error:", updateErr.message);
+      logApiError("POST", "/api/onboarding/consent", "contributor update", updateErr);
       return NextResponse.json(
         { error: "Failed to update contributor" },
         { status: 500 }
@@ -152,7 +153,7 @@ export async function POST(request: NextRequest) {
         entertainment: allowEntertainment,
         e_learning: allowELearning,
       },
-    }).catch((err) => console.error("Webhook dispatch error:", err));
+    }).catch((err) => logApiError("POST", "/api/onboarding/consent", "webhook dispatch", err));
 
     // Registry dual-write (non-blocking)
     (async () => {
@@ -174,12 +175,13 @@ export async function POST(request: NextRequest) {
           userAgent: userAgent || undefined,
         });
       } catch (err) {
-        console.error("Registry consent dual-write error:", err);
+        logApiError("POST", "/api/onboarding/consent", "registry consent dual-write", err);
       }
     })();
 
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (e) {
+    logApiError("POST", "/api/onboarding/consent", "unexpected error", e);
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
       { status: 500 }

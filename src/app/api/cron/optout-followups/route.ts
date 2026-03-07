@@ -8,6 +8,7 @@ import {
   hashContent,
 } from "@/lib/optout-email";
 import { sendOptOutNotice } from "@/lib/email";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST(request: NextRequest) {
   // Verify cron secret
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
       .lt("follow_up_count", 3);
 
     if (fetchErr) {
-      console.error("Follow-up fetch error:", fetchErr.message);
+      logApiError("POST", "/api/cron/optout-followups", "fetch follow-up requests", fetchErr);
       return NextResponse.json(
         { error: "Failed to fetch follow-up requests" },
         { status: 500 }
@@ -106,10 +107,7 @@ export async function POST(request: NextRequest) {
           });
 
         if (commErr) {
-          console.error(
-            `Follow-up communication insert error for ${req.company_slug}:`,
-            commErr.message
-          );
+          logApiError("POST", "/api/cron/optout-followups", `communication insert for ${req.company_slug}`, commErr);
         }
 
         // Update the request
@@ -129,10 +127,7 @@ export async function POST(request: NextRequest) {
           .eq("id", req.id);
 
         if (updateErr) {
-          console.error(
-            `Follow-up request update error for ${req.company_slug}:`,
-            updateErr.message
-          );
+          logApiError("POST", "/api/cron/optout-followups", `request update for ${req.company_slug}`, updateErr);
           continue;
         }
 
@@ -142,7 +137,7 @@ export async function POST(request: NextRequest) {
           followedUp++;
         }
       } catch (err) {
-        console.error(`Follow-up error for request ${req.id}:`, err);
+        logApiError("POST", "/api/cron/optout-followups", `process request ${req.id}`, err);
         // Continue with remaining requests
       }
     }
@@ -153,7 +148,7 @@ export async function POST(request: NextRequest) {
       marked_unresponsive: markedUnresponsive,
     });
   } catch (err) {
-    console.error("Cron follow-up error:", err);
+    logApiError("POST", "/api/cron/optout-followups", "cron job", err);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

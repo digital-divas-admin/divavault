@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { recordResponseSchema } from "@/lib/optout-validators";
 import { hashContent } from "@/lib/optout-email";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
       });
 
     if (commErr) {
-      console.error("Response communication insert error:", commErr.message);
+      logApiError("POST", "/api/dashboard/opt-outs/response", "insert communication", commErr);
       return NextResponse.json(
         { error: "Failed to record response" },
         { status: 500 }
@@ -89,13 +90,13 @@ export async function POST(request: NextRequest) {
       .eq("contributor_id", user.id);
 
     if (updateErr) {
-      console.error("Request status update error:", updateErr.message);
+      logApiError("POST", "/api/dashboard/opt-outs/response", "update request status", updateErr);
       // Non-fatal: the communication was already recorded
     }
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("Record response error:", err);
+    logApiError("POST", "/api/dashboard/opt-outs/response", "record response", err);
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
       { status: 500 }

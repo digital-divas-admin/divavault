@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { CAPTURE_STEPS } from "@/lib/capture-steps";
 import { dispatchWebhook } from "@/lib/webhooks";
+import { z } from "zod/v4";
+import { logApiError } from "@/lib/api-logger";
+
+const captureImageSchema = z.object({
+  sessionId: z.string().uuid(),
+  captureStep: z.string(),
+  filePath: z.string().min(1),
+  bucket: z.string().optional().default("capture-uploads"),
+  fileSize: z.number().int().min(0).optional(),
+  width: z.number().int().min(0).optional(),
+  height: z.number().int().min(0).optional(),
+  qualityScore: z.number().min(0).max(1).optional(),
+  sharpnessScore: z.number().min(0).max(1).optional(),
+  brightnessScore: z.number().min(0).max(1).optional(),
+});
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -13,30 +28,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: Record<string, unknown>;
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const sessionId = body.sessionId as string;
-  const captureStep = body.captureStep as string;
-  const filePath = body.filePath as string;
-  const bucket = (body.bucket as string) || "capture-uploads";
-  const fileSize = body.fileSize as number | undefined;
-  const width = body.width as number | undefined;
-  const height = body.height as number | undefined;
-  const qualityScore = body.qualityScore as number | undefined;
-  const sharpnessScore = body.sharpnessScore as number | undefined;
-  const brightnessScore = body.brightnessScore as number | undefined;
-
-  if (!sessionId || !captureStep || !filePath) {
+  const parsed = captureImageSchema.safeParse(body);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Missing required fields: sessionId, captureStep, filePath" },
+      { error: parsed.error.issues[0].message },
       { status: 400 }
     );
   }
+
+  const {
+    sessionId,
+    captureStep,
+    filePath,
+    bucket,
+    fileSize,
+    width,
+    height,
+    qualityScore,
+    sharpnessScore,
+    brightnessScore,
+  } = parsed.data;
 
   // Validate captureStep against known steps
   const validStepIds = CAPTURE_STEPS.map((s) => s.id);
@@ -55,12 +73,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Clamp score values to 0-1 range
-  const clamp = (v: number | undefined) => v != null ? Math.max(0, Math.min(1, v)) : null;
-  const clampedQualityScore = clamp(qualityScore);
-  const clampedSharpnessScore = clamp(sharpnessScore);
-  const clampedBrightnessScore = clamp(brightnessScore);
-
   try {
     const { data, error } = await supabase
       .from("contributor_images")
@@ -70,18 +82,18 @@ export async function POST(request: NextRequest) {
         capture_step: captureStep,
         file_path: filePath,
         bucket,
-        file_size: fileSize || null,
-        width: width || null,
-        height: height || null,
-        quality_score: clampedQualityScore,
-        sharpness_score: clampedSharpnessScore,
-        brightness_score: clampedBrightnessScore,
+        file_size: fileSize ?? null,
+        width: width ?? null,
+        height: height ?? null,
+        quality_score: qualityScore ?? null,
+        sharpness_score: sharpnessScore ?? null,
+        brightness_score: brightnessScore ?? null,
       })
       .select("id")
       .single();
 
     if (error) {
-      console.error("Insert image error:", error.message);
+      logApiError("POST", "/api/capture/image", "insert image record", error);
       return NextResponse.json(
         { error: "Failed to save image record" },
         { status: 500 }
@@ -99,7 +111,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (uploadError) {
-      console.error("Insert upload record error:", uploadError.message);
+      logApiError("POST", "/api/capture/image", "insert upload record", uploadError);
     }
 
     // Update session image count using actual DB count for accuracy
@@ -115,7 +127,7 @@ export async function POST(request: NextRequest) {
         .eq("id", sessionId);
 
       if (updateError) {
-        console.error("Session count update error:", updateError.message);
+        logApiError("POST", "/api/capture/image", "session count update", updateError);
       }
     }
 
@@ -126,10 +138,11 @@ export async function POST(request: NextRequest) {
       image_id: data.id,
       capture_step: captureStep,
       total_images: count ?? 1,
-    }).catch((err) => console.error("Webhook dispatch error:", err));
+    }).catch((err) => logApiError("POST", "/api/capture/image", "webhook dispatch", err));
 
     return NextResponse.json({ imageId: data.id });
-  } catch {
+  } catch (e) {
+    logApiError("POST", "/api/capture/image", "unexpected error", e);
     return NextResponse.json(
       { error: "Something went wrong" },
       { status: 500 }

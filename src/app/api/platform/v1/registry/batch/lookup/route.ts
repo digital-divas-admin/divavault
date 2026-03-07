@@ -7,6 +7,7 @@ import {
   platformCorsResponse,
 } from "@/lib/platform-auth";
 import { bulkLookupSchema, bulkLookup } from "@/lib/registry";
+import { logApiError } from "@/lib/api-logger";
 
 export async function OPTIONS(request: Request) {
   return platformCorsResponse(request);
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
 
     return platformJsonResponse(result, request);
   } catch (err) {
-    console.error("Bulk lookup error:", err);
+    logApiError("POST", "/api/platform/v1/registry/batch/lookup", "bulk lookup", err);
     return platformJsonResponse(
       { error: "Internal server error" },
       request,

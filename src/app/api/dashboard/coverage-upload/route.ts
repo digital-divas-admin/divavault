@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { CAPTURE_STEPS } from "@/lib/capture-steps";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (sessionError || !newSession) {
-        console.error("Create supplemental session error:", sessionError?.message);
+        logApiError("POST", "/api/dashboard/coverage-upload", "create supplemental session", sessionError);
         return NextResponse.json(
           { error: "Failed to create capture session" },
           { status: 500 }
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
       });
 
     if (uploadError) {
-      console.error("Storage upload error:", uploadError.message);
+      logApiError("POST", "/api/dashboard/coverage-upload", "storage upload", uploadError);
       return NextResponse.json(
         { error: "Failed to upload file" },
         { status: 500 }
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (imageError || !imageRecord) {
-      console.error("Insert image error:", imageError?.message);
+      logApiError("POST", "/api/dashboard/coverage-upload", "insert image record", imageError);
       return NextResponse.json(
         { error: "Failed to save image record" },
         { status: 500 }
@@ -130,7 +131,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (uploadRecordError) {
-      console.error("Insert upload record error:", uploadRecordError.message);
+      logApiError("POST", "/api/dashboard/coverage-upload", "insert upload record", uploadRecordError);
     }
 
     // Update session image count

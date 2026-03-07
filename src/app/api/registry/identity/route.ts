@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getIdentityByContributorId, getCurrentConsent } from "@/lib/registry";
+import { logApiError } from "@/lib/api-logger";
 
 export async function GET() {
   const supabase = await createClient();
@@ -23,7 +24,7 @@ export async function GET() {
 
     return NextResponse.json({ identity, consent });
   } catch (err) {
-    console.error("Registry identity lookup error:", err);
+    logApiError("GET", "/api/registry/identity", "lookup identity", err);
     return NextResponse.json(
       { error: "Failed to retrieve registry identity" },
       { status: 500 }

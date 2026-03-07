@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/dashboard-queries";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST() {
   const supabase = await createClient();
@@ -43,7 +44,7 @@ export async function POST() {
           description: `Your account deletion has been scheduled for ${scheduledFor.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}. All your data including photos, matches, and consent records will be permanently removed. If you did not request this, please contact us immediately.`,
         })
       )
-      .catch((err) => console.error("Deletion email error:", err));
+      .catch((err) => logApiError("POST", "/api/dashboard/account/delete", "deletion email", err));
   }
 
   return NextResponse.json({

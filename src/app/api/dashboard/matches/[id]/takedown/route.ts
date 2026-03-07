@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getTierCapabilities } from "@/lib/tier-capabilities";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST(
   request: NextRequest,
@@ -80,7 +81,7 @@ export async function POST(
           status: "pending",
         })
       )
-      .catch((err) => console.error("Takedown email error:", err));
+      .catch((err) => logApiError("POST", "/api/dashboard/matches/[id]/takedown", "takedown email", err));
   }
 
   return NextResponse.json(takedown, { status: 201 });

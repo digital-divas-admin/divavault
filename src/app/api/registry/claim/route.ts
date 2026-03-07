@@ -4,6 +4,7 @@ import {
   createClaimedIdentity,
   addRegistryContact,
 } from "@/lib/registry";
+import { logApiError } from "@/lib/api-logger";
 
 export async function POST(request: Request) {
   const ip = getClientIp(request);
@@ -61,7 +62,7 @@ export async function POST(request: Request) {
       });
 
     if (uploadError) {
-      console.error("Selfie upload error:", uploadError.message);
+      logApiError("POST", "/api/registry/claim", "selfie upload", uploadError);
       return NextResponse.json(
         { error: "Failed to upload selfie" },
         { status: 500 }
@@ -79,7 +80,7 @@ export async function POST(request: Request) {
       .eq("cid", identity.cid);
 
     if (updateError) {
-      console.error("Selfie path update error:", updateError.message);
+      logApiError("POST", "/api/registry/claim", "selfie path update", updateError);
       // Non-fatal: claim still succeeds, scanner will just skip this identity
     }
 
@@ -92,7 +93,7 @@ export async function POST(request: Request) {
         .then(({ sendClaimConfirmation }) =>
           sendClaimConfirmation(email, identity.cid)
         )
-        .catch((err) => console.error("Claim email error:", err));
+        .catch((err) => logApiError("POST", "/api/registry/claim", "confirmation email", err));
     }
 
     return NextResponse.json({
@@ -100,7 +101,7 @@ export async function POST(request: Request) {
       cid: identity.cid,
     });
   } catch (err) {
-    console.error("Registry claim error:", err);
+    logApiError("POST", "/api/registry/claim", "create claim", err);
     return NextResponse.json(
       { error: "Failed to create claim" },
       { status: 500 }
