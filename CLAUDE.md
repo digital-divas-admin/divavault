@@ -2,6 +2,50 @@
 
 An AI likeness protection platform. Members upload photos and verify their identity to create a facial signature. We then continuously scan AI platforms (CivitAI, DeviantArt, Reddit, 247+) for unauthorized use of their face and file DMCA takedowns automatically. Dark purple-black theme with tiered protection plans (Free / Protected / Premium).
 
+## Project Overview
+
+This project uses TypeScript (Next.js frontend) and Python (ML pipeline, crawlers, scanner backend). Primary languages: TypeScript for UI/dashboard, Python for ML training, face detection, adversarial perturbation, and crawling.
+
+## Planning & Workflow
+
+When writing plans, keep codebase exploration focused and time-boxed. Present the plan draft early rather than doing exhaustive exploration first. The user prefers to iterate on a visible draft rather than wait for a 'perfect' plan.
+
+## Security
+
+NEVER hardcode API keys, secrets, or credentials in source files. Always use environment variables loaded from .env files. Before committing, verify no secrets are present in the diff.
+
+## Development Environment
+
+When running dev servers, always check which ports are already in use (`lsof -i :<port>` or `netstat -ano | findstr :<port>` on Windows) before starting new instances. The dashboard typically runs on port 3001, not 3000.
+
+## Before Starting Complex Tasks
+
+When I describe a task, don't start coding immediately. First, confirm:
+
+1. **End state** — What does "done" look like?
+2. **Environment** — Which machine? (Windows/4090, MacBook, Mac Mini)
+3. **Existing code** — Am I extending something or starting fresh?
+4. **Constraints** — Stack choices already made, things to avoid
+5. **Scope** — Just this file? This service? Full feature?
+
+For simple/obvious tasks (fix this typo, run this command), skip this and just do it.
+
+## Session Continuity
+
+At the start of every session, check if HANDOFF.md exists in the project root. If it does, read it first and briefly acknowledge what was in progress before proceeding.
+
+When I say "wrap up" / "hand off" / "save state," write or overwrite HANDOFF.md with:
+- What was done this session
+- What's unfinished or next
+- Any decisions made or blockers hit
+Keep it under 20 lines.
+
+## Cross-System Work
+
+The scanner (Python) and dashboard (Next.js) share a Supabase DB.
+Scanner queries from the dashboard live in src/lib/scanner-command-queries.ts.
+When modifying scanner DB schema, check for downstream impacts in the dashboard.
+
 ## Tech Stack
 
 - **Framework:** Next.js 16 (App Router, TypeScript, Turbopack)
