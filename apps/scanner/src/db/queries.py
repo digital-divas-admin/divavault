@@ -1154,17 +1154,20 @@ async def mark_face_embeddings_matched(
     session: AsyncSession,
     ids: list[UUID],
 ) -> None:
-    """Mark discovered face embeddings as matched."""
+    """Mark discovered face embeddings as matched (batched to avoid statement timeout)."""
     if not ids:
         return
-    await session.execute(
-        text("""
-            UPDATE discovered_face_embeddings
-            SET matched_at = now()
-            WHERE id = ANY(:ids)
-        """),
-        {"ids": ids},
-    )
+    batch_size = 50
+    for i in range(0, len(ids), batch_size):
+        batch = ids[i : i + batch_size]
+        await session.execute(
+            text("""
+                UPDATE discovered_face_embeddings
+                SET matched_at = now()
+                WHERE id = ANY(:ids)
+            """),
+            {"ids": batch},
+        )
 
 
 async def update_crawl_coverage(

@@ -122,19 +122,25 @@ async def run_scheduler(job_store: JobStore) -> None:
             if shutdown_requested:
                 break
 
-            # b. Per-contributor scans
+            # b. Face detection + matching (highest priority, never gated by crawls)
+            await _run_detection_and_matching(job_store)
+
+            if shutdown_requested:
+                break
+
+            # c. Per-contributor scans
             await _run_contributor_scans(job_store)
 
             if shutdown_requested:
                 break
 
-            # b2. Platform taxonomy mapping (weekly, before crawls)
+            # d. Platform taxonomy mapping (weekly, before crawls)
             await _run_taxonomy_mapping()
 
             if shutdown_requested:
                 break
 
-            # c. Platform crawls
+            # e. Platform crawls (discovery only — detection/matching already handled above)
             await _run_platform_crawls(job_store)
 
             if shutdown_requested:
@@ -455,17 +461,10 @@ async def _capture_daily_snapshot() -> None:
         log.error("daily_snapshot_error", error=str(e))
 
 
-async def _run_platform_crawls(job_store: JobStore) -> None:
-    """Concurrent platform crawl dispatch.
+async def _run_detection_and_matching(job_store: JobStore) -> None:
+    """Run face detection and matching in parallel. Runs every tick regardless of crawl schedule.
 
-    Runs up to three workstreams in parallel:
-      1. Face detection  (CPU-bound subprocess)
-      2. Matching         (DB-bound)
-      3. Platform crawls  (I/O-bound HTTP, all platforms in parallel)
-
-    These are naturally independent — crawling writes to discovered_images,
-    detection reads pending rows and writes face data, matching reads face
-    embeddings. No conflicts.
+    Priority: detection > matching (process existing images before discovering more).
     """
     import asyncio
 
@@ -489,8 +488,22 @@ async def _run_platform_crawls(job_store: JobStore) -> None:
             _phase_matching(job_store)
         ))
 
-    # Platform crawls — all due platforms in parallel
+    if tasks:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                log.error("detection_matching_error", index=i, error=repr(result))
+
+
+async def _run_platform_crawls(job_store: JobStore) -> None:
+    """Dispatch due platform crawls in parallel."""
+    import asyncio
+
     due_crawls = await job_store.get_due_platform_crawls()
+    if not due_crawls:
+        return
+
+    tasks: list[asyncio.Task] = []
     for crawl in due_crawls:
         if shutdown_requested:
             break
