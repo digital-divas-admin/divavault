@@ -70,6 +70,51 @@ async def capture_screenshot(page_url: str) -> dict | None:
         return None
 
 
+async def capture_page_snapshot(url: str) -> dict | None:
+    """Capture both screenshot and HTML content of a URL.
+
+    Returns:
+        Dict with 'path' (Path), 'html' (str), 'page_title' (str), 'timestamp' (str),
+        or None on failure.
+    """
+    try:
+        browser = await _get_browser()
+        page = await browser.new_page()
+
+        try:
+            await page.goto(url, timeout=20000, wait_until="domcontentloaded")
+
+            title = await page.title()
+            html = await page.content()
+            timestamp = datetime.now(timezone.utc).isoformat()
+
+            # Save screenshot
+            temp_dir = Path(settings.temp_dir)
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            screenshot_path = temp_dir / f"snapshot_{uuid4().hex}.png"
+            await page.screenshot(path=str(screenshot_path), full_page=True)
+
+            log.info(
+                "page_snapshot_captured",
+                url=url,
+                title=title[:100] if title else None,
+                html_size=len(html),
+            )
+
+            return {
+                "path": screenshot_path,
+                "html": html,
+                "page_title": title,
+                "timestamp": timestamp,
+            }
+        finally:
+            await page.close()
+
+    except Exception as e:
+        log.error("page_snapshot_error", url=url, error=str(e))
+        return None
+
+
 async def shutdown_browser():
     """Close the Playwright browser on shutdown."""
     global _browser, _playwright

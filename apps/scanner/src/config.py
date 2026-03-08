@@ -110,6 +110,21 @@ class Settings(BaseSettings):
     scout_max_results_per_source: int = 50
     scout_assessment_timeout: int = 15  # seconds per URL
 
+    # Resilience
+    resilience_enabled: bool = True
+    resilience_tick_interval: int = 10
+    resilience_baseline_days: int = 7
+    resilience_yield_warning: float = 0.50
+    resilience_yield_critical: float = 0.20
+    resilience_claude_enabled: bool = False
+    resilience_claude_diagnosis_timeout: int = 60
+    resilience_claude_patch_timeout: int = 180
+    resilience_auto_patch: bool = False
+    resilience_auto_promote: bool = False
+    resilience_canary_cycles: int = 2
+    resilience_canary_threshold: float = 0.80
+    ntfy_topic: str = ""
+
     # Logging
     log_level: str = "INFO"
 

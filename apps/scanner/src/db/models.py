@@ -527,3 +527,86 @@ class ScoutKeyword(Base):
     use_for: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'assess'"))
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+# --- Resilience tables (crawler health monitoring + self-healing) ---
+
+
+class CrawlHealthSnapshot(Base):
+    __tablename__ = "crawl_health_snapshots"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    crawl_type: Mapped[str] = mapped_column(Text, nullable=False)
+    tick_number: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_seconds: Mapped[float | None] = mapped_column(Float)
+    images_discovered: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    images_new: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    download_failures: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    tags_total: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    tags_exhausted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    faces_found: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    http_errors: Mapped[dict | None] = mapped_column(JSONB)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    extra_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class DegradationEvent(Base):
+    __tablename__ = "degradation_events"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    degradation_type: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(Text, nullable=False)
+    symptom: Mapped[str] = mapped_column(Text, nullable=False)
+    baseline_value: Mapped[float | None] = mapped_column(Float)
+    current_value: Mapped[float | None] = mapped_column(Float)
+    deviation_pct: Mapped[float | None] = mapped_column(Float)
+    snapshot_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("crawl_health_snapshots.id"))
+    diagnosis: Mapped[str | None] = mapped_column(Text)
+    diagnosis_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    root_cause: Mapped[str | None] = mapped_column(Text)
+    page_snapshot_url: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'open'"))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class CrawlerPatch(Base):
+    __tablename__ = "crawler_patches"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    degradation_event_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("degradation_events.id"))
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    target_file: Mapped[str] = mapped_column(Text, nullable=False)
+    patch_type: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    diff_content: Mapped[str | None] = mapped_column(Text)
+    claude_reasoning: Mapped[str | None] = mapped_column(Text)
+    sandbox_result: Mapped[str | None] = mapped_column(Text)
+    sandbox_yield_before: Mapped[int | None] = mapped_column(Integer)
+    sandbox_yield_after: Mapped[int | None] = mapped_column(Integer)
+    canary_result: Mapped[str | None] = mapped_column(Text)
+    canary_yield_before: Mapped[int | None] = mapped_column(Integer)
+    canary_yield_after: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'draft'"))
+    promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class CrawlerPageCache(Base):
+    __tablename__ = "crawler_page_cache"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    search_term: Mapped[str | None] = mapped_column(Text)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    html_content: Mapped[str] = mapped_column(Text, nullable=False)
+    response_status: Mapped[int | None] = mapped_column(Integer)
+    response_bytes: Mapped[int | None] = mapped_column(Integer)
+    images_found: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))

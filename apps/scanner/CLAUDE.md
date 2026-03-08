@@ -73,6 +73,7 @@ apps/scanner/
 │   ├── crawl_and_backfill.py        # CivitAI: 4-phase pipeline (crawl → two-pass thumbnail detect → match)
 │   ├── crawl_deviantart.py          # DeviantArt: crawl with inline face detection (wixmp tokens expire)
 │   ├── process_faces.py             # Backfill face detection (two-pass for CivitAI, single-pass for others)
+│   ├── test_resilience.py           # End-to-end resilience pipeline test
 │   ├── instrumented_test_crawl.py   # Debug instrumentation for CivitAI pipeline
 │   ├── run_production.ps1           # Supervisor: auto-restart, log rotation, PID tracking
 │   ├── stop_scanner.ps1             # Graceful shutdown via PID file
@@ -139,15 +140,29 @@ apps/scanner/
 │   │   └── match_scoring/
 │   │       ├── static.py            # Static threshold-based scorer
 │   │       └── ml_scorer.py         # ML-based confidence scorer
+│   ├── resilience/
+│   │   ├── __init__.py              # Empty package init
+│   │   ├── constants.py             # Shared: SCANNER_ROOT, CRAWLER_FILES, MONITORED_PLATFORMS, run_claude_cli()
+│   │   ├── models.py               # Re-exports ORM models from db/models.py
+│   │   ├── collector.py             # CrawlTelemetryCollector — records per-crawl metrics
+│   │   ├── baseline.py              # BaselineCalculator — rolling 7-day averages
+│   │   ├── detector.py              # DegradationDetector — yield collapse, total failure, download spikes, errors
+│   │   ├── notifier.py              # Degradation alerts (log + optional ntfy.sh push)
+│   │   ├── cache.py                 # Healthy page caching for sandbox testing
+│   │   ├── diagnosis.py             # DiagnosisEngine — Claude CLI root cause analysis
+│   │   ├── patcher.py               # PatchGenerator — Claude CLI unified diff generation
+│   │   ├── sandbox.py               # PatchSandbox — tests patches against cached pages in temp dir
+│   │   ├── promoter.py              # PatchPromoter — sandbox → canary → production graduation
+│   │   └── tick.py                  # resilience_tick() — orchestrates full cycle per platform
 │   ├── evidence/
-│   │   ├── capture.py               # Playwright screenshot capture
+│   │   ├── capture.py               # Playwright screenshot + page snapshot capture
 │   │   ├── hasher.py                # Perceptual + cryptographic hashing
 │   │   └── storage.py               # Supabase Storage upload
 │   ├── enforcement/
 │   │   ├── takedown.py              # DMCA notice generation
 │   │   └── templates.py             # Legal template library
 │   ├── jobs/
-│   │   ├── scheduler.py             # Main scheduler (sweep + backfill, priority: detection > matching > crawl)
+│   │   ├── scheduler.py             # Main scheduler (sweep + backfill + resilience, priority: detection > matching > crawl)
 │   │   ├── store.py                 # PostgreSQL job store + stale job recovery
 │   │   └── cleanup.py               # Periodic cleanup routines
 │   ├── detection/
@@ -259,6 +274,52 @@ When a contributor has ≥3 embeddings:
 
 Separate from contributors (who have `auth.users` rows), **registry identities** are claim-based users who submit a selfie for matching without creating a full account. Stored in `registry_identities` with their own embedding pipeline (`embedding_status: pending → processed`). Matches against discovered images go into `registry_matches` (separate from `matches` which are for contributors).
 
+### Crawler Resilience Module
+
+Self-healing loop that detects when crawlers break and optionally diagnoses + patches them automatically. Runs as step (h) in the scheduler loop every Nth tick (`resilience_tick_interval`, default 10).
+
+**Pipeline:** Telemetry → Baseline → Detection → Diagnosis → Patch → Sandbox → Canary → Production
+
+**How it works:**
+1. **Telemetry** (`collector.py`): After each crawl tick completes, `collector.record_crawl()` inserts a `CrawlHealthSnapshot` row with metrics (images discovered/new, failures, tags, duration, errors).
+2. **Baseline** (`baseline.py`): Computes rolling 7-day averages from healthy snapshots (excludes error rows). Requires 3+ snapshots before activating.
+3. **Detection** (`detector.py`): Compares latest snapshot against baseline. Four checks:
+   - **Total failure** — 0 images discovered when baseline > 10 → critical
+   - **Yield collapse** — new images < 20% of baseline → critical, < 50% → warning
+   - **Download failure spike** — failure rate > 50% → warning
+   - **Crawl error** — error_message present → warning
+   - Creates `DegradationEvent` rows. Dedup: skips if same platform + type already has an open/diagnosed event.
+4. **Notification** (`notifier.py`): Logs degradation alerts. Optional ntfy.sh push if `NTFY_TOPIC` is set.
+5. **Diagnosis** (`diagnosis.py`): Captures page snapshot via Playwright, sends crawler source + snapshot + event details to Claude CLI, classifies root cause as `STRUCTURAL_CHANGE | API_CHANGE | ANTI_BOT | RATE_LIMIT | CONTENT_GONE | UNKNOWN`.
+6. **Patch generation** (`patcher.py`): Sends diagnosis + crawler source + healthy page snapshot to Claude CLI → generates unified diff.
+7. **Sandbox** (`sandbox.py`): Copies crawler to temp dir, applies diff with `patch -p1` (dry-run first), validates applicability.
+8. **Promotion** (`promoter.py`): Graduates patches: draft → sandbox → canary → production. Backs up originals to `src/resilience/backups/`. Auto-rollback on failure.
+9. **Page cache** (`cache.py`): Stores healthy page HTML for sandbox testing. Keeps 3 most recent per platform/term pair.
+
+**Shared utilities** (`constants.py`): `SCANNER_ROOT`, `CRAWLER_FILES`, `PLATFORM_DIAGNOSTIC_URLS`, `MONITORED_PLATFORMS`, `run_claude_cli()` — used across diagnosis, patcher, sandbox, promoter.
+
+**Orchestration** (`tick.py`): `resilience_tick(tick_number)` iterates `MONITORED_PLATFORMS`, runs detection → diagnosis → patch gen → promotion pipeline. Each sub-step has independent try/except — never blocks the scheduler.
+
+**Config flags** (all in `config.py`):
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `resilience_enabled` | `True` | Master switch for telemetry + detection |
+| `resilience_tick_interval` | `10` | Run every Nth scheduler tick |
+| `resilience_baseline_days` | `7` | Rolling average window |
+| `resilience_yield_warning` | `0.50` | Yield < 50% of baseline → warning |
+| `resilience_yield_critical` | `0.20` | Yield < 20% of baseline → critical |
+| `resilience_claude_enabled` | `False` | Enable Claude CLI diagnosis (requires `claude` in PATH) |
+| `resilience_auto_patch` | `False` | Auto-generate patches for diagnosed events |
+| `resilience_auto_promote` | `False` | Auto-promote patches sandbox → canary → production |
+| `ntfy_topic` | `""` | ntfy.sh topic for push alerts |
+
+**Testing:**
+```bash
+.venv/Scripts/python.exe scripts/test_resilience.py   # End-to-end pipeline test (requires running scanner)
+```
+
+**Migration:** `migrations/007_resilience_tables.sql` — creates 4 tables + indexes.
+
 ### Daily Coverage Snapshots
 
 The scheduler captures daily per-platform metrics into `scanner_daily_snapshots` every 24h. Tracks images discovered, faces detected, embeddings created, matches found/confirmed/rejected, and tag exhaustion. Used by the dashboard's coverage trends chart.
@@ -339,6 +400,10 @@ Crawl state persists in `platform_crawl_schedule.search_terms` JSONB column so c
 - `scout_runs` — Scout execution history
 - `scout_discoveries` — Newly discovered AI platforms
 - `honeypot_images` — Honeypot images for detection verification
+- `crawl_health_snapshots` — Per-crawl telemetry (images discovered/new, failures, duration, tags, errors)
+- `degradation_events` — Detected crawl anomalies (type, severity, symptom, baseline vs current, diagnosis, root_cause, status)
+- `crawler_patches` — Auto-generated code fixes (diff, sandbox/canary results, promotion status)
+- `crawler_page_cache` — Cached healthy page HTML for sandbox testing (3 most recent per platform/term)
 
 ## Environment Variables
 
@@ -372,6 +437,13 @@ DEVIANTART_BACKFILL_PAGES=50         # 50 pages/tag/tick (~1.2K images/tag)
 # Scout (platform discovery)
 GOOGLE_CSE_API_KEY=                  # Google Custom Search (optional)
 GOOGLE_CSE_CX=                       # Custom Search Engine ID (optional)
+
+# Resilience (all optional — detection works with defaults)
+RESILIENCE_ENABLED=true              # Master switch for telemetry + detection
+RESILIENCE_CLAUDE_ENABLED=false      # Enable Claude CLI diagnosis/patching (requires `claude` in PATH)
+RESILIENCE_AUTO_PATCH=false          # Auto-generate patches for diagnosed events
+RESILIENCE_AUTO_PROMOTE=false        # Auto-promote patches through sandbox → canary → production
+NTFY_TOPIC=                          # ntfy.sh topic for push alerts (optional)
 ```
 
 ## Common Pitfalls
@@ -470,7 +542,13 @@ The health endpoint response (polled every 30s by the dashboard) has this shape:
     "model": "buffalo_sc"
   },
   "ml": { "observer_buffer_size": 0, "analyzers": {...} },
-  "test_users": { "honeypots": 5, ... }
+  "test_users": { "honeypots": 5, ... },
+  "resilience": {
+    "enabled": true,
+    "open_events": 0,
+    "latest_snapshots": {"civitai": "2026-03-07T...", "deviantart": "2026-03-07T..."},
+    "baselines_available": ["civitai", "deviantart"]
+  }
 }
 ```
 

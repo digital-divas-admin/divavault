@@ -101,6 +101,7 @@ async def run_scheduler(job_store: JobStore) -> None:
     start_time = time.monotonic()
     last_cleanup = 0.0
     last_snapshot = 0.0
+    tick_count = 0
 
     # Recover stale jobs on startup
     recovered = await job_store.recover_stale(max_age_minutes=30)
@@ -113,6 +114,8 @@ async def run_scheduler(job_store: JobStore) -> None:
         tick_start = time.monotonic()
 
         try:
+            tick_count += 1
+
             # a. Ingest pending images
             await _run_ingest()
 
@@ -162,6 +165,13 @@ async def run_scheduler(job_store: JobStore) -> None:
 
             # g. Deepfake task processing
             await _run_deepfake_tasks()
+
+            if shutdown_requested:
+                break
+
+            # h. Resilience monitoring (every Nth tick)
+            if tick_count % settings.resilience_tick_interval == 0:
+                await _run_resilience_check(tick_count)
 
             if shutdown_requested:
                 break
@@ -425,6 +435,15 @@ async def _run_deepfake_tasks() -> None:
         log.error("deepfake_tasks_error", error=str(e))
 
 
+async def _run_resilience_check(tick_number: int) -> None:
+    """Run resilience monitoring. Never blocks pipeline."""
+    try:
+        from src.resilience.tick import resilience_tick
+        await resilience_tick(tick_number)
+    except Exception as e:
+        log.error("resilience_tick_error", error=str(e))
+
+
 async def _capture_daily_snapshot() -> None:
     """Capture daily coverage snapshot via RPC. Never blocks pipeline."""
     try:
@@ -512,6 +531,8 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
         job = await _create_crawl_job(session, crawl.platform)
         job_id = job.id
         await session.commit()
+
+    crawl_start = datetime.now(timezone.utc)
 
     try:
         from src.intelligence.mapper.orchestrator import get_search_config, update_section_stats
@@ -615,7 +636,41 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
 
         await job_store.update_crawl_phase(crawl.platform, None)
 
+        # Record telemetry for resilience monitoring
+        try:
+            from src.resilience.collector import collector
+            crawl_end = datetime.now(timezone.utc)
+            faces = result_cursors.get("_faces_found", 0) if isinstance(result_cursors, dict) else 0
+            await collector.record_crawl(
+                platform=crawl.platform,
+                crawl_type="sweep",
+                started_at=crawl_start,
+                finished_at=crawl_end,
+                images_discovered=total_images,
+                images_new=new_count,
+                faces_found=faces,
+                tags_total=result_tags[0],
+                tags_exhausted=result_tags[1],
+            )
+        except Exception as tel_err:
+            log.error("telemetry_record_error", platform=crawl.platform, error=str(tel_err))
+
     except Exception as e:
+        try:
+            from src.resilience.collector import collector
+            crawl_end = datetime.now(timezone.utc)
+            await collector.record_crawl(
+                platform=crawl.platform,
+                crawl_type="sweep",
+                started_at=crawl_start,
+                finished_at=crawl_end,
+                images_discovered=0,
+                images_new=0,
+                error_message=str(e)[:500],
+            )
+        except Exception as tel_err:
+            log.error("telemetry_record_error", platform=crawl.platform, error=str(tel_err))
+
         async with async_session() as session:
             from src.db.queries import update_scan_job
             await update_scan_job(session, job_id, status="failed", error_message=str(e)[:500])

@@ -149,6 +149,50 @@ async def health():
     except Exception as e:
         test_users = {"error": str(e)}
 
+    # Resilience status
+    resilience_info = {"enabled": settings.resilience_enabled}
+    if settings.resilience_enabled:
+        try:
+            from sqlalchemy import func, select
+            from src.resilience.models import CrawlHealthSnapshot, DegradationEvent
+            async with async_session() as session:
+                # Open events count
+                open_count = await session.execute(
+                    select(func.count()).select_from(DegradationEvent).where(
+                        DegradationEvent.status.in_(["open", "diagnosed"])
+                    )
+                )
+                resilience_info["open_events"] = open_count.scalar() or 0
+
+                # Latest snapshot per platform (single GROUP BY query)
+                latest_q = await session.execute(
+                    select(
+                        CrawlHealthSnapshot.platform,
+                        func.max(CrawlHealthSnapshot.created_at).label("latest"),
+                    )
+                    .group_by(CrawlHealthSnapshot.platform)
+                )
+                latest_snapshots = {
+                    row.platform: row.latest.isoformat()
+                    for row in latest_q.all()
+                }
+                resilience_info["latest_snapshots"] = latest_snapshots
+
+                # Baselines: just report which platforms have enough snapshots (>= 3 in last 7 days)
+                from datetime import datetime, timedelta, timezone as tz
+                cutoff = datetime.now(tz.utc) - timedelta(days=settings.resilience_baseline_days)
+                baseline_q = await session.execute(
+                    select(CrawlHealthSnapshot.platform)
+                    .where(CrawlHealthSnapshot.created_at >= cutoff)
+                    .group_by(CrawlHealthSnapshot.platform)
+                    .having(func.count() >= 3)
+                )
+                resilience_info["baselines_available"] = [
+                    row[0] for row in baseline_q.all()
+                ]
+        except Exception as e:
+            resilience_info["error"] = str(e)
+
     return {
         "status": "running",
         "uptime_seconds": round(uptime, 0),
@@ -156,6 +200,7 @@ async def health():
         "ml": ml,
         "test_users": test_users,
         "compute": _get_compute_info(),
+        "resilience": resilience_info,
     }
 
 
