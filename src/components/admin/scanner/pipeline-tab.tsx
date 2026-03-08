@@ -53,7 +53,7 @@ function PipelineStageCards({
 
   const stages = [
     {
-      label: "Discovered",
+      label: "Unique Discovered",
       icon: Image,
       color: "text-blue-400",
       bg: "bg-blue-500/10",

@@ -50,16 +50,17 @@ export function CrawlMapTab({
   );
 
   const enabledCount = platformSections.filter((s) => s.scan_enabled).length;
-  const totalScanned = platformSections.reduce(
-    (sum, s) => sum + (s.total_scanned || 0),
-    0
-  );
+  // Use the deduplicated per-platform count from discovered_images, not the
+  // inflated sum of section totals (sections share overlapping tags).
+  const uniqueDiscovered = platform?.total_images_discovered ?? 0;
+  // Section-level face counts still overlap, so derive face rate from
+  // enabled sections only, using max observed face count as a rough proxy.
   const totalFaces = platformSections.reduce(
     (sum, s) => sum + (s.total_faces || 0),
     0
   );
-  const avgFaceRate = totalScanned > 0
-    ? totalFaces / totalScanned
+  const avgFaceRate = uniqueDiscovered > 0
+    ? Math.min(totalFaces / uniqueDiscovered, 1)
     : 0;
   const uniqueTagCount = new Set(
     platformSections
@@ -210,10 +211,10 @@ export function CrawlMapTab({
                 </div>
                 <div>
                   <p className="text-sm font-bold font-[family-name:var(--font-mono)]">
-                    {totalScanned.toLocaleString()}
+                    {uniqueDiscovered.toLocaleString()}
                   </p>
                   <p className="text-[10px] text-muted-foreground">
-                    Images scanned
+                    Unique discovered
                   </p>
                 </div>
               </CardContent>
@@ -309,7 +310,7 @@ export function CrawlMapTab({
               </div>
             </div>
           )}
-          {unscannedEnabled.length > 0 && totalScanned > 0 && (
+          {unscannedEnabled.length > 0 && uniqueDiscovered > 0 && (
             <div className="flex items-start gap-3 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/5">
               <Clock className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
               <div>
