@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.discovery.base import DiscoveryContext
+from src.discovery.base import DiscoveryContext, DiscoveryResult
 from src.discovery.url_check import URLCheckDiscovery, _extract_title
 
 
@@ -13,14 +13,14 @@ class TestURLCheckDiscovery:
         discovery = URLCheckDiscovery()
         context = DiscoveryContext(urls=[])
         results = await discovery.discover(context)
-        assert results == []
+        assert results.images == []
 
     @pytest.mark.asyncio
     async def test_none_urls(self):
         discovery = URLCheckDiscovery()
         context = DiscoveryContext(urls=None)
         results = await discovery.discover(context)
-        assert results == []
+        assert results.images == []
 
     def test_get_source_type(self):
         assert URLCheckDiscovery().get_source_type() == "url_check"
@@ -73,4 +73,4 @@ class TestTinEyeDiscovery:
             discovery = TinEyeDiscovery()
             context = DiscoveryContext(images=[("bucket", "path.jpg")])
             results = await discovery.discover(context)
-            assert results == []
+            assert results.images == []

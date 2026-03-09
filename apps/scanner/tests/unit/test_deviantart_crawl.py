@@ -100,17 +100,17 @@ class TestDeviantArtRegistry:
     def test_rate_limiter_configured(self):
         from src.utils.rate_limiter import RATE_LIMITERS
         assert "deviantart" in RATE_LIMITERS
-        assert RATE_LIMITERS["deviantart"].rate == 2.0
-        assert RATE_LIMITERS["deviantart"].max_tokens == 10.0
+        assert RATE_LIMITERS["deviantart"].rate == 5.0
+        assert RATE_LIMITERS["deviantart"].max_tokens == 20.0
 
     def test_config_max_pages_exist(self):
         from src.config import Settings
         s = Settings()
-        assert s.deviantart_max_pages == 50
-        assert s.deviantart_high_damage_pages == 1000
-        assert s.deviantart_medium_damage_pages == 100
+        assert s.deviantart_max_pages == 10
+        assert s.deviantart_high_damage_pages == 10
+        assert s.deviantart_medium_damage_pages == 10
         assert s.deviantart_low_damage_pages == 10
-        assert s.deviantart_concurrency == 5
+        assert s.deviantart_concurrency == 10
 
 
 # ---------------------------------------------------------------------------

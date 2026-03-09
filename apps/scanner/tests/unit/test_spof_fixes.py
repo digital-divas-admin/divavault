@@ -281,8 +281,8 @@ class TestSafeCrawlTimeout:
             mock_cleanup.assert_awaited_once_with("test_platform")
 
     @pytest.mark.asyncio
-    async def test_safe_crawl_no_cleanup_on_normal_exception(self):
-        """On non-timeout exceptions, _safe_crawl should NOT call cleanup (inner func handles it)."""
+    async def test_safe_crawl_cleanup_on_normal_exception(self):
+        """On non-timeout exceptions, _safe_crawl should still call cleanup (belt-and-suspenders)."""
         from src.jobs.scheduler import _safe_crawl
 
         mock_crawl = MagicMock()
@@ -299,7 +299,7 @@ class TestSafeCrawlTimeout:
 
             await _safe_crawl(mock_job_store, mock_crawl)
 
-            mock_cleanup.assert_not_awaited()
+            mock_cleanup.assert_awaited_once_with("test_platform")
 
     @pytest.mark.asyncio
     async def test_safe_crawl_no_cleanup_on_success(self):
