@@ -528,10 +528,7 @@ function BackfillIndicator({
     );
   }
 
-  // CivitAI: show timeline position
-  const timelineLabel = platform === "civitai" && backfill.cursorDate
-    ? `Backfilled to ${new Date(backfill.cursorDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
-    : `${backfill.termsExhausted}/${backfill.termsTotal} terms done`;
+  const timelineLabel = `${backfill.termsExhausted}/${backfill.termsTotal} terms done`;
 
   return (
     <div>

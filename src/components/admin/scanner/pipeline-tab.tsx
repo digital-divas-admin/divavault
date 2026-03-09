@@ -491,13 +491,9 @@ function CrawlStatusGrid({ platforms }: { platforms: PlatformInfo[] }) {
                       <span>Backfill</span>
                       {bf.complete ? (
                         <span className="text-green-400 font-medium">{"\u2713"} Complete</span>
-                      ) : p.platform === "civitai" && bf.cursorDate ? (
-                        <span className="font-[family-name:var(--font-mono)]">
-                          {new Date(bf.cursorDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })} ({bf.pctComplete.toFixed(0)}%)
-                        </span>
                       ) : (
                         <span className="font-[family-name:var(--font-mono)]">
-                          {bf.termsExhausted}/{bf.termsTotal} ({bf.pctComplete.toFixed(0)}%)
+                          {bf.termsExhausted}/{bf.termsTotal} terms ({bf.pctComplete.toFixed(0)}%)
                         </span>
                       )}
                     </div>

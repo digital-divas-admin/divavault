@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import type { HoneypotItem } from "@/lib/scanner-command-queries";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,9 @@ import {
   Zap,
   RefreshCw,
   Loader2,
+  UserPlus,
+  X,
+  ImageIcon,
 } from "lucide-react";
 
 interface TestUsersTabProps {
@@ -73,6 +77,112 @@ export function TestUsersTab({
   const totalPlanted = honeypotItems.filter((h) => h.detected !== null).length;
   const detectionRate =
     totalPlanted > 0 ? ((detectedCount / totalPlanted) * 100).toFixed(1) : "0";
+
+  // Create test user state
+  const [seedName, setSeedName] = useState("");
+  const [seedEmail, setSeedEmail] = useState("");
+  const [seedTier, setSeedTier] = useState("premium");
+  const [seedFiles, setSeedFiles] = useState<File[]>([]);
+  const [seeding, setSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState<string | null>(null);
+  const [seedError, setSeedError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Memoize blob URLs and revoke on cleanup
+  const previewUrls = useMemo(
+    () => seedFiles.map((f) => URL.createObjectURL(f)),
+    [seedFiles]
+  );
+  useEffect(() => {
+    return () => previewUrls.forEach((url) => URL.revokeObjectURL(url));
+  }, [previewUrls]);
+
+  function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) {
+      setSeedFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+    }
+    // Reset input so the same file can be re-selected
+    e.target.value = "";
+  }
+
+  function removeFile(index: number) {
+    setSeedFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function handleCreateTestUser() {
+    if (!seedName.trim()) {
+      setSeedError("Name is required");
+      return;
+    }
+    if (seedFiles.length === 0) {
+      setSeedError("At least one photo is required");
+      return;
+    }
+
+    setSeeding(true);
+    setSeedResult(null);
+    setSeedError(null);
+
+    try {
+      const supabase = createBrowserClient();
+      const folderId = crypto.randomUUID();
+
+      // Upload all photos in parallel
+      const uploadResults = await Promise.all(
+        seedFiles.map(async (file) => {
+          const filePath = `test-${folderId}/${file.name}`;
+          const { error } = await supabase.storage
+            .from("capture-uploads")
+            .upload(filePath, file);
+          return { file, filePath, error };
+        })
+      );
+      const failed = uploadResults.find((r) => r.error);
+      if (failed) {
+        setSeedError(
+          `Upload failed for ${failed.file.name}: ${failed.error!.message}`
+        );
+        setSeeding(false);
+        return;
+      }
+      const photoPaths = uploadResults.map((r) => ({
+        bucket: "capture-uploads",
+        file_path: r.filePath,
+      }));
+
+      // Call the seed-contributor API
+      const email =
+        seedEmail.trim() ||
+        `test-${Date.now()}@test.consentedai.com`;
+      const res = await fetch("/api/admin/scanner/seed-contributor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: seedName.trim(),
+          email,
+          photo_paths: photoPaths,
+          subscription_tier: seedTier,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSeedError(data.error || "Failed to create test user");
+      } else {
+        setSeedResult(
+          `Created test user "${seedName.trim()}" (${data.contributor_id}). ${data.images_queued} photo(s) queued for embedding.`
+        );
+        // Reset form
+        setSeedName("");
+        setSeedEmail("");
+        setSeedTier("premium");
+        setSeedFiles([]);
+      }
+    } catch {
+      setSeedError("Failed to reach server");
+    } finally {
+      setSeeding(false);
+    }
+  }
 
   // Auto-generate honeypot state
   const [count, setCount] = useState(20);
@@ -199,6 +309,132 @@ export function TestUsersTab({
             <p className="text-xs text-muted-foreground mt-1">
               AI-generated test faces for scale testing
             </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Create Test User */}
+      <div>
+        <h3 className="text-xs font-medium text-muted-foreground mb-3">
+          Create Test User
+        </h3>
+        <Card className="bg-card border-border/30">
+          <CardContent className="p-4 space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Create a seeded test contributor with real photos. Photos are
+              uploaded to storage and processed through the full face detection
+              &rarr; embedding &rarr; matching pipeline.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="seed-name" className="text-xs">
+                  Full Name *
+                </Label>
+                <Input
+                  id="seed-name"
+                  placeholder="Jane Test"
+                  value={seedName}
+                  onChange={(e) => setSeedName(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="seed-email" className="text-xs">
+                  Email{" "}
+                  <span className="text-muted-foreground">(auto-generated if blank)</span>
+                </Label>
+                <Input
+                  id="seed-email"
+                  type="email"
+                  placeholder="test-xxx@test.consentedai.com"
+                  value={seedEmail}
+                  onChange={(e) => setSeedEmail(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="seed-tier" className="text-xs">
+                  Subscription Tier
+                </Label>
+                <Select value={seedTier} onValueChange={setSeedTier}>
+                  <SelectTrigger id="seed-tier" className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">Free</SelectItem>
+                    <SelectItem value="protected">Protected</SelectItem>
+                    <SelectItem value="premium">Premium</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Photos *</Label>
+              <div className="flex flex-wrap gap-2">
+                {seedFiles.map((file, i) => (
+                  <div
+                    key={`${file.name}-${i}`}
+                    className="relative group w-16 h-16 rounded-md overflow-hidden border border-border/30 bg-background"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={previewUrls[i]}
+                      alt={file.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeFile(i)}
+                      className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                    >
+                      <X className="h-4 w-4 text-white" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-16 h-16 rounded-md border border-dashed border-border/50 flex items-center justify-center hover:border-purple-500/50 transition-colors"
+                >
+                  <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                </button>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFilesSelected}
+                className="hidden"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                {seedFiles.length} photo{seedFiles.length !== 1 ? "s" : ""}{" "}
+                selected
+              </p>
+            </div>
+
+            <Button
+              size="sm"
+              onClick={handleCreateTestUser}
+              disabled={seeding || !seedName.trim() || seedFiles.length === 0}
+              className="h-9"
+            >
+              {seeding ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              Create Test User
+            </Button>
+
+            {seedResult && (
+              <p className="text-xs text-green-400">{seedResult}</p>
+            )}
+            {seedError && (
+              <p className="text-xs text-red-400">{seedError}</p>
+            )}
           </CardContent>
         </Card>
       </div>

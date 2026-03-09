@@ -318,17 +318,17 @@ function parseBackfillProgress(
   let pctComplete = 0;
   if (complete) {
     pctComplete = 100;
+  } else if (termsTotal > 0) {
+    // Primary metric: term/tag exhaustion percentage (works for all platforms)
+    pctComplete = (termsExhausted / termsTotal) * 100;
   } else if (platform === "civitai" && cursorDate && oldestDate) {
-    // CivitAI: timeline percentage — how far back cursor has reached
+    // Fallback for CivitAI global feed (no per-term tracking yet)
     const now = Date.now();
     const cursorMs = new Date(cursorDate).getTime();
     const oldestMs = new Date(oldestDate).getTime();
     if (now > oldestMs) {
       pctComplete = Math.min(100, ((now - cursorMs) / (now - oldestMs)) * 100);
     }
-  } else if (termsTotal > 0) {
-    // DeviantArt / others: term exhaustion percentage
-    pctComplete = (termsExhausted / termsTotal) * 100;
   }
 
   return {

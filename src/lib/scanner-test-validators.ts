@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+const tierEnum = z.enum(["free", "protected", "premium"], {
+  message: "Invalid tier",
+});
+export type SubscriptionTier = z.infer<typeof tierEnum>;
+
 export const resetEmbeddingsSchema = z.object({
   contributorId: z.string().uuid({ message: "Invalid contributor ID" }),
 });
@@ -32,9 +37,7 @@ export const triggerCrawlSchema = z.object({
 
 export const changeTierSchema = z.object({
   contributorId: z.string().uuid({ message: "Invalid contributor ID" }),
-  tier: z.enum(["free", "protected", "premium"], {
-    message: "Invalid tier",
-  }),
+  tier: tierEnum,
 });
 
 export const autoHoneypotSchema = z.object({
@@ -46,6 +49,21 @@ export const autoHoneypotSchema = z.object({
   platform: z.string().min(1).optional(),
 });
 
+export const seedContributorSchema = z.object({
+  full_name: z.string().min(1, { message: "Name is required" }),
+  email: z.string().email({ message: "Valid email required" }),
+  photo_paths: z
+    .array(
+      z.object({
+        bucket: z.string(),
+        file_path: z.string(),
+      })
+    )
+    .min(1, { message: "At least one photo required" }),
+  subscription_tier: tierEnum.default("premium"),
+});
+
+export type SeedContributorData = z.infer<typeof seedContributorSchema>;
 export type AutoHoneypotData = z.infer<typeof autoHoneypotSchema>;
 export type ResetEmbeddingsData = z.infer<typeof resetEmbeddingsSchema>;
 export type TriggerScanData = z.infer<typeof triggerScanSchema>;
