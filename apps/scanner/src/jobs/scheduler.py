@@ -1398,59 +1398,66 @@ async def _phase_matching(job_store: JobStore) -> None:
             )
 
             # Build query matrix (N × 512)
+            t0 = time.monotonic()
             query_matrix = np.array(
                 [entry["embedding"] for entry in unmatched],
                 dtype=np.float32,
             )
 
-            # Local cosine similarity — sub-millisecond for 5000 × 33
+            # Local cosine similarity
             hits = batch_compare_local(query_matrix, ref_matrix, registry_entries, threshold, ref_normalized=True)
+            t1 = time.monotonic()
+            log.info("phase_matching_compare", duration_ms=round((t1 - t0) * 1000, 1), hits=len(hits))
 
             # Handle actual matches (rare — only for hits above threshold)
             batch_matches = 0
-            async with async_session() as session:
-                for qi, hit_list in hits.items():
-                    entry = unmatched[qi]
-                    for hit in hit_list:
-                        try:
-                            if hit["source"] == "contributor":
-                                contributor_match = {
-                                    "contributor_id": UUID(hit["contributor_id"]),
-                                    "embedding_id": hit["embedding_id"],
-                                    "similarity": hit["similarity"],
-                                }
-                                result = await _handle_match(
-                                    session, entry["discovered_image_id"],
-                                    contributor_match, entry["page_url"],
-                                    entry["face_index"],
+            if hits:
+                async with async_session() as session:
+                    for qi, hit_list in hits.items():
+                        entry = unmatched[qi]
+                        for hit in hit_list:
+                            try:
+                                if hit["source"] == "contributor":
+                                    contributor_match = {
+                                        "contributor_id": UUID(hit["contributor_id"]),
+                                        "embedding_id": hit["embedding_id"],
+                                        "similarity": hit["similarity"],
+                                    }
+                                    result = await _handle_match(
+                                        session, entry["discovered_image_id"],
+                                        contributor_match, entry["page_url"],
+                                        entry["face_index"],
+                                    )
+                                    if result:
+                                        batch_matches += 1
+                                elif hit["source"] == "registry":
+                                    registry_hit = {
+                                        "registry_cid": hit["contributor_id"],
+                                        "similarity": hit["similarity"],
+                                    }
+                                    result = await _handle_registry_match(
+                                        session, entry["discovered_image_id"],
+                                        registry_hit, entry["page_url"],
+                                        entry["face_index"],
+                                    )
+                                    if result:
+                                        batch_matches += 1
+                            except Exception as e:
+                                log.error(
+                                    "match_handle_error",
+                                    error=repr(e),
+                                    embedding_id=str(entry["id"]),
                                 )
-                                if result:
-                                    batch_matches += 1
-                            elif hit["source"] == "registry":
-                                registry_hit = {
-                                    "registry_cid": hit["contributor_id"],
-                                    "similarity": hit["similarity"],
-                                }
-                                result = await _handle_registry_match(
-                                    session, entry["discovered_image_id"],
-                                    registry_hit, entry["page_url"],
-                                    entry["face_index"],
-                                )
-                                if result:
-                                    batch_matches += 1
-                        except Exception as e:
-                            log.error(
-                                "match_handle_error",
-                                error=repr(e),
-                                embedding_id=str(entry["id"]),
-                            )
-                await session.commit()
+                    await session.commit()
 
-            # Bulk mark all as matched — 1 DB call (chunked internally)
+            # Bulk mark all as matched — chunked UPDATE
+            t2 = time.monotonic()
             processed_ids = [entry["id"] for entry in unmatched]
             async with async_session() as session:
                 await mark_face_embeddings_matched(session, processed_ids)
                 await session.commit()
+            t3 = time.monotonic()
+            log.info("phase_matching_marked", duration_ms=round((t3 - t2) * 1000, 1), count=len(processed_ids))
 
             total_matches += batch_matches
             total_processed += len(unmatched)

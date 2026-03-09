@@ -1157,7 +1157,7 @@ async def mark_face_embeddings_matched(
     """Mark discovered face embeddings as matched (batched to avoid statement timeout)."""
     if not ids:
         return
-    batch_size = 200
+    batch_size = 100
     for i in range(0, len(ids), batch_size):
         batch = ids[i : i + batch_size]
         await session.execute(
