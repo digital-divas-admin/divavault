@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # Crawl scheduling (hours between automatic crawls, 0 = manual only)
     civitai_crawl_interval_hours: int = 24
     deviantart_crawl_interval_hours: int = 24
+    fourchan_crawl_interval_hours: int = 24
 
     # CivitAI crawl
     civitai_max_pages: int = 10  # pages per term per tick (100 images/page)
@@ -59,6 +60,10 @@ class Settings(BaseSettings):
     backfill_enabled: bool = True
     civitai_backfill_pages: int = 100         # 100 pages/term/tick = ~10,000 images/term
     deviantart_backfill_pages: int = 50       # 50 pages/tag/tick = ~1,200 images/tag
+
+    # 4chan crawl
+    fourchan_threads_per_board: int = 10       # threads to drill into per board (sweep)
+    fourchan_backfill_threads: int = 150       # threads to drill into per board (backfill) — drill all active threads in one pass
 
     # DeviantArt crawl
     deviantart_client_id: str = ""

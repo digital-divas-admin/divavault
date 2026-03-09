@@ -61,6 +61,7 @@ const PLATFORM_OPTIONS = [
   { value: "all", label: "All Platforms" },
   { value: "civitai", label: "CivitAI" },
   { value: "deviantart", label: "DeviantArt" },
+  { value: "fourchan", label: "4chan" },
 ];
 
 export function TestUsersTab({

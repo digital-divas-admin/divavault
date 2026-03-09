@@ -61,30 +61,31 @@ from src.config import settings
 from src.db.connection import async_session
 from src.db.queries import insert_discovered_face_embedding
 from src.ingest.embeddings import init_model
-from src.utils.image_download import load_and_resize
+from src.utils.image_download import load_and_resize, civitai_thumbnail_url, fourchan_thumbnail_url
 
 TEMP_DIR = Path(settings.temp_dir)
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 # --- Download helpers ---
 
-async def download_thumb(session, url, img_id):
-    \"\"\"Download CivitAI CDN thumbnail (width=450) for face detection only.\"\"\"
-    thumb_url = url.replace("/original=true/", "/width=450/")
+MAGIC_PREFIXES = (b"\\xff\\xd8", b"\\x89P", b"RI", b"GI", b"BM")
+
+async def download_thumb_url(session, thumb_url, img_id):
+    \"\"\"Download a thumbnail from a pre-computed URL for face detection.\"\"\"
     try:
         async with session.get(thumb_url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
             if resp.status != 200: return None
             ct = (resp.content_type or "").split(";")[0].strip().lower()
-            if ct.startswith("video/") or ct.startswith("text/") or ct.startswith("application/json"):
+            if ct.startswith(("video/", "text/", "application/json")):
                 return None
             data = await resp.read()
             if len(data) < 500: return None
-            if len(data) >= 2 and data[:2] not in (b"\\xff\\xd8", b"\\x89P", b"RI", b"GI", b"BM"):
+            if len(data) >= 2 and data[:2] not in MAGIC_PREFIXES:
                 return None
             path = TEMP_DIR / f"{{img_id}}_thumb.jpg"
             path.write_bytes(data)
             return path
-    except: return None
+    except Exception: return None
 
 async def download_orig(session, url, img_id):
     \"\"\"Download full-resolution original for embedding extraction.\"\"\"
@@ -92,16 +93,16 @@ async def download_orig(session, url, img_id):
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             if resp.status != 200: return None
             ct = (resp.content_type or "").split(";")[0].strip().lower()
-            if ct.startswith("video/") or ct.startswith("text/") or ct.startswith("application/json"):
+            if ct.startswith(("video/", "text/", "application/json")):
                 return None
             data = await resp.read()
             if len(data) < 1000: return None
-            if len(data) >= 2 and data[:2] not in (b"\\xff\\xd8", b"\\x89P", b"RI", b"GI", b"BM"):
+            if len(data) >= 2 and data[:2] not in MAGIC_PREFIXES:
                 return None
             path = TEMP_DIR / f"{{img_id}}.jpg"
             path.write_bytes(data)
             return path
-    except: return None
+    except Exception: return None
 
 async def download_standard(session, url, img_id, stored_url=None):
     \"\"\"Download image via stored URL or source URL (non-CivitAI path).\"\"\"
@@ -120,27 +121,119 @@ async def download_standard(session, url, img_id, stored_url=None):
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp2:
                         if resp2.status != 200: return None
                         ct2 = (resp2.content_type or "").split(";")[0].strip().lower()
-                        if ct2.startswith("video/") or ct2.startswith("text/") or ct2.startswith("application/json"):
+                        if ct2.startswith(("video/", "text/", "application/json")):
                             return None
                         data = await resp2.read()
                         if len(data) < 1000: return None
-                        if len(data) >= 2 and data[:2] not in (b"\\xff\\xd8", b"\\x89P", b"RI", b"GI", b"BM"):
+                        if len(data) >= 2 and data[:2] not in MAGIC_PREFIXES:
                             return None
                         path = TEMP_DIR / f"{{img_id}}.jpg"
                         path.write_bytes(data)
                         return path
                 return None
             ct = (resp.content_type or "").split(";")[0].strip().lower()
-            if ct.startswith("video/") or ct.startswith("text/") or ct.startswith("application/json"):
+            if ct.startswith(("video/", "text/", "application/json")):
                 return None
             data = await resp.read()
             if len(data) < 1000: return None
-            if len(data) >= 2 and data[:2] not in (b"\\xff\\xd8", b"\\x89P", b"RI", b"GI", b"BM"):
+            if len(data) >= 2 and data[:2] not in MAGIC_PREFIXES:
                 return None
             path = TEMP_DIR / f"{{img_id}}.jpg"
             path.write_bytes(data)
             return path
-    except: return None
+    except Exception: return None
+
+# --- Two-pass processor (shared by CivitAI and 4chan) ---
+
+async def run_two_pass(http, images, thumb_url_fn, model, stats):
+    \"\"\"Two-pass face detection: thumbnails first, then originals for face-positive only.
+
+    Args:
+        images: list of dicts with 'id' and 'url' keys
+        thumb_url_fn: callable(url) -> thumbnail_url or None
+    \"\"\"
+    # Pass 1: Download all thumbnails concurrently, detect faces
+    async def _get_thumb(img):
+        t = thumb_url_fn(img["url"])
+        if t is None: return None
+        return await download_thumb_url(http, t, img["id"])
+    thumb_paths = await asyncio.gather(*[_get_thumb(img) for img in images])
+
+    face_positive = []
+    async with async_session() as db:
+        for img, thumb_path in zip(images, thumb_paths):
+            stats["processed"] += 1
+            stats["thumbs_checked"] += 1
+            if thumb_path is None:
+                await db.execute(text(
+                    "UPDATE discovered_images SET has_face = false WHERE id = :id"
+                ), {{"id": img["id"]}})
+                stats["originals_saved"] += 1
+                continue
+            try:
+                cv_img = load_and_resize(thumb_path)
+                if cv_img is None:
+                    await db.execute(text(
+                        "UPDATE discovered_images SET has_face = false WHERE id = :id"
+                    ), {{"id": img["id"]}})
+                    stats["originals_saved"] += 1
+                    continue
+                detected = model.get(cv_img)
+                if len(detected) == 0:
+                    await db.execute(text(
+                        "UPDATE discovered_images SET has_face = false, face_count = 0 WHERE id = :id"
+                    ), {{"id": img["id"]}})
+                    stats["originals_saved"] += 1
+                else:
+                    face_positive.append((img, len(detected)))
+                del cv_img, detected
+            except Exception:
+                await db.execute(text(
+                    "UPDATE discovered_images SET has_face = false WHERE id = :id"
+                ), {{"id": img["id"]}})
+                stats["originals_saved"] += 1
+            finally:
+                if thumb_path: thumb_path.unlink(missing_ok=True)
+        await db.commit()
+
+    # Pass 2: Download originals for face-positive only, extract embeddings
+    if face_positive:
+        orig_paths = await asyncio.gather(*[
+            download_orig(http, img["url"], img["id"]) for img, _ in face_positive
+        ])
+
+        async with async_session() as db:
+            for (img, thumb_fc), orig_path in zip(face_positive, orig_paths):
+                if orig_path is None:
+                    await db.execute(text(
+                        "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
+                    ), {{"id": img["id"], "fc": thumb_fc}})
+                    continue
+                try:
+                    cv_img = load_and_resize(orig_path)
+                    if cv_img is None:
+                        await db.execute(text(
+                            "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
+                        ), {{"id": img["id"], "fc": thumb_fc}})
+                        continue
+                    detected = model.get(cv_img)
+                    fc = len(detected) if len(detected) > 0 else thumb_fc
+                    await db.execute(text(
+                        "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
+                    ), {{"id": img["id"], "fc": fc}})
+                    for fi, face in enumerate(detected):
+                        await insert_discovered_face_embedding(
+                            db, img["id"], fi, face.normed_embedding, float(face.det_score)
+                        )
+                        stats["faces"] += 1
+                    del cv_img, detected
+                except Exception:
+                    await db.execute(text(
+                        "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
+                    ), {{"id": img["id"], "fc": thumb_fc}})
+                finally:
+                    if orig_path: orig_path.unlink(missing_ok=True)
+            await db.commit()
 
 # --- Single-pass processor (non-CivitAI or stored URLs) ---
 
@@ -164,7 +257,7 @@ async def process_standard(db, model, img, path, stats):
                 await insert_discovered_face_embedding(db, img["id"], fi, face.normed_embedding, float(face.det_score))
                 stats["faces"] += 1
         del cv_img, detected
-    except:
+    except Exception:
         await db.execute(text("UPDATE discovered_images SET has_face = false WHERE id = :id"), {{"id": img["id"]}})
     finally:
         if path: path.unlink(missing_ok=True)
@@ -187,12 +280,18 @@ async def main():
 
     connector = aiohttp.TCPConnector(limit=50)
 
-    # Split entire batch: CivitAI thumbable vs standard
+    # Split entire batch: CivitAI thumbable vs 4chan thumbable vs standard
     thumbable = []
+    fourchan_thumbable = []
     standard = []
     for img in batch:
-        if not img.get("stored_url") and img.get("url") and "/original=true/" in img["url"]:
-            thumbable.append(img)
+        if not img.get("stored_url") and img.get("url"):
+            if "/original=true/" in img["url"]:
+                thumbable.append(img)
+            elif "i.4cdn.org" in img["url"]:
+                fourchan_thumbable.append(img)
+            else:
+                standard.append(img)
         else:
             standard.append(img)
 
@@ -200,86 +299,11 @@ async def main():
 
         # --- Two-pass for CivitAI thumbable images ---
         if thumbable:
-            # Pass 1: Download all thumbnails concurrently, detect faces
-            thumb_paths = await asyncio.gather(*[
-                download_thumb(http, img["url"], img["id"]) for img in thumbable
-            ])
+            await run_two_pass(http, thumbable, civitai_thumbnail_url, model, stats)
 
-            face_positive = []
-            async with async_session() as db:
-                for img, thumb_path in zip(thumbable, thumb_paths):
-                    stats["processed"] += 1
-                    stats["thumbs_checked"] += 1
-                    if thumb_path is None:
-                        await db.execute(text(
-                            "UPDATE discovered_images SET has_face = false WHERE id = :id"
-                        ), {{"id": img["id"]}})
-                        stats["originals_saved"] += 1
-                        continue
-                    try:
-                        cv_img = load_and_resize(thumb_path)
-                        if cv_img is None:
-                            await db.execute(text(
-                                "UPDATE discovered_images SET has_face = false WHERE id = :id"
-                            ), {{"id": img["id"]}})
-                            stats["originals_saved"] += 1
-                            continue
-                        detected = model.get(cv_img)
-                        if len(detected) == 0:
-                            await db.execute(text(
-                                "UPDATE discovered_images SET has_face = false, face_count = 0 WHERE id = :id"
-                            ), {{"id": img["id"]}})
-                            stats["originals_saved"] += 1
-                        else:
-                            face_positive.append((img, len(detected)))
-                        del cv_img, detected
-                    except:
-                        await db.execute(text(
-                            "UPDATE discovered_images SET has_face = false WHERE id = :id"
-                        ), {{"id": img["id"]}})
-                        stats["originals_saved"] += 1
-                    finally:
-                        if thumb_path: thumb_path.unlink(missing_ok=True)
-                await db.commit()
-
-            # Pass 2: Download originals for face-positive only, extract embeddings
-            if face_positive:
-                orig_paths = await asyncio.gather(*[
-                    download_orig(http, img["url"], img["id"]) for img, _ in face_positive
-                ])
-
-                async with async_session() as db:
-                    for (img, thumb_fc), orig_path in zip(face_positive, orig_paths):
-                        if orig_path is None:
-                            await db.execute(text(
-                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
-                            ), {{"id": img["id"], "fc": thumb_fc}})
-                            continue
-                        try:
-                            cv_img = load_and_resize(orig_path)
-                            if cv_img is None:
-                                await db.execute(text(
-                                    "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
-                                ), {{"id": img["id"], "fc": thumb_fc}})
-                                continue
-                            detected = model.get(cv_img)
-                            fc = len(detected) if len(detected) > 0 else thumb_fc
-                            await db.execute(text(
-                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
-                            ), {{"id": img["id"], "fc": fc}})
-                            for fi, face in enumerate(detected):
-                                await insert_discovered_face_embedding(
-                                    db, img["id"], fi, face.normed_embedding, float(face.det_score)
-                                )
-                                stats["faces"] += 1
-                            del cv_img, detected
-                        except:
-                            await db.execute(text(
-                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
-                            ), {{"id": img["id"], "fc": thumb_fc}})
-                        finally:
-                            if orig_path: orig_path.unlink(missing_ok=True)
-                    await db.commit()
+        # --- Two-pass for 4chan thumbable images ---
+        if fourchan_thumbable:
+            await run_two_pass(http, fourchan_thumbable, fourchan_thumbnail_url, model, stats)
 
         # --- Single-pass for standard images (stored URLs, non-CivitAI) ---
         if standard:

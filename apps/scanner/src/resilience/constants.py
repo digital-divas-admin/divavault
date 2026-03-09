@@ -15,12 +15,14 @@ SCANNER_ROOT = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.absp
 CRAWLER_FILES = {
     "civitai": "src/discovery/platform_crawl.py",
     "deviantart": "src/discovery/deviantart_crawl.py",
+    "fourchan": "src/discovery/fourchan_crawl.py",
 }
 
 # Map platform → diagnostic URL for snapshot capture
 PLATFORM_DIAGNOSTIC_URLS = {
     "civitai": "https://civitai.com/api/v1/images?limit=1",
     "deviantart": "https://www.deviantart.com/tag/aiart",
+    "fourchan": "https://a.4cdn.org/s/catalog.json",
 }
 
 # Platforms monitored by the resilience module

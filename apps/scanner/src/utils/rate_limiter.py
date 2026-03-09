@@ -80,6 +80,7 @@ RATE_LIMITERS: dict[str, RateLimiter] = {
     "common_crawl": RateLimiter(rate=1.0, max_tokens=3.0),    # 1 req/sec, gentle on free API
     "reddit": RateLimiter(rate=1.0, max_tokens=5.0),           # 1 req/sec, Reddit rate limit
     "google_cse": RateLimiter(rate=1.0, max_tokens=5.0),       # 1 req/sec
+    "fourchan": RateLimiter(rate=1.0, max_tokens=1.0),          # 1 req/sec, no burst (4chan strict limit)
     "scout_assess": RateLimiter(rate=5.0, max_tokens=20.0),    # 5 req/sec for assessment HTTP GETs
     "serpapi": RateLimiter(rate=1.0, max_tokens=5.0),            # 1 req/sec, burst of 5
     "wayback": RateLimiter(rate=1.0, max_tokens=3.0),            # 1 req/sec, burst of 3

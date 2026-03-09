@@ -1,4 +1,4 @@
-import { Boxes, Palette, MessageSquare, Globe, Search } from "lucide-react";
+import { Boxes, Palette, MessageSquare, Globe, Search, Hash } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 const PLATFORMS: Record<
@@ -9,6 +9,7 @@ const PLATFORMS: Record<
   deviantart: { icon: Palette, color: "#00CC6A", label: "DeviantArt" },
   reddit: { icon: MessageSquare, color: "#FF4500", label: "Reddit" },
   tineye: { icon: Search, color: "#0099CC", label: "TinEye" },
+  fourchan: { icon: Hash, color: "#789922", label: "4chan" },
 };
 
 export function getPlatformConfig(

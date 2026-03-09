@@ -1137,6 +1137,7 @@ def _parse_cursor_timestamp(cursor: str | None) -> str | None:
 _PLATFORM_ORIGINS = {
     "civitai": "2022-11-16T00:00:00Z",
     "deviantart": "2000-08-07T00:00:00Z",
+    "fourchan": "2003-10-01T00:00:00Z",
 }
 
 # CivitAI backfill cutoff: don't crawl content older than 2 years

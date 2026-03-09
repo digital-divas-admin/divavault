@@ -47,6 +47,20 @@ def civitai_thumbnail_url(original_url: str, width: int = 450) -> str:
     """Convert CivitAI CDN URL from /original=true/ to /width=N/."""
     return original_url.replace("/original=true/", f"/width={width}/")
 
+
+def fourchan_thumbnail_url(original_url: str) -> str | None:
+    """Convert 4chan full image URL to thumbnail URL.
+
+    https://i.4cdn.org/s/1234567890123.jpg -> https://i.4cdn.org/s/1234567890123s.jpg
+    Thumbnails are always JPEG, ~10-20KB.
+    """
+    if "i.4cdn.org" not in original_url:
+        return None
+    last_dot = original_url.rfind(".")
+    if last_dot == -1:
+        return None
+    return f"{original_url[:last_dot]}s.jpg"
+
 # Semaphore to limit concurrent downloads
 _download_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 

@@ -50,6 +50,7 @@ const PLATFORMS = [
   "reddit",
   "artstation",
   "twitter",
+  "fourchan",
 ];
 
 function pick<T>(arr: T[]): T {
