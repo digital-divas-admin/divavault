@@ -80,6 +80,10 @@ ALL_TAGS: list[str] = sorted({tag for tags in _DA_SECTION_TERMS.values() for tag
 # Early-stop: if this fraction of a page's images are already processed, stop the tag
 DEDUP_STOP_RATIO = 0.8
 
+# Per-tag timeout (seconds) — prevents one stuck tag from blocking all other tags.
+# Normal tag crawl takes 5-30s; 120s is generous.
+TAG_TIMEOUT_SECONDS = 120
+
 class DeviantArtCrawl(BaseDiscoverySource):
     """Platform crawl for DeviantArt — hybrid RSS + HTML tag scraping."""
 
@@ -388,7 +392,21 @@ class DeviantArtCrawl(BaseDiscoverySource):
                 finally:
                     gc.collect()
 
-        # Run all tags
+        async def _crawl_tag_with_timeout(
+            http_session: aiohttp.ClientSession, tag: str
+        ) -> None:
+            try:
+                await asyncio.wait_for(
+                    _crawl_tag_inline(http_session, tag),
+                    timeout=TAG_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                log.warning("inline_tag_timeout", tag=tag, timeout=TAG_TIMEOUT_SECONDS)
+                # Preserve existing cursor so it retries next tick
+                async with cursors_lock:
+                    if tag not in updated_cursors:
+                        updated_cursors[tag] = saved_cursors.get(tag)
+
         connector = aiohttp.TCPConnector(limit=30)
         async with aiohttp.ClientSession(
             headers={
@@ -398,7 +416,7 @@ class DeviantArtCrawl(BaseDiscoverySource):
             auto_decompress=True,
             connector=connector,
         ) as http_session:
-            tasks = [_crawl_tag_inline(http_session, tag) for tag in effective_tags]
+            tasks = [_crawl_tag_with_timeout(http_session, tag) for tag in effective_tags]
             await asyncio.gather(*tasks)
 
         detection_pool.shutdown(wait=False)
@@ -477,13 +495,27 @@ class DeviantArtCrawl(BaseDiscoverySource):
                     async with cursors_lock:
                         updated_cursors[tag] = saved_cursors.get(tag)
 
+        async def _fetch_tag_with_timeout(
+            session: aiohttp.ClientSession, tag: str
+        ) -> None:
+            try:
+                await asyncio.wait_for(
+                    _fetch_one_tag(session, tag),
+                    timeout=TAG_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                log.warning("deferred_tag_timeout", tag=tag, timeout=TAG_TIMEOUT_SECONDS)
+                async with cursors_lock:
+                    if tag not in updated_cursors:
+                        updated_cursors[tag] = saved_cursors.get(tag)
+
         async with aiohttp.ClientSession(
             headers={"User-Agent": USER_AGENT},
             auto_decompress=True,
         ) as session:
             # Tags arrive pre-sorted by priority; semaphore FIFO ensures
             # highest-priority tags start first.
-            tasks = [_fetch_one_tag(session, tag) for tag in effective_tags]
+            tasks = [_fetch_tag_with_timeout(session, tag) for tag in effective_tags]
             await asyncio.gather(*tasks)
 
         tags_exhausted = sum(1 for c in updated_cursors.values() if c is None)

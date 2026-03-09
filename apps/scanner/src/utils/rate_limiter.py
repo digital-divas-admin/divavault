@@ -5,6 +5,10 @@ import time
 from dataclasses import dataclass, field
 
 
+class RateLimiterTimeout(Exception):
+    """Raised when acquire() exceeds max_wait."""
+
+
 @dataclass
 class RateLimiter:
     """Async token bucket rate limiter.
@@ -30,8 +34,18 @@ class RateLimiter:
         self._tokens = min(self.max_tokens, self._tokens + elapsed * self.rate)
         self._last_refill = now
 
-    async def acquire(self, tokens: float = 1.0) -> None:
-        """Wait until the requested number of tokens are available."""
+    async def acquire(self, tokens: float = 1.0, max_wait: float = 120.0) -> None:
+        """Wait until the requested number of tokens are available.
+
+        Args:
+            tokens: Number of tokens to acquire.
+            max_wait: Maximum seconds to wait before raising RateLimiterTimeout.
+        """
+        if self.rate <= 0:
+            raise RateLimiterTimeout(
+                f"Rate is {self.rate} — tokens will never refill"
+            )
+        deadline = time.monotonic() + max_wait
         while True:
             async with self._lock:
                 self._refill()
@@ -41,7 +55,12 @@ class RateLimiter:
                 # Calculate wait time
                 deficit = tokens - self._tokens
                 wait_time = deficit / self.rate
-            await asyncio.sleep(wait_time)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RateLimiterTimeout(
+                    f"Could not acquire {tokens} tokens within {max_wait}s"
+                )
+            await asyncio.sleep(min(wait_time, remaining))
 
 
 # Pre-configured limiters for external services

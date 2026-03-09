@@ -11,8 +11,10 @@ import { MLIntelligenceTab } from "./ml-intelligence-tab";
 import { TestUsersTab } from "./test-users-tab";
 import { ScoutTab } from "./scout-tab";
 import { MatchesTab } from "./matches-tab";
+import { DailyReportTab } from "./daily-report-tab";
 import {
   LayoutDashboard,
+  ClipboardCheck,
   GitBranch,
   Map,
   Brain,
@@ -23,6 +25,7 @@ import {
 
 const TABS = [
   { id: "command", label: "Command", icon: LayoutDashboard },
+  { id: "daily-report", label: "Daily Report", icon: ClipboardCheck },
   { id: "pipeline", label: "Pipeline", icon: GitBranch },
   { id: "crawl-map", label: "Crawl Map", icon: Map },
   { id: "matches", label: "Matches", icon: Crosshair },
@@ -103,6 +106,9 @@ export function CommandCenter({ initialData }: CommandCenterProps) {
           health={health}
           onSwitchTab={handleSwitchTab}
         />
+      )}
+      {activeTab === "daily-report" && (
+        <DailyReportTab data={initialData} health={health} />
       )}
       {activeTab === "pipeline" && (
         <PipelineTab

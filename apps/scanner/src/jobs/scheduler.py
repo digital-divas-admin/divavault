@@ -96,6 +96,48 @@ _url_check = URLCheckDiscovery()
 _SCANNER_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+async def _run_step(name: str, coro, timeout_seconds: int = 0, on_timeout=None) -> None:
+    """Execute a scheduler step with timing, timeout, and structured logging.
+
+    Args:
+        name: Step label for logging.
+        coro: Async coroutine to execute.
+        timeout_seconds: Max seconds (0 = no timeout).
+        on_timeout: Optional async callback invoked after a timeout to clean up state.
+    """
+    step_start = time.monotonic()
+    log.info("step_start", step=name)
+    try:
+        if timeout_seconds > 0:
+            await asyncio.wait_for(coro, timeout=timeout_seconds)
+        else:
+            await coro
+        duration = time.monotonic() - step_start
+        log.info("step_complete", step=name, duration_seconds=round(duration, 2))
+    except asyncio.TimeoutError:
+        duration = time.monotonic() - step_start
+        log.error("step_timeout", step=name, timeout_seconds=timeout_seconds,
+                  duration_seconds=round(duration, 2))
+        if on_timeout is not None:
+            try:
+                await on_timeout()
+            except Exception as cleanup_err:
+                log.error("step_timeout_cleanup_error", step=name, error=repr(cleanup_err))
+    except Exception as e:
+        duration = time.monotonic() - step_start
+        log.error("step_error", step=name, error=repr(e),
+                  duration_seconds=round(duration, 2))
+
+
+async def _run_cleanup_step(job_store: JobStore) -> None:
+    """Run periodic cleanup tasks (temp files, stale jobs)."""
+    await run_cleanup()
+    cleanup_old_temp_files()
+    recovered = await job_store.recover_stale(max_age_minutes=30)
+    if recovered > 0:
+        log.info("stale_jobs_recovered", count=recovered)
+
+
 async def run_scheduler(job_store: JobStore) -> None:
     """Main scheduler loop. Runs until shutdown is requested."""
     start_time = time.monotonic()
@@ -108,6 +150,12 @@ async def run_scheduler(job_store: JobStore) -> None:
     if recovered > 0:
         log.info("stale_jobs_recovered", count=recovered)
 
+    # Pre-create heartbeat directory if configured
+    heartbeat_path = ""
+    if settings.heartbeat_file:
+        heartbeat_path = os.path.join(_SCANNER_ROOT, settings.heartbeat_file)
+        os.makedirs(os.path.dirname(heartbeat_path), exist_ok=True)
+
     log.info("scheduler_started")
 
     while not shutdown_requested:
@@ -117,101 +165,129 @@ async def run_scheduler(job_store: JobStore) -> None:
             tick_count += 1
 
             # a. Ingest pending images
-            await _run_ingest()
+            await _run_step("ingest", _run_ingest(), settings.step_timeout_ingest)
 
             if shutdown_requested:
                 break
 
             # b. Face detection + matching (highest priority, never gated by crawls)
-            await _run_detection_and_matching(job_store)
+            await _run_step("detection_matching", _run_detection_and_matching(job_store), settings.step_timeout_detection)
 
             if shutdown_requested:
                 break
 
             # c. Per-contributor scans
-            await _run_contributor_scans(job_store)
+            await _run_step("contributor_scans", _run_contributor_scans(job_store), settings.step_timeout_contributor_scans)
 
             if shutdown_requested:
                 break
 
             # d. Platform taxonomy mapping (weekly, before crawls)
-            await _run_taxonomy_mapping()
+            await _run_step("taxonomy_mapping", _run_taxonomy_mapping(), settings.step_timeout_taxonomy_mapping)
 
             if shutdown_requested:
                 break
 
             # e. Platform crawls (discovery only — detection/matching already handled above)
-            await _run_platform_crawls(job_store)
+            await _run_step(
+                "platform_crawls",
+                _run_platform_crawls(job_store),
+                settings.step_timeout_platform_crawls,
+                on_timeout=_cleanup_crawl_state,  # platform=None → cleans all
+            )
 
             if shutdown_requested:
                 break
 
-            # d. Honeypot detection check
-            await _check_honeypot_detections()
+            # f. Honeypot detection check
+            await _run_step("honeypot", _check_honeypot_detections(), settings.step_timeout_honeypot)
 
             if shutdown_requested:
                 break
 
-            # e. Ad Intelligence scanning
+            # g. Ad Intelligence scanning
             if settings.ad_intel_enabled:
-                try:
-                    from src.ad_intelligence.scheduler import run_ad_intel_tick
-                    await run_ad_intel_tick(job_store)
-                except Exception as e:
-                    log.error("ad_intel_tick_error", error=str(e))
+                await _run_step("ad_intel", _run_ad_intel(job_store), settings.step_timeout_ad_intel)
 
             if shutdown_requested:
                 break
 
-            # f. ML Intelligence tick
-            await _run_ml_intelligence()
+            # h. ML Intelligence tick
+            await _run_step("ml_intelligence", _run_ml_intelligence(), settings.step_timeout_ml_intelligence)
 
             if shutdown_requested:
                 break
 
-            # g. Deepfake task processing
-            await _run_deepfake_tasks()
+            # i. Deepfake task processing
+            await _run_step("deepfake_tasks", _run_deepfake_tasks(), settings.step_timeout_deepfake_tasks)
 
             if shutdown_requested:
                 break
 
-            # h. Resilience monitoring (every Nth tick)
+            # j. Resilience monitoring (every Nth tick)
             if tick_count % settings.resilience_tick_interval == 0:
-                await _run_resilience_check(tick_count)
+                await _run_step("resilience", _run_resilience_check(tick_count), settings.step_timeout_resilience)
 
             if shutdown_requested:
                 break
 
-            # d. Cleanup (hourly)
+            # k. Cleanup (hourly)
             now = time.monotonic()
             if now - last_cleanup > 3600:
-                await run_cleanup()
-                cleanup_old_temp_files()
-                recovered = await job_store.recover_stale(max_age_minutes=30)
-                if recovered > 0:
-                    log.info("stale_jobs_recovered", count=recovered)
+                await _run_step("cleanup", _run_cleanup_step(job_store), 120)
                 last_cleanup = now
 
-            # e2. Daily coverage snapshot (every 24h)
+            # l. Daily coverage snapshot (every 24h)
             if now - last_snapshot > 86400:
-                await _capture_daily_snapshot()
+                await _run_step("daily_snapshot", _capture_daily_snapshot(), 60)
                 last_snapshot = now
 
-            # Log metrics periodically
-            tick_duration = time.monotonic() - tick_start
-            uptime = time.monotonic() - start_time
+            # Tick health summary
+            tick_end = time.monotonic()
+            tick_duration = tick_end - tick_start
+            uptime = tick_end - start_time
+
+            if tick_duration > settings.tick_lag_critical_seconds:
+                log.error(
+                    "tick_lag_critical",
+                    tick=tick_count,
+                    duration_seconds=round(tick_duration, 2),
+                    threshold_seconds=settings.tick_lag_critical_seconds,
+                )
+            elif tick_duration > settings.tick_lag_warning_seconds:
+                log.warning(
+                    "tick_lag_warning",
+                    tick=tick_count,
+                    duration_seconds=round(tick_duration, 2),
+                    threshold_seconds=settings.tick_lag_warning_seconds,
+                )
+
             log.info(
                 "scheduler_tick_complete",
+                tick=tick_count,
                 duration_seconds=round(tick_duration, 2),
                 uptime_seconds=round(uptime, 0),
             )
+
+            # Write heartbeat file (opt-in)
+            if heartbeat_path:
+                try:
+                    heartbeat = {
+                        "tick": tick_count,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "duration_seconds": round(tick_duration, 2),
+                        "uptime_seconds": round(uptime, 0),
+                    }
+                    with open(heartbeat_path, "w") as f:
+                        json.dump(heartbeat, f)
+                except Exception as hb_err:
+                    log.error("heartbeat_write_error", error=str(hb_err))
 
         except Exception as e:
             log.error("scheduler_tick_error", error=repr(e))
 
         # Wait for next tick
-        elapsed = time.monotonic() - tick_start
-        sleep_time = max(0, settings.scheduler_tick_seconds - elapsed)
+        sleep_time = max(0, settings.scheduler_tick_seconds - (time.monotonic() - tick_start))
         if sleep_time > 0 and not shutdown_requested:
             await asyncio.sleep(sleep_time)
 
@@ -397,6 +473,12 @@ async def _check_honeypot_detections() -> None:
         log.error("honeypot_check_error", error=str(e))
 
 
+async def _run_ad_intel(job_store: JobStore) -> None:
+    """Run ad intelligence tick. Lazy-imports to avoid loading when disabled."""
+    from src.ad_intelligence.scheduler import run_ad_intel_tick
+    await run_ad_intel_tick(job_store)
+
+
 async def _run_ml_intelligence() -> None:
     """Run ML analyzers and apply approved recommendations. Never blocks pipeline."""
     global _recommender, _applier
@@ -451,7 +533,7 @@ async def _run_resilience_check(tick_number: int) -> None:
 
 
 async def _capture_daily_snapshot() -> None:
-    """Capture daily coverage snapshot via RPC. Never blocks pipeline."""
+    """Capture daily coverage snapshot via RPC, then send daily digest. Never blocks pipeline."""
     try:
         async with async_session() as session:
             await session.execute(text("SELECT capture_daily_snapshot()"))
@@ -459,6 +541,108 @@ async def _capture_daily_snapshot() -> None:
         log.info("daily_snapshot_captured")
     except Exception as e:
         log.error("daily_snapshot_error", error=str(e))
+
+    # Send daily digest notification
+    try:
+        await _send_daily_digest_notification()
+    except Exception as e:
+        log.error("daily_digest_error", error=str(e))
+
+
+async def _send_daily_digest_notification() -> None:
+    """Gather today's metrics and send a daily digest push notification."""
+    from sqlalchemy import func, select
+    from src.db.models import (
+        ScanJob, CrawlHealthSnapshot, DegradationEvent as DegradationEventModel,
+        DiscoveredImage, DiscoveredFaceEmbedding, Match,
+    )
+    from src.resilience.notifier import send_daily_digest
+
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    seven_days_ago = today_start - timedelta(days=7)
+
+    async with async_session() as session:
+        # Run all independent queries in parallel
+        (
+            platform_result,
+            avg_result,
+            pending_detection,
+            pending_matching,
+            match_count,
+            failed_count,
+            open_events,
+        ) = await asyncio.gather(
+            session.execute(
+                select(
+                    CrawlHealthSnapshot.platform,
+                    func.sum(CrawlHealthSnapshot.images_discovered).label("images"),
+                    func.sum(CrawlHealthSnapshot.faces_found).label("faces"),
+                )
+                .where(CrawlHealthSnapshot.created_at >= today_start)
+                .group_by(CrawlHealthSnapshot.platform)
+            ),
+            session.execute(
+                select(
+                    CrawlHealthSnapshot.platform,
+                    func.avg(CrawlHealthSnapshot.images_discovered).label("avg_images"),
+                )
+                .where(CrawlHealthSnapshot.created_at >= seven_days_ago)
+                .where(CrawlHealthSnapshot.created_at < today_start)
+                .group_by(CrawlHealthSnapshot.platform)
+            ),
+            session.scalar(
+                select(func.count()).select_from(DiscoveredImage).where(DiscoveredImage.has_face.is_(None))
+            ),
+            session.scalar(
+                select(func.count()).select_from(DiscoveredFaceEmbedding).where(DiscoveredFaceEmbedding.matched_at.is_(None))
+            ),
+            session.scalar(
+                select(func.count()).select_from(Match).where(Match.created_at >= today_start)
+            ),
+            session.scalar(
+                select(func.count()).select_from(ScanJob)
+                .where(ScanJob.started_at >= today_start)
+                .where(ScanJob.status == "failed")
+            ),
+            session.scalar(
+                select(func.count()).select_from(DegradationEventModel)
+                .where(DegradationEventModel.status.in_(["open", "diagnosed"]))
+            ),
+        )
+
+    # Build platform metrics
+    avg_rows = {r.platform: float(r.avg_images or 0) for r in avg_result.all()}
+    platform_metrics: dict[str, dict] = {}
+    for row in platform_result.all():
+        images = int(row.images or 0)
+        faces = int(row.faces or 0)
+        avg = avg_rows.get(row.platform, 0)
+        if avg > 0 and images / avg < 0.5:
+            status_label = "LOW"
+        elif avg > 0 and images / avg > 1.5:
+            status_label = "HIGH"
+        else:
+            status_label = "normal"
+        platform_metrics[row.platform] = {
+            "images": images, "faces": faces, "status_label": status_label,
+        }
+
+    pending_detection = pending_detection or 0
+    pending_matching = pending_matching or 0
+    pipeline = {"pending_detection": pending_detection, "pending_matching": pending_matching}
+
+    # Collect issues
+    issues: list[str] = []
+    if (failed_count or 0) > 0:
+        issues.append(f"{failed_count} failed scan job(s)")
+    if (open_events or 0) > 0:
+        issues.append(f"{open_events} open degradation event(s)")
+    if pending_detection > 10000:
+        issues.append(f"{pending_detection:,} images pending detection")
+    if pending_matching > 5000:
+        issues.append(f"{pending_matching:,} faces pending matching")
+
+    await send_daily_digest(platform_metrics, pipeline, match_count or 0, issues)
 
 
 async def _run_detection_and_matching(job_store: JobStore) -> None:
@@ -519,11 +703,60 @@ async def _run_platform_crawls(job_store: JobStore) -> None:
                 log.error("parallel_phase_error", index=i, error=repr(result))
 
 
-async def _safe_crawl(job_store: JobStore, crawl) -> None:
-    """Wrapper for crawl with error handling (used in gather)."""
+async def _cleanup_crawl_state(platform: str | None = None) -> None:
+    """Reset crawl_phase and fail running scan_jobs after timeout/error.
+
+    Args:
+        platform: If provided, clean up only that platform. If None, clean up ALL enabled platforms.
+    """
     try:
-        await _phase_crawl_and_insert(job_store, crawl)
+        async with async_session() as session:
+            from src.db.models import PlatformCrawlSchedule, ScanJob
+            from sqlalchemy import update as sa_update
+
+            # Reset crawl_phase
+            phase_q = sa_update(PlatformCrawlSchedule)
+            if platform:
+                phase_q = phase_q.where(PlatformCrawlSchedule.platform == platform)
+            else:
+                phase_q = phase_q.where(PlatformCrawlSchedule.enabled == True)  # noqa: E712
+            await session.execute(phase_q.values(crawl_phase=None))
+
+            # Fail running platform_crawl jobs in a single UPDATE
+            error_msg = f"Cleaned up after {'platform' if platform else 'step'} crawl timeout"
+            job_q = (
+                sa_update(ScanJob)
+                .where(ScanJob.scan_type == "platform_crawl")
+                .where(ScanJob.status == "running")
+            )
+            if platform:
+                job_q = job_q.where(ScanJob.source_name == platform)
+            await session.execute(job_q.values(status="failed", error_message=error_msg))
+
+            await session.commit()
+        log.info("crawl_state_cleaned", platform=platform or "all")
     except Exception as e:
+        log.error("crawl_state_cleanup_error", platform=platform or "all", error=repr(e))
+
+
+async def _safe_crawl(job_store: JobStore, crawl) -> None:
+    """Wrapper for crawl with per-platform timeout and error handling."""
+    timeout = settings.per_platform_crawl_timeout
+    try:
+        await asyncio.wait_for(
+            _phase_crawl_and_insert(job_store, crawl),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        log.error(
+            "platform_crawl_timeout",
+            platform=crawl.platform,
+            timeout_seconds=timeout,
+        )
+        await _cleanup_crawl_state(crawl.platform)
+    except Exception as e:
+        # _phase_crawl_and_insert handles its own cleanup before re-raising,
+        # so we only log here — no redundant _cleanup_crawl_state call.
         log.error("platform_crawl_error", platform=crawl.platform, error=repr(e))
 
 
@@ -1101,81 +1334,77 @@ async def _phase_face_detection(job_store: JobStore, pending: int) -> None:
             except ProcessLookupError:
                 pass
             await proc.wait()
-        # Clear phase
-        async with async_session() as session:
-            from src.db.models import PlatformCrawlSchedule
-            from sqlalchemy import update as sa_update
-            await session.execute(
-                sa_update(PlatformCrawlSchedule)
-                .where(PlatformCrawlSchedule.enabled == True)  # noqa: E712
-                .values(crawl_phase=None)
-            )
-            await session.commit()
 
 
 async def _phase_matching(job_store: JobStore) -> None:
     """Phase 3: Match unmatched face embeddings against the contributor registry.
 
-    Fetches a batch of unmatched embeddings, runs compare_against_registry for each,
-    handles matches (evidence, AI detection, notifications), and marks as matched.
+    Fetches a batch of unmatched embeddings, runs concurrent pgvector similarity
+    queries (controlled by matching_concurrency), handles matches, and marks as matched.
     """
     batch_size = settings.matching_batch_size
+    concurrency = settings.matching_concurrency
     total_matches = 0
-    processed_ids = []
+    processed_ids: list[str] = []
+    semaphore = asyncio.Semaphore(concurrency)
 
-    try:
-        async with async_session() as session:
-            unmatched = await get_unmatched_face_embeddings(session, limit=batch_size)
+    async def _match_one(entry: dict) -> tuple[str, int] | None:
+        """Match one embedding. Returns (embedding_id, match_count) or None if skipped."""
+        if shutdown_requested:
+            return None
 
-        log.info("phase_matching_start", batch_size=len(unmatched))
+        embedding_id = entry["id"]
+        query_embedding = np.array(entry["embedding"], dtype=np.float32)
 
-        for entry in unmatched:
-            if shutdown_requested:
-                break
-
-            embedding_id = entry["id"]
-            embedding_raw = entry["embedding"]
-            discovered_image_id = entry["discovered_image_id"]
-            face_index = entry["face_index"]
-            page_url = entry["page_url"]
-
-            # Convert embedding to numpy array
-            if isinstance(embedding_raw, (list, tuple)):
-                query_embedding = np.array(embedding_raw, dtype=np.float32)
-            else:
-                query_embedding = np.array(embedding_raw, dtype=np.float32)
-
-            # Compare against BOTH contributor embeddings AND registry identities
+        async with semaphore:
             async with async_session() as session:
                 all_matches = await find_all_similar_embeddings(
                     session, query_embedding, threshold=settings.match_threshold_low,
                     primary_only=False,
                 )
+                entry_matches = 0
                 for m in all_matches:
                     if m["source"] == "contributor":
-                        # Standard contributor match — existing flow
                         contributor_match = {
                             "contributor_id": m["contributor_id"],
                             "embedding_id": m["embedding_id"],
                             "similarity": m["similarity"],
                         }
                         result = await _handle_match(
-                            session, discovered_image_id, contributor_match,
-                            page_url, face_index,
+                            session, entry["discovered_image_id"], contributor_match,
+                            entry["page_url"], entry["face_index"],
                         )
                         if result:
-                            total_matches += 1
+                            entry_matches += 1
                     elif m["source"] == "registry":
-                        # Registry (claim user) match — new flow
                         result = await _handle_registry_match(
-                            session, discovered_image_id, m,
-                            page_url, face_index,
+                            session, entry["discovered_image_id"], m,
+                            entry["page_url"], entry["face_index"],
                         )
                         if result:
-                            total_matches += 1
+                            entry_matches += 1
                 await session.commit()
 
-            processed_ids.append(embedding_id)
+        return embedding_id, entry_matches
+
+    try:
+        async with async_session() as session:
+            unmatched = await get_unmatched_face_embeddings(session, limit=batch_size)
+
+        log.info("phase_matching_start", batch_size=len(unmatched), concurrency=concurrency)
+
+        # Run matching concurrently via semaphore-gated gather
+        results = await asyncio.gather(
+            *[_match_one(entry) for entry in unmatched],
+            return_exceptions=True,
+        )
+        for r in results:
+            if isinstance(r, Exception):
+                log.error("match_one_error", error=repr(r))
+            elif r is not None:
+                eid, count = r
+                processed_ids.append(eid)
+                total_matches += count
 
         # Mark all processed embeddings as matched (even if no matches found)
         if processed_ids:
@@ -1193,6 +1422,7 @@ async def _phase_matching(job_store: JobStore) -> None:
             await observer.emit("matching_completed", "pipeline", "matching", {
                 "embeddings_processed": len(processed_ids),
                 "matches_found": total_matches,
+                "concurrency": concurrency,
             })
         except Exception:
             pass
@@ -1207,17 +1437,6 @@ async def _phase_matching(job_store: JobStore) -> None:
                     await session.commit()
             except Exception:
                 pass
-    finally:
-        # Clear phase
-        async with async_session() as session:
-            from src.db.models import PlatformCrawlSchedule
-            from sqlalchemy import update as sa_update
-            await session.execute(
-                sa_update(PlatformCrawlSchedule)
-                .where(PlatformCrawlSchedule.enabled == True)  # noqa: E712
-                .values(crawl_phase=None)
-            )
-            await session.commit()
 
 
 async def _create_crawl_job(session, platform: str):

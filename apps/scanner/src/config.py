@@ -43,6 +43,7 @@ class Settings(BaseSettings):
 
     # Matching
     matching_batch_size: int = 500          # face embeddings per match batch
+    matching_concurrency: int = 10          # concurrent pgvector queries (pool supports 10+20 overflow)
 
     # Crawl scheduling (hours between automatic crawls, 0 = manual only)
     civitai_crawl_interval_hours: int = 24
@@ -109,6 +110,26 @@ class Settings(BaseSettings):
     google_cse_cx: str = ""  # custom search engine ID
     scout_max_results_per_source: int = 50
     scout_assessment_timeout: int = 15  # seconds per URL
+
+    # Per-platform crawl timeout (seconds) — prevents one stuck platform from blocking others
+    per_platform_crawl_timeout: int = 300
+
+    # Per-step timeouts (seconds, 0 = no timeout)
+    step_timeout_ingest: int = 120
+    step_timeout_detection: int = 900        # outer backstop (subprocess has own 600s timeout)
+    step_timeout_contributor_scans: int = 300
+    step_timeout_taxonomy_mapping: int = 600
+    step_timeout_platform_crawls: int = 600
+    step_timeout_honeypot: int = 60
+    step_timeout_ad_intel: int = 300
+    step_timeout_ml_intelligence: int = 120
+    step_timeout_deepfake_tasks: int = 300
+    step_timeout_resilience: int = 120
+
+    # Tick health
+    heartbeat_file: str = ""               # path to heartbeat JSON (empty = disabled)
+    tick_lag_warning_seconds: float = 120.0
+    tick_lag_critical_seconds: float = 300.0
 
     # Resilience
     resilience_enabled: bool = True

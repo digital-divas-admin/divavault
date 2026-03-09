@@ -204,6 +204,43 @@ export interface ScoutKeyword {
   enabled: boolean;
 }
 
+export interface TodayScanJob {
+  id: string;
+  source_name: string;
+  scan_type: string;
+  status: string;
+  images_processed: number;
+  matches_found: number;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface TodayCrawlSnapshot {
+  platform: string;
+  crawl_type: string;
+  images_discovered: number;
+  images_new: number;
+  faces_found: number;
+  download_failures: number;
+  duration_seconds: number;
+  error_message: string | null;
+  http_errors: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface DegradationEvent {
+  id: string;
+  platform: string;
+  degradation_type: string;
+  severity: string;
+  symptom: string;
+  status: string;
+  baseline_value: number | null;
+  current_value: number | null;
+  created_at: string;
+}
+
 export interface MatchItem {
   id: string;
   contributor_id: string;
@@ -256,6 +293,9 @@ export interface CommandCenterData {
   scoutKeywords: ScoutKeyword[];
   recentMatches: MatchItem[];
   dailySnapshots: DailySnapshot[];
+  todayScanJobs: TodayScanJob[];
+  todayCrawlSnapshots: TodayCrawlSnapshot[];
+  openDegradationEvents: DegradationEvent[];
 }
 
 // --- Backfill Progress Parsing ---
@@ -348,6 +388,12 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     { data: recentMatchesRaw },
     // Daily snapshots
     { data: dailySnapshotsRaw },
+    // Today's scan jobs
+    { data: todayScanJobsRaw },
+    // Today's crawl health snapshots
+    { data: todayCrawlSnapshotsRaw },
+    // Open degradation events
+    { data: openDegradationEventsRaw },
   ] = await Promise.all([
     // Funnel
     supabase
@@ -468,6 +514,24 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
       .select("*")
       .gte("snapshot_date", new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0])
       .order("snapshot_date", { ascending: true }),
+    // Today's scan jobs
+    supabase
+      .from("scan_jobs")
+      .select("id, source_name, scan_type, status, images_processed, matches_found, error_message, started_at, completed_at")
+      .gte("started_at", new Date().toISOString().split("T")[0])
+      .order("started_at", { ascending: false }),
+    // Today's crawl health snapshots
+    supabase
+      .from("crawl_health_snapshots")
+      .select("platform, crawl_type, images_discovered, images_new, faces_found, download_failures, duration_seconds, error_message, http_errors, created_at")
+      .gte("created_at", new Date().toISOString().split("T")[0])
+      .order("created_at", { ascending: false }),
+    // Open degradation events
+    supabase
+      .from("degradation_events")
+      .select("id, platform, degradation_type, severity, symptom, status, baseline_value, current_value, created_at")
+      .in("status", ["open", "diagnosed"])
+      .order("created_at", { ascending: false }),
   ]);
 
   // Group test users by type
@@ -563,6 +627,9 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
     scoutKeywords: (scoutKeywordsRaw || []) as ScoutKeyword[],
     recentMatches: await buildMatchItems(supabase, recentMatchesRaw || []),
     dailySnapshots: (dailySnapshotsRaw || []) as DailySnapshot[],
+    todayScanJobs: (todayScanJobsRaw || []) as TodayScanJob[],
+    todayCrawlSnapshots: (todayCrawlSnapshotsRaw || []) as TodayCrawlSnapshot[],
+    openDegradationEvents: (openDegradationEventsRaw || []) as DegradationEvent[],
   };
 }
 

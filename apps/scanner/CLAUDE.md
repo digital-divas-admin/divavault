@@ -192,13 +192,45 @@ apps/scanner/
 
 ## Key Patterns
 
-### Three-Phase Pipeline (scheduler.py)
+### Scheduler Tick Loop & Pipeline Architecture
 
-The scanner runs in three phases, prioritized: **Detection > Matching > Crawl** (process existing before discovering more). Scheduler tick is 30s, face detection runs up to 20 subprocess chunks per tick.
+The scheduler runs a 12-step tick loop every 30s. Each step is wrapped in `_run_step()` which provides per-step timing, configurable timeouts, and structured error isolation — a step failure never kills the tick.
 
-1. **Crawl** — Site-specific scraper → INSERT into `discovered_images`
-2. **Detect** — Subprocess-isolated face detection on `has_face IS NULL` images → store in `discovered_face_embeddings`
-3. **Match** — Compare embeddings against contributor registry via pgvector
+| Step | Label | Function | Frequency | Timeout | Purpose |
+|------|-------|----------|-----------|---------|---------|
+| a | `ingest` | `_run_ingest()` | Every tick | 120s | Process pending contributor images into embeddings |
+| b | `detection_matching` | `_run_detection_and_matching()` | Every tick | 900s | Subprocess face detection + pgvector matching |
+| c | `contributor_scans` | `_run_contributor_scans()` | Every tick | 300s | Per-contributor reverse image scans (TinEye) |
+| d | `taxonomy_mapping` | `_run_taxonomy_mapping()` | Weekly | 600s | Map platform tags to search terms |
+| e | `platform_crawls` | `_run_platform_crawls()` | Per-platform interval | 600s | Crawl CivitAI/DeviantArt for new images |
+| f | `honeypot` | `_check_honeypot_detections()` | Every tick | 60s | Verify honeypot detection coverage |
+| g | `ad_intel` | `run_ad_intel_tick()` | Every tick (if enabled) | 300s | Scan ad platforms for likeness misuse |
+| h | `ml_intelligence` | `_run_ml_intelligence()` | Every tick | 120s | Run ML analyzers + apply recommendations |
+| i | `deepfake_tasks` | `_run_deepfake_tasks()` | Every tick | 300s | Process deepfake investigation queue |
+| j | `resilience` | `_run_resilience_check()` | Every Nth tick | 120s | Self-healing crawler monitoring |
+| k | `cleanup` | `_run_cleanup_step()` | Hourly | 120s | Temp files, stale job recovery |
+| l | `daily_snapshot` | `_capture_daily_snapshot()` | Daily | 60s | Coverage metrics snapshot |
+
+**`_run_step()` wrapper:** Every step gets `step_start` / `step_complete` log events with duration. On timeout, logs `step_timeout` and continues to the next step. On exception, logs `step_error` and continues. Timeouts are configured in `config.py` (`step_timeout_*` settings) — intentionally generous as safety nets, not tight leashes.
+
+**Why detection/matching runs before crawls (step b before step e):** A prior bug had detection/matching nested inside `_run_platform_crawls()`, which ran after taxonomy mapping (step d). When the CivitAI mapper became due (168h interval), its long execution starved detection/matching — 69k images pending detection and 14k pending matching accumulated overnight. Extracting detection to step (b) ensures it runs every tick regardless of crawl schedule.
+
+**Tick health:** After all steps, the scheduler logs `tick_lag_warning` (>120s) or `tick_lag_critical` (>300s) if the tick took too long. An optional heartbeat file (`HEARTBEAT_FILE` env var) writes JSON with tick number, timestamp, duration, and uptime for external monitoring.
+
+**Three-phase pipeline priority:** Detection > Matching > Crawl (process existing before discovering more). Face detection runs up to 20 subprocess chunks per tick.
+
+**Key scheduler config** (all in `config.py`):
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `scheduler_tick_seconds` | `30` | Seconds between tick starts |
+| `face_detection_chunk_size` | `1000` | Images per subprocess invocation |
+| `face_detection_max_chunks` | `20` | Max subprocess invocations per tick |
+| `face_detection_timeout` | `600` | Seconds per subprocess |
+| `matching_batch_size` | `500` | Face embeddings per match batch |
+| `step_timeout_*` | varies | Per-step timeout safety nets |
+| `tick_lag_warning_seconds` | `120` | Log warning if tick exceeds this |
+| `tick_lag_critical_seconds` | `300` | Log error if tick exceeds this |
+| `heartbeat_file` | `""` | Path to heartbeat JSON (empty = disabled) |
 
 ### Sweep + Backfill Architecture
 
@@ -459,6 +491,26 @@ NTFY_TOPIC=                          # ntfy.sh topic for push alerts (optional)
 9. **Temp file cleanup** — `cleanup_old_temp_files()` is called periodically; don't assume temp files persist.
 10. **No proxy for image downloads** — ScraperAPI proxy is only for CivitAI API calls. CDN image/thumbnail downloads go direct.
 11. **Temp directory is OS-dependent** — Uses `tempfile.gettempdir() / "scanner_images"` (Windows: `%TEMP%\scanner_images`, Linux: `/tmp/scanner_images`). Don't hardcode `/tmp/`.
+
+## Troubleshooting Stalled Pipelines
+
+### Pending detection backlog (images_pending_detection > 0)
+- **Check:** `SELECT COUNT(*) FROM discovered_images WHERE has_face IS NULL`
+- **Normal:** Drains within a few ticks (~20k images/tick at chunk_size=1000, max_chunks=20)
+- **Stuck?** Check `step_complete step=detection_matching` logs for duration. If missing, detection step may be timing out — check `step_timeout` events. Verify GPU is available (`/health` endpoint → `compute.gpu_available`).
+
+### Pending matching backlog (faces_pending_matching > 0)
+- **Check:** `SELECT COUNT(*) FROM discovered_face_embeddings WHERE matched_at IS NULL`
+- **Normal:** Drains in batches of 500 per tick
+- **Stuck?** Check `phase_matching_error` logs. Previous bug: `mark_face_embeddings_matched()` tried to UPDATE 500 UUIDs in one query, hitting Supabase statement timeout. **Fix:** UUIDs are now chunked to batches of 50. If you see similar timeout errors, reduce `matching_batch_size` or chunk the UPDATE.
+
+### Slow ticks (tick_lag_warning / tick_lag_critical)
+- **Check:** Look for `step_complete` events with high `duration_seconds` to identify which step is slow
+- **Common causes:** Taxonomy mapper running (happens weekly, can take minutes), large backfill crawl, many pending contributor scans
+- **Fix:** Step timeouts prevent any single step from blocking indefinitely. Adjust `step_timeout_*` settings if defaults are too tight/loose.
+
+### Supabase query batching rule
+When passing arrays of UUIDs to Supabase queries (UPDATE, DELETE, IN clauses), **chunk to 50 max** to avoid statement timeout. The `mark_face_embeddings_matched()` function demonstrates this pattern.
 
 ## GPU/ONNX Setup
 
