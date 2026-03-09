@@ -42,8 +42,8 @@ class Settings(BaseSettings):
     face_detection_max_chunks: int = 20     # max subprocess invocations per tick
 
     # Matching
-    matching_batch_size: int = 500          # face embeddings per match batch
-    matching_concurrency: int = 10          # concurrent pgvector queries (pool supports 10+20 overflow)
+    matching_batch_size: int = 5000         # face embeddings per local-match batch
+    matching_max_per_tick: int = 50000      # max embeddings to process per tick (loop cap)
 
     # Crawl scheduling (hours between automatic crawls, 0 = manual only)
     civitai_crawl_interval_hours: int = 24

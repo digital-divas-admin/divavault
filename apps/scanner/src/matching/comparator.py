@@ -86,3 +86,59 @@ async def compare_against_contributor(
         return max(contributor_matches, key=lambda m: m["similarity"])
 
     return None
+
+
+def batch_compare_local(
+    query_matrix: np.ndarray,
+    ref_matrix: np.ndarray,
+    registry_entries: list[dict],
+    threshold: float,
+    ref_normalized: bool = False,
+) -> dict[int, list[dict]]:
+    """Compare N query embeddings against M reference embeddings locally via numpy.
+
+    Args:
+        query_matrix: (N, 512) query embeddings.
+        ref_matrix: (M, 512) reference embeddings (pre-built from registry_entries).
+        registry_entries: List of registry dicts with contributor_id, source, id, is_primary.
+        threshold: Minimum cosine similarity to report.
+        ref_normalized: If True, skip L2-normalizing ref_matrix (caller already did it).
+
+    Returns:
+        Dict mapping query index → list of hit dicts (source, contributor_id, similarity, etc.)
+    """
+    if query_matrix.shape[0] == 0 or ref_matrix.shape[0] == 0:
+        return {}
+
+    # L2-normalize query embeddings (ArcFace should already be normalized)
+    q_norms = np.linalg.norm(query_matrix, axis=1, keepdims=True)
+    q_norms = np.where(q_norms == 0, 1, q_norms)
+    query_normed = query_matrix / q_norms
+
+    if ref_normalized:
+        ref_normed = ref_matrix
+    else:
+        r_norms = np.linalg.norm(ref_matrix, axis=1, keepdims=True)
+        r_norms = np.where(r_norms == 0, 1, r_norms)
+        ref_normed = ref_matrix / r_norms
+
+    # (N, M) cosine similarity matrix — single numpy op
+    similarities = query_normed @ ref_normed.T
+
+    hits: dict[int, list[dict]] = {}
+    # Find indices where similarity exceeds threshold
+    query_indices, ref_indices = np.where(similarities > threshold)
+    for qi, ri in zip(query_indices, ref_indices):
+        qi_int = int(qi)
+        entry = registry_entries[int(ri)]
+        sim = float(similarities[qi_int, int(ri)])
+        hit = {
+            "source": entry["source"],
+            "contributor_id": entry["contributor_id"],
+            "similarity": sim,
+            "embedding_id": entry.get("id"),
+            "is_primary": entry.get("is_primary", False),
+        }
+        hits.setdefault(qi_int, []).append(hit)
+
+    return hits

@@ -94,11 +94,6 @@ class TestConfigAdditions:
         s = Settings()
         assert s.per_platform_crawl_timeout == 300
 
-    def test_matching_concurrency_default(self):
-        from src.config import Settings
-
-        s = Settings()
-        assert s.matching_concurrency == 10
 
 
 # ── 3. _run_step on_timeout callback ────────────────────────────────────────
@@ -249,14 +244,15 @@ class TestConcurrentMatchingStructure:
                 "_phase_matching should not use nonlocal — use return values instead"
 
     @pytest.mark.asyncio
-    async def test_matching_uses_semaphore(self):
-        """Verify _phase_matching creates a Semaphore for concurrency control."""
+    async def test_matching_uses_local_batch(self):
+        """Verify _phase_matching uses in-memory batch matching (not per-embedding DB queries)."""
         import inspect
         from src.jobs.scheduler import _phase_matching
 
         source = inspect.getsource(_phase_matching)
-        assert "asyncio.Semaphore" in source
-        assert "matching_concurrency" in source
+        assert "batch_compare_local" in source
+        assert "load_matching_registry" in source
+        assert "matching_max_per_tick" in source
 
 
 # ── 7. _safe_crawl timeout behavior ─────────────────────────────────────────

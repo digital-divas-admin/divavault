@@ -47,7 +47,9 @@ powershell -ExecutionPolicy Bypass -File scripts/stop_scanner.ps1     # Graceful
 powershell -ExecutionPolicy Bypass -File scripts/check_health.ps1     # Health check: status, uptime, GPU, metrics
 ```
 
-**Supervisor** (`run_production.ps1`): Runs scanner in a loop, restarts with 30s delay on crash, rotates logs (keeps 7), writes PID to `logs/scanner.pid`. Clean exit (code 0) stops the supervisor.
+**Supervisor** (`run_production.ps1`): Runs scanner + Cloudflare tunnel in a loop, restarts with 30s delay on crash, monitors tunnel health every 60s, rotates logs (keeps 7), writes PID to `logs/scanner.pid`. Clean exit (code 0) stops the supervisor.
+
+**Install scheduled task** (`install_scheduled_task.ps1`): Registers a Windows Scheduled Task (`ConsentedAI Scanner`) that runs `run_production.ps1` at system startup. Must be run as Administrator. See Deployment section for details.
 
 **Shutdown** (`stop_scanner.ps1`): Reads PID from `logs/scanner.pid`, sends terminate signal, waits 30s for graceful exit, force-kills if needed.
 
@@ -75,7 +77,8 @@ apps/scanner/
 │   ├── process_faces.py             # Backfill face detection (two-pass for CivitAI, single-pass for others)
 │   ├── test_resilience.py           # End-to-end resilience pipeline test
 │   ├── instrumented_test_crawl.py   # Debug instrumentation for CivitAI pipeline
-│   ├── run_production.ps1           # Supervisor: auto-restart, log rotation, PID tracking
+│   ├── run_production.ps1           # Supervisor: auto-restart, log rotation, PID tracking, tunnel management
+│   ├── install_scheduled_task.ps1   # Install Windows Scheduled Task for persistent operation (run as Admin)
 │   ├── stop_scanner.ps1             # Graceful shutdown via PID file
 │   └── check_health.ps1             # Health check: status, uptime, GPU, metrics
 ├── src/
@@ -538,6 +541,46 @@ cd apps/scanner && .venv/Scripts/python.exe -m src.main
 C:\Users\alexi\cloudflared.exe tunnel run scanner
 ```
 
+**Production (recommended):** Use the supervisor script which manages **both** the scanner and the Cloudflare tunnel in a single process, with auto-restart, tunnel health monitoring, and log rotation:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run_production.ps1
+```
+
+### Persistent Operation (Windows Scheduled Task)
+
+To run the scanner as a background service that survives reboots and logoffs, a Windows Scheduled Task is configured:
+
+- **Task name:** `ConsentedAI Scanner`
+- **Trigger:** At system startup
+- **Runs as:** `alexi` (highest privileges)
+- **No time limit** — runs indefinitely
+- **Auto-restart:** 3 retries, 1 minute apart on failure
+- **Runs on battery power**
+
+The task runs `run_production.ps1`, which manages both the scanner process and the Cloudflare tunnel. Logs go to `apps/scanner/logs/`.
+
+**Installing the scheduled task** (requires Administrator):
+```powershell
+# Right-click PowerShell → Run as Administrator, then:
+powershell -ExecutionPolicy Bypass -File scripts/install_scheduled_task.ps1
+```
+
+**Managing the scheduled task:**
+```powershell
+schtasks /run /tn "ConsentedAI Scanner"              # Start now
+schtasks /end /tn "ConsentedAI Scanner"              # Stop
+schtasks /query /tn "ConsentedAI Scanner" /v          # Status
+schtasks /delete /tn "ConsentedAI Scanner" /f          # Remove
+```
+
+**What `run_production.ps1` handles:**
+- Starts `cloudflared tunnel run scanner` before the scanner loop
+- Health-checks the tunnel every 60s (verifies `scanner.consentedai.com/health`)
+- Auto-restarts the tunnel if it dies or stops routing
+- Auto-restarts the scanner on crash (30s delay)
+- Rotates logs (keeps 7 most recent)
+- Cleans up both processes on supervisor exit
+
 **Render env var:** `SCANNER_SERVICE_URL=https://scanner.consentedai.com` on the `madeofus` Next.js service. This is a persistent named tunnel — the URL does not change on restart.
 
 **Verifying connectivity:**
@@ -546,7 +589,7 @@ curl http://localhost:8000/health          # Local check
 curl https://scanner.consentedai.com/health  # Via tunnel (what Render uses)
 ```
 
-If the dashboard shows "Scanner returned 530", check that both the scanner process and `cloudflared` are running.
+If the dashboard shows "Scanner returned 530", check that both the scanner process and `cloudflared` are running. If using the scheduled task, check `schtasks /query /tn "ConsentedAI Scanner" /v` and the logs in `apps/scanner/logs/supervisor.log`.
 
 ## API Endpoints
 

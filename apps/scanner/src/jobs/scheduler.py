@@ -16,6 +16,7 @@ import signal
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 import imagehash
 import numpy as np
@@ -38,6 +39,7 @@ from src.db.queries import (
     find_phash_duplicate,
     get_contributor,
     get_scanner_metrics,
+    load_matching_registry,
     mark_face_embeddings_matched,
     update_crawl_coverage,
     update_discovered_image,
@@ -53,7 +55,7 @@ from src.evidence.storage import upload_evidence
 from src.ingest.embeddings import process_pending_images, process_pending_registry_selfies
 from src.jobs.cleanup import run_cleanup
 from src.jobs.store import JobStore
-from src.matching.comparator import compare_against_contributor, compare_against_registry
+from src.matching.comparator import batch_compare_local, compare_against_contributor, compare_against_registry
 from src.matching.confidence import (
     check_known_account,
     get_confidence_tier,
@@ -233,12 +235,14 @@ async def run_scheduler(job_store: JobStore) -> None:
 
             # k. Cleanup (hourly)
             now = time.monotonic()
-            if now - last_cleanup > 3600:
+            cleanup_delta = now - last_cleanup
+            if cleanup_delta > 3600 or cleanup_delta < 0:
                 await _run_step("cleanup", _run_cleanup_step(job_store), 120)
                 last_cleanup = now
 
             # l. Daily coverage snapshot (every 24h)
-            if now - last_snapshot > 86400:
+            snapshot_delta = now - last_snapshot
+            if snapshot_delta > 86400 or snapshot_delta < 0:
                 await _run_step("daily_snapshot", _capture_daily_snapshot(), 60)
                 last_snapshot = now
 
@@ -536,7 +540,8 @@ async def _capture_daily_snapshot() -> None:
     """Capture daily coverage snapshot via RPC, then send daily digest. Never blocks pipeline."""
     try:
         async with async_session() as session:
-            await session.execute(text("SELECT capture_daily_snapshot()"))
+            from sqlalchemy import text as sa_text
+            await session.execute(sa_text("SELECT capture_daily_snapshot()"))
             await session.commit()
         log.info("daily_snapshot_captured")
     except Exception as e:
@@ -755,9 +760,13 @@ async def _safe_crawl(job_store: JobStore, crawl) -> None:
         )
         await _cleanup_crawl_state(crawl.platform)
     except Exception as e:
-        # _phase_crawl_and_insert handles its own cleanup before re-raising,
-        # so we only log here — no redundant _cleanup_crawl_state call.
         log.error("platform_crawl_error", platform=crawl.platform, error=repr(e))
+        # _phase_crawl_and_insert tries to cleanup before re-raising, but if
+        # its cleanup also fails (DB error), crawl_phase can get stuck. Belt-and-suspenders:
+        try:
+            await _cleanup_crawl_state(crawl.platform)
+        except Exception:
+            pass
 
 
 async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
@@ -1339,104 +1348,144 @@ async def _phase_face_detection(job_store: JobStore, pending: int) -> None:
 async def _phase_matching(job_store: JobStore) -> None:
     """Phase 3: Match unmatched face embeddings against the contributor registry.
 
-    Fetches a batch of unmatched embeddings, runs concurrent pgvector similarity
-    queries (controlled by matching_concurrency), handles matches, and marks as matched.
+    Uses in-memory numpy matching: loads the full registry once (~33 embeddings),
+    then loops in batches of 5000, computing cosine similarity locally via matrix
+    multiply (sub-millisecond). Only hits the DB for rare actual matches and bulk
+    mark-as-processed. Drains up to matching_max_per_tick embeddings per tick.
     """
     batch_size = settings.matching_batch_size
-    concurrency = settings.matching_concurrency
+    max_per_tick = settings.matching_max_per_tick
     total_matches = 0
-    processed_ids: list[str] = []
-    semaphore = asyncio.Semaphore(concurrency)
-
-    async def _match_one(entry: dict) -> tuple[str, int] | None:
-        """Match one embedding. Returns (embedding_id, match_count) or None if skipped."""
-        if shutdown_requested:
-            return None
-
-        embedding_id = entry["id"]
-        query_embedding = np.array(entry["embedding"], dtype=np.float32)
-
-        async with semaphore:
-            async with async_session() as session:
-                all_matches = await find_all_similar_embeddings(
-                    session, query_embedding, threshold=settings.match_threshold_low,
-                    primary_only=False,
-                )
-                entry_matches = 0
-                for m in all_matches:
-                    if m["source"] == "contributor":
-                        contributor_match = {
-                            "contributor_id": m["contributor_id"],
-                            "embedding_id": m["embedding_id"],
-                            "similarity": m["similarity"],
-                        }
-                        result = await _handle_match(
-                            session, entry["discovered_image_id"], contributor_match,
-                            entry["page_url"], entry["face_index"],
-                        )
-                        if result:
-                            entry_matches += 1
-                    elif m["source"] == "registry":
-                        result = await _handle_registry_match(
-                            session, entry["discovered_image_id"], m,
-                            entry["page_url"], entry["face_index"],
-                        )
-                        if result:
-                            entry_matches += 1
-                await session.commit()
-
-        return embedding_id, entry_matches
+    total_processed = 0
 
     try:
+        # Load registry once before the batch loop — 1 DB call
         async with async_session() as session:
-            unmatched = await get_unmatched_face_embeddings(session, limit=batch_size)
+            registry_entries = await load_matching_registry(session)
 
-        log.info("phase_matching_start", batch_size=len(unmatched), concurrency=concurrency)
+        registry_count = len(registry_entries)
+        log.info("registry_loaded", count=registry_count)
 
-        # Run matching concurrently via semaphore-gated gather
-        results = await asyncio.gather(
-            *[_match_one(entry) for entry in unmatched],
-            return_exceptions=True,
-        )
-        for r in results:
-            if isinstance(r, Exception):
-                log.error("match_one_error", error=repr(r))
-            elif r is not None:
-                eid, count = r
-                processed_ids.append(eid)
-                total_matches += count
+        if registry_count == 0:
+            log.info("phase_matching_skip", reason="empty_registry")
+            return
 
-        # Mark all processed embeddings as matched (even if no matches found)
-        if processed_ids:
+        # Build reference matrix (M × 512), pre-normalized once
+        ref_matrix = np.stack(
+            [e["embedding"] for e in registry_entries]
+        ).astype(np.float32)
+        ref_norms = np.linalg.norm(ref_matrix, axis=1, keepdims=True)
+        ref_norms = np.where(ref_norms == 0, 1, ref_norms)
+        ref_matrix = ref_matrix / ref_norms
+
+        threshold = settings.match_threshold_low
+
+        while total_processed < max_per_tick:
+            if shutdown_requested:
+                break
+
+            # Fetch batch of unmatched embeddings — 1 DB call
+            async with async_session() as session:
+                unmatched = await get_unmatched_face_embeddings(session, limit=batch_size)
+
+            if not unmatched:
+                break  # Backlog drained
+
+            log.info(
+                "phase_matching_start",
+                batch_size=len(unmatched),
+                total_processed_so_far=total_processed,
+            )
+
+            # Build query matrix (N × 512)
+            query_matrix = np.array(
+                [entry["embedding"] for entry in unmatched],
+                dtype=np.float32,
+            )
+
+            # Local cosine similarity — sub-millisecond for 5000 × 33
+            hits = batch_compare_local(query_matrix, ref_matrix, registry_entries, threshold, ref_normalized=True)
+
+            # Handle actual matches (rare — only for hits above threshold)
+            batch_matches = 0
+            async with async_session() as session:
+                for qi, hit_list in hits.items():
+                    entry = unmatched[qi]
+                    for hit in hit_list:
+                        try:
+                            if hit["source"] == "contributor":
+                                contributor_match = {
+                                    "contributor_id": UUID(hit["contributor_id"]),
+                                    "embedding_id": hit["embedding_id"],
+                                    "similarity": hit["similarity"],
+                                }
+                                result = await _handle_match(
+                                    session, entry["discovered_image_id"],
+                                    contributor_match, entry["page_url"],
+                                    entry["face_index"],
+                                )
+                                if result:
+                                    batch_matches += 1
+                            elif hit["source"] == "registry":
+                                registry_hit = {
+                                    "registry_cid": hit["contributor_id"],
+                                    "similarity": hit["similarity"],
+                                }
+                                result = await _handle_registry_match(
+                                    session, entry["discovered_image_id"],
+                                    registry_hit, entry["page_url"],
+                                    entry["face_index"],
+                                )
+                                if result:
+                                    batch_matches += 1
+                        except Exception as e:
+                            log.error(
+                                "match_handle_error",
+                                error=repr(e),
+                                embedding_id=str(entry["id"]),
+                            )
+                await session.commit()
+
+            # Bulk mark all as matched — 1 DB call (chunked internally)
+            processed_ids = [entry["id"] for entry in unmatched]
             async with async_session() as session:
                 await mark_face_embeddings_matched(session, processed_ids)
                 await session.commit()
 
+            total_matches += batch_matches
+            total_processed += len(unmatched)
+
+            log.info(
+                "phase_matching_batch_complete",
+                batch_processed=len(unmatched),
+                batch_matches=batch_matches,
+                total_processed=total_processed,
+                total_matches=total_matches,
+            )
+
         log.info(
             "phase_matching_complete",
-            embeddings_processed=len(processed_ids),
+            embeddings_processed=total_processed,
             matches_found=total_matches,
+            registry_size=registry_count,
         )
 
         try:
             await observer.emit("matching_completed", "pipeline", "matching", {
-                "embeddings_processed": len(processed_ids),
+                "embeddings_processed": total_processed,
                 "matches_found": total_matches,
-                "concurrency": concurrency,
+                "registry_size": registry_count,
             })
         except Exception:
             pass
 
     except Exception as e:
-        log.error("phase_matching_error", error=str(e))
-        # Still mark processed ones to avoid reprocessing
-        if processed_ids:
-            try:
-                async with async_session() as session:
-                    await mark_face_embeddings_matched(session, processed_ids)
-                    await session.commit()
-            except Exception:
-                pass
+        log.error(
+            "phase_matching_error",
+            error=str(e),
+            embeddings_processed=total_processed,
+            matches_found=total_matches,
+        )
 
 
 async def _create_crawl_job(session, platform: str):

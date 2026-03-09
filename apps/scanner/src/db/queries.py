@@ -1157,7 +1157,7 @@ async def mark_face_embeddings_matched(
     """Mark discovered face embeddings as matched (batched to avoid statement timeout)."""
     if not ids:
         return
-    batch_size = 50
+    batch_size = 200
     for i in range(0, len(ids), batch_size):
         batch = ids[i : i + batch_size]
         await session.execute(
@@ -1311,6 +1311,51 @@ async def insert_registry_match(
     )
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
+
+
+async def load_matching_registry(session: AsyncSession) -> list[dict]:
+    """Bulk-fetch all active contributor + registry embeddings for local matching.
+
+    Returns list of dicts with id, contributor_id, embedding (numpy float32),
+    is_primary, and source ('contributor' or 'registry').
+    """
+    result = await session.execute(
+        text("""
+            SELECT ce.id, ce.contributor_id::text, ce.embedding::text, ce.is_primary,
+                   'contributor' AS source
+            FROM contributor_embeddings ce
+            JOIN contributors c ON c.id = ce.contributor_id
+            WHERE c.opted_out = false AND c.suspended = false
+
+            UNION ALL
+
+            SELECT NULL::uuid, ri.cid, ri.face_embedding::text, false,
+                   'registry' AS source
+            FROM registry_identities ri
+            WHERE ri.face_embedding IS NOT NULL
+              AND ri.embedding_status = 'processed'
+              AND ri.status IN ('claimed', 'verified')
+        """)
+    )
+    rows = result.fetchall()
+    entries = []
+    for row in rows:
+        emb_str = row[2]
+        if isinstance(emb_str, str):
+            embedding = np.array(
+                [float(x) for x in emb_str.strip("[]").split(",")],
+                dtype=np.float32,
+            )
+        else:
+            embedding = np.array(list(emb_str), dtype=np.float32)
+        entries.append({
+            "id": row[0],
+            "contributor_id": row[1],
+            "embedding": embedding,
+            "is_primary": row[3],
+            "source": row[4],
+        })
+    return entries
 
 
 async def find_all_similar_embeddings(
