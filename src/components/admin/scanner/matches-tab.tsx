@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, Fragment } from "react";
 import type { MatchItem } from "@/lib/scanner-command-queries";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -348,118 +348,131 @@ export function MatchesTab({ matches }: MatchesTabProps) {
                 const isUpdating = updatingId === m.id;
 
                 return (
-                  <tr
-                    key={m.id}
-                    className={`border-b border-border/20 hover:bg-card/50 transition-colors cursor-pointer ${selectedIds.has(m.id) ? "bg-primary/5" : ""}`}
-                    onClick={() =>
-                      setExpandedId(isExpanded ? null : m.id)
-                    }
-                  >
-                    <td
-                      className="p-2"
-                      onClick={(e) => e.stopPropagation()}
+                  <Fragment key={m.id}>
+                    <tr
+                      className={`border-b border-border/20 hover:bg-card/50 transition-colors cursor-pointer ${selectedIds.has(m.id) ? "bg-primary/5" : ""} ${isExpanded ? "bg-card/50" : ""}`}
+                      onClick={() =>
+                        setExpandedId(isExpanded ? null : m.id)
+                      }
                     >
-                      {m.status === "new" && (
-                        <Checkbox
-                          checked={selectedIds.has(m.id)}
-                          onCheckedChange={() => toggleSelect(m.id)}
-                        />
-                      )}
-                    </td>
-                    <td className="p-2">
-                      <span className="font-medium text-foreground">
-                        {m.contributor_name || m.contributor_id.slice(0, 8)}
-                      </span>
-                    </td>
-                    <td className="p-2">
-                      <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300">
-                        {m.platform || "?"}
-                      </span>
-                    </td>
-                    <td className="p-2 font-mono">
-                      {m.similarity_score
-                        ? `${(m.similarity_score * 100).toFixed(1)}%`
-                        : "-"}
-                    </td>
-                    <td className="p-2">
-                      <span className={confCfg.color}>
-                        {m.confidence_tier || "-"}
-                      </span>
-                    </td>
-                    <td className="p-2">
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusCfg.bg} ${statusCfg.color}`}
+                      <td
+                        className="p-2"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        {statusCfg.label}
-                      </span>
-                    </td>
-                    <td className="p-2 text-muted-foreground">
-                      {m.created_at
-                        ? new Date(m.created_at).toLocaleDateString()
-                        : "-"}
-                    </td>
-                    <td
-                      className="p-2 text-right"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {m.status === "new" && (
-                        <div className="flex items-center justify-end gap-1">
-                          {isUpdating ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-1.5 text-green-400 hover:text-green-300 hover:bg-green-400/10"
-                                onClick={() =>
-                                  handleStatusChange(m.id, "confirmed")
-                                }
-                                title="Confirm match"
-                              >
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-1.5 text-zinc-400 hover:text-zinc-300 hover:bg-zinc-400/10"
-                                onClick={() =>
-                                  handleStatusChange(m.id, "rejected")
-                                }
-                                title="Reject match"
-                              >
-                                <XCircle className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-1.5 text-red-400 hover:text-red-300 hover:bg-red-400/10"
-                                onClick={() =>
-                                  handleStatusChange(m.id, "false_positive")
-                                }
-                                title="Mark false positive"
-                              >
-                                <AlertTriangle className="h-3.5 w-3.5" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      )}
-                      {m.status !== "new" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-1.5 text-muted-foreground"
-                          onClick={() =>
-                            setExpandedId(isExpanded ? null : m.id)
-                          }
-                          title="View details"
+                        {m.status === "new" && (
+                          <Checkbox
+                            checked={selectedIds.has(m.id)}
+                            onCheckedChange={() => toggleSelect(m.id)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-2">
+                        <span className="font-medium text-foreground">
+                          {m.contributor_name || m.contributor_id.slice(0, 8)}
+                        </span>
+                      </td>
+                      <td className="p-2">
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300">
+                          {m.platform || "?"}
+                        </span>
+                      </td>
+                      <td className="p-2 font-mono">
+                        {m.similarity_score
+                          ? `${(m.similarity_score * 100).toFixed(1)}%`
+                          : "-"}
+                      </td>
+                      <td className="p-2">
+                        <span className={confCfg.color}>
+                          {m.confidence_tier || "-"}
+                        </span>
+                      </td>
+                      <td className="p-2">
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusCfg.bg} ${statusCfg.color}`}
                         >
-                          <Eye className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
+                          {statusCfg.label}
+                        </span>
+                      </td>
+                      <td className="p-2 text-muted-foreground">
+                        {m.created_at
+                          ? new Date(m.created_at).toLocaleDateString()
+                          : "-"}
+                      </td>
+                      <td
+                        className="p-2 text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {m.status === "new" && (
+                          <div className="flex items-center justify-end gap-1">
+                            {isUpdating ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-1.5 text-green-400 hover:text-green-300 hover:bg-green-400/10"
+                                  onClick={() =>
+                                    handleStatusChange(m.id, "confirmed")
+                                  }
+                                  title="Confirm match"
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-1.5 text-zinc-400 hover:text-zinc-300 hover:bg-zinc-400/10"
+                                  onClick={() =>
+                                    handleStatusChange(m.id, "rejected")
+                                  }
+                                  title="Reject match"
+                                >
+                                  <XCircle className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-1.5 text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                                  onClick={() =>
+                                    handleStatusChange(m.id, "false_positive")
+                                  }
+                                  title="Mark false positive"
+                                >
+                                  <AlertTriangle className="h-3.5 w-3.5" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {m.status !== "new" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-1.5 text-muted-foreground"
+                            onClick={() =>
+                              setExpandedId(isExpanded ? null : m.id)
+                            }
+                            title="View details"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="border-b border-border/20">
+                        <td colSpan={8} className="p-0">
+                          <MatchDetailPanel
+                            match={m}
+                            onClose={() => setExpandedId(null)}
+                            onStatusChange={handleStatusChange}
+                            isUpdating={updatingId === m.id}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })
             )}
@@ -467,15 +480,6 @@ export function MatchesTab({ matches }: MatchesTabProps) {
         </table>
       </div>
 
-      {/* Expanded detail panel */}
-      {expandedId && (
-        <MatchDetailPanel
-          match={filtered.find((m) => m.id === expandedId) || null}
-          onClose={() => setExpandedId(null)}
-          onStatusChange={handleStatusChange}
-          isUpdating={updatingId === expandedId}
-        />
-      )}
     </div>
   );
 }
@@ -490,6 +494,13 @@ function ImageWithFallback({
   className?: string;
 }) {
   const [error, setError] = useState(false);
+  const [lastSrc, setLastSrc] = useState(src);
+
+  // Reset error state when src changes (e.g. expanding a different match row)
+  if (src !== lastSrc) {
+    setLastSrc(src);
+    setError(false);
+  }
 
   if (!src || error) {
     return (
@@ -506,7 +517,7 @@ function ImageWithFallback({
     <img
       src={src}
       alt={alt}
-      className={`object-cover rounded border border-border/30 ${className}`}
+      className={`object-contain rounded border border-border/30 ${className}`}
       onError={() => setError(true)}
     />
   );
@@ -518,187 +529,183 @@ function MatchDetailPanel({
   onStatusChange,
   isUpdating,
 }: {
-  match: MatchItem | null;
+  match: MatchItem;
   onClose: () => void;
   onStatusChange: (id: string, status: string) => void;
   isUpdating: boolean;
 }) {
-  if (!match) return null;
-
   const statusCfg = STATUS_CONFIG[match.status] || STATUS_CONFIG.new;
 
   return (
-    <Card className="border-border/30">
-      <CardContent className="p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-foreground">Match Detail</h3>
-          <Button variant="ghost" size="sm" onClick={onClose} className="h-6 text-xs">
-            Close
-          </Button>
-        </div>
+    <div className="p-4 space-y-4 bg-card/30">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-foreground">Match Detail</h3>
+        <Button variant="ghost" size="sm" onClick={onClose} className="h-6 text-xs">
+          Close
+        </Button>
+      </div>
 
-        {/* Side-by-side image comparison */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-              Contributor Photo
-            </div>
-            <ImageWithFallback
-              src={match.contributor_photo_url}
-              alt={match.contributor_name || "Contributor"}
-              className="w-full aspect-square"
-            />
-            <div className="text-xs text-center text-foreground font-medium truncate">
-              {match.contributor_name || match.contributor_id.slice(0, 12)}
-            </div>
+      {/* Side-by-side image comparison */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+            Contributor Photo
           </div>
-          <div className="space-y-1.5">
-            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-              Discovered Image
-            </div>
-            <ImageWithFallback
-              src={match.discovered_image_url}
-              alt={match.page_title || "Discovered image"}
-              className="w-full aspect-square"
-            />
-            <div className="text-xs text-center text-muted-foreground truncate">
-              {match.platform || "Unknown"} &middot;{" "}
+          <ImageWithFallback
+            src={match.contributor_photo_url}
+            alt={match.contributor_name || "Contributor"}
+            className="w-full max-h-80"
+          />
+          <div className="text-xs text-center text-foreground font-medium truncate">
+            {match.contributor_name || match.contributor_id.slice(0, 12)}
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+            Discovered Image
+          </div>
+          <ImageWithFallback
+            src={match.discovered_image_url}
+            alt={match.page_title || "Discovered image"}
+            className="w-full max-h-80"
+          />
+          <div className="text-xs text-center text-muted-foreground truncate">
+            {match.platform || "Unknown"} &middot;{" "}
+            {match.similarity_score
+              ? `${(match.similarity_score * 100).toFixed(1)}% match`
+              : ""}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Match info */}
+        <div className="space-y-2 text-xs">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Similarity</span>
+            <span className="font-mono">
               {match.similarity_score
-                ? `${(match.similarity_score * 100).toFixed(1)}% match`
-                : ""}
-            </div>
+                ? `${(match.similarity_score * 100).toFixed(2)}%`
+                : "-"}
+            </span>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Match info */}
-          <div className="space-y-2 text-xs">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Confidence</span>
+            <span
+              className={
+                CONFIDENCE_CONFIG[match.confidence_tier || ""]?.color ||
+                "text-zinc-400"
+              }
+            >
+              {match.confidence_tier || "-"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Status</span>
+            <span
+              className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusCfg.bg} ${statusCfg.color}`}
+            >
+              {statusCfg.label}
+            </span>
+          </div>
+          {match.is_ai_generated !== null && (
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Similarity</span>
-              <span className="font-mono">
-                {match.similarity_score
-                  ? `${(match.similarity_score * 100).toFixed(2)}%`
-                  : "-"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Confidence</span>
-              <span
-                className={
-                  CONFIDENCE_CONFIG[match.confidence_tier || ""]?.color ||
-                  "text-zinc-400"
-                }
-              >
-                {match.confidence_tier || "-"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Status</span>
-              <span
-                className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusCfg.bg} ${statusCfg.color}`}
-              >
-                {statusCfg.label}
-              </span>
-            </div>
-            {match.is_ai_generated !== null && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">AI Generated</span>
-                <span>
-                  {match.is_ai_generated ? "Yes" : "No"}
-                  {match.ai_detection_score
-                    ? ` (${(match.ai_detection_score * 100).toFixed(0)}%)`
-                    : ""}
-                </span>
-              </div>
-            )}
-            {match.is_known_account && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Known Account</span>
-                <span className="text-green-400">Yes</span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Date</span>
+              <span className="text-muted-foreground">AI Generated</span>
               <span>
-                {match.created_at
-                  ? new Date(match.created_at).toLocaleString()
-                  : "-"}
+                {match.is_ai_generated ? "Yes" : "No"}
+                {match.ai_detection_score
+                  ? ` (${(match.ai_detection_score * 100).toFixed(0)}%)`
+                  : ""}
               </span>
             </div>
-            {match.page_title && (
-              <div className="flex justify-between gap-2">
-                <span className="text-muted-foreground shrink-0">Title</span>
-                <span className="truncate text-right">{match.page_title}</span>
-              </div>
-            )}
+          )}
+          {match.is_known_account && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Known Account</span>
+              <span className="text-green-400">Yes</span>
+            </div>
+          )}
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Date</span>
+            <span>
+              {match.created_at
+                ? new Date(match.created_at).toLocaleString()
+                : "-"}
+            </span>
           </div>
-
-          {/* Links and actions */}
-          <div className="space-y-3">
-            {match.page_url && (
-              <a
-                href={match.page_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-              >
-                <ExternalLink className="h-3 w-3" />
-                View source page
-              </a>
-            )}
-            {match.source_url && (
-              <a
-                href={match.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-              >
-                <ExternalLink className="h-3 w-3" />
-                View original image
-              </a>
-            )}
-
-            {/* Action buttons */}
-            {match.status === "new" && (
-              <div className="flex gap-2 pt-2">
-                <Button
-                  size="sm"
-                  className="h-7 text-xs bg-green-600 hover:bg-green-700"
-                  onClick={() => onStatusChange(match.id, "confirmed")}
-                  disabled={isUpdating}
-                >
-                  {isUpdating ? (
-                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                  ) : (
-                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                  )}
-                  Confirm
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  onClick={() => onStatusChange(match.id, "rejected")}
-                  disabled={isUpdating}
-                >
-                  <XCircle className="h-3 w-3 mr-1" />
-                  Reject
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs text-red-400 border-red-400/30 hover:bg-red-400/10"
-                  onClick={() => onStatusChange(match.id, "false_positive")}
-                  disabled={isUpdating}
-                >
-                  <AlertTriangle className="h-3 w-3 mr-1" />
-                  False Positive
-                </Button>
-              </div>
-            )}
-          </div>
+          {match.page_title && (
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground shrink-0">Title</span>
+              <span className="truncate text-right">{match.page_title}</span>
+            </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+
+        {/* Links and actions */}
+        <div className="space-y-3">
+          {match.page_url && (
+            <a
+              href={match.page_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+            >
+              <ExternalLink className="h-3 w-3" />
+              View source page
+            </a>
+          )}
+          {match.source_url && (
+            <a
+              href={match.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+            >
+              <ExternalLink className="h-3 w-3" />
+              View original image
+            </a>
+          )}
+
+          {/* Action buttons */}
+          {match.status === "new" && (
+            <div className="flex gap-2 pt-2">
+              <Button
+                size="sm"
+                className="h-7 text-xs bg-green-600 hover:bg-green-700"
+                onClick={() => onStatusChange(match.id, "confirmed")}
+                disabled={isUpdating}
+              >
+                {isUpdating ? (
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                ) : (
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                )}
+                Confirm
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => onStatusChange(match.id, "rejected")}
+                disabled={isUpdating}
+              >
+                <XCircle className="h-3 w-3 mr-1" />
+                Reject
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs text-red-400 border-red-400/30 hover:bg-red-400/10"
+                onClick={() => onStatusChange(match.id, "false_positive")}
+                disabled={isUpdating}
+              >
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                False Positive
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

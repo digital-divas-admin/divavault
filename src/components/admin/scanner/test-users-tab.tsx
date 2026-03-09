@@ -62,6 +62,7 @@ const PLATFORM_OPTIONS = [
   { value: "civitai", label: "CivitAI" },
   { value: "deviantart", label: "DeviantArt" },
   { value: "fourchan", label: "4chan" },
+  { value: "reddit", label: "Reddit" },
 ];
 
 export function TestUsersTab({

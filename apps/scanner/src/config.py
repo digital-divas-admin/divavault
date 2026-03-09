@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     fourchan_threads_per_board: int = 10       # threads to drill into per board (sweep)
     fourchan_backfill_threads: int = 150       # threads to drill into per board (backfill) — drill all active threads in one pass
 
+    # Reddit crawl
+    reddit_crawl_interval_hours: int = 24      # Daily sweep
+    reddit_max_pages: int = 3                  # Pages per sub per tick (sweep) — 100 posts/page = 300 posts/sub
+    reddit_backfill_pages: int = 10            # Pages per sub per tick (backfill) — 1000 posts/sub
+
     # DeviantArt crawl
     deviantart_client_id: str = ""
     deviantart_client_secret: str = ""

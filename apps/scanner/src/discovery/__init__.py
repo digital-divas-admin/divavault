@@ -14,9 +14,11 @@ from src.discovery.base import BaseDiscoverySource
 from src.discovery.deviantart_crawl import DeviantArtCrawl
 from src.discovery.fourchan_crawl import FourChanCrawl
 from src.discovery.platform_crawl import CivitAICrawl
+from src.discovery.reddit_crawl import RedditCrawl
 
 PLATFORM_SCRAPERS: dict[str, BaseDiscoverySource] = {
     "civitai": CivitAICrawl(),
     "deviantart": DeviantArtCrawl(),
     "fourchan": FourChanCrawl(),
+    "reddit": RedditCrawl(),
 }
