@@ -63,7 +63,8 @@ class Settings(BaseSettings):
 
     # 4chan crawl
     fourchan_threads_per_board: int = 10       # threads to drill into per board (sweep)
-    fourchan_backfill_threads: int = 150       # threads to drill into per board (backfill) — drill all active threads in one pass
+    fourchan_backfill_threads: int = 75         # threads to drill into per board (backfill)
+    fourchan_backfill_boards_per_tick: int = 3   # max boards to backfill per tick (rotate through boards across ticks)
 
     # Reddit crawl
     reddit_crawl_interval_hours: int = 24      # Daily sweep

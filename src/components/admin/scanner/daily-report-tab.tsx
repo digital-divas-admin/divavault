@@ -176,6 +176,35 @@ function OverallStatusBanner({
   );
 }
 
+function FailedJobsSummary({ jobs }: { jobs: TodayScanJob[] }) {
+  const grouped = useMemo(() => {
+    const groups: Record<string, number> = {};
+    for (const job of jobs) {
+      const key = job.error_message || "Unknown error";
+      groups[key] = (groups[key] || 0) + 1;
+    }
+    return Object.entries(groups).sort((a, b) => b[1] - a[1]);
+  }, [jobs]);
+
+  return (
+    <div className="mt-3 space-y-1">
+      {grouped.map(([error, count]) => (
+        <div
+          key={error}
+          className="text-xs text-red-400 bg-red-500/10 rounded p-2 flex items-center justify-between gap-2"
+        >
+          <span className="truncate">Scan failed: {error}</span>
+          {count > 1 && (
+            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/30 font-semibold">
+              ×{count}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PlatformCard({
   platform,
   crawlSnapshots,
@@ -295,16 +324,7 @@ function PlatformCard({
         )}
 
         {failedJobs.length > 0 && (
-          <div className="mt-3 space-y-1">
-            {failedJobs.map((job) => (
-              <div
-                key={job.id}
-                className="text-xs text-red-400 bg-red-500/10 rounded p-2"
-              >
-                Scan failed: {job.error_message || "Unknown error"}
-              </div>
-            ))}
-          </div>
+          <FailedJobsSummary jobs={failedJobs} />
         )}
       </CardContent>
     </Card>

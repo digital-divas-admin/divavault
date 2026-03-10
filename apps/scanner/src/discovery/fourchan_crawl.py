@@ -9,6 +9,7 @@ Rate limit: 1 request/second (strict, IP-level).
 """
 
 import asyncio
+import time
 
 import aiohttp
 
@@ -72,11 +73,34 @@ class FourChanCrawl(BaseDiscoverySource):
         tags_total = len(boards)
         tags_exhausted = 0
 
+        # In backfill mode, limit boards per tick and rotate through them.
+        # Pre-populate cursors for boards we'll skip so state is preserved.
+        if backfill:
+            boards_to_crawl = self._select_backfill_boards(
+                boards, effective_cursors, settings.fourchan_backfill_boards_per_tick,
+            )
+            boards_to_crawl_set = set(boards_to_crawl)
+            for board in boards:
+                board_key = f"/{board}/"
+                if board not in boards_to_crawl_set:
+                    cursor_val = effective_cursors.get(board_key)
+                    if cursor_val == "exhausted":
+                        updated_cursors[board_key] = "exhausted"
+                        tags_exhausted += 1
+                    elif cursor_val is not None:
+                        updated_cursors[board_key] = cursor_val
+        else:
+            boards_to_crawl = boards
+
+        # Graceful timeout: stop early if we've used >80% of the platform timeout budget.
+        # This lets us return partial results with cursors intact instead of being hard-cancelled.
+        crawl_deadline = time.monotonic() + settings.per_platform_crawl_timeout * 0.8
+
         headers = {"User-Agent": USER_AGENT}
         timeout = aiohttp.ClientTimeout(total=15)
 
         async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
-            for board in boards:
+            for board in boards_to_crawl:
                 board_key = f"/{board}/"
 
                 # In backfill mode, skip exhausted boards
@@ -84,6 +108,20 @@ class FourChanCrawl(BaseDiscoverySource):
                     updated_cursors[board_key] = "exhausted"
                     tags_exhausted += 1
                     continue
+
+                # Graceful timeout check
+                if time.monotonic() > crawl_deadline:
+                    log.warning(
+                        "fourchan_graceful_timeout",
+                        boards_remaining=len(boards_to_crawl) - len(updated_cursors),
+                        images_so_far=len(results),
+                    )
+                    # Preserve cursor for boards we didn't reach
+                    for remaining in boards_to_crawl:
+                        rkey = f"/{remaining}/"
+                        if rkey not in updated_cursors:
+                            updated_cursors[rkey] = effective_cursors.get(rkey)
+                    break
 
                 cursor_val = effective_cursors.get(board_key)
                 last_seen_no = int(cursor_val) if cursor_val and cursor_val != "exhausted" else 0
@@ -116,8 +154,10 @@ class FourChanCrawl(BaseDiscoverySource):
         log.info(
             "fourchan_crawl_complete",
             results_found=len(results),
-            boards=len(boards),
+            boards_crawled=sum(1 for k in updated_cursors if updated_cursors[k] != effective_cursors.get(k)),
+            boards_total=len(boards),
             tags_exhausted=tags_exhausted,
+            mode="backfill" if backfill else "sweep",
         )
 
         return DiscoveryResult(
@@ -126,6 +166,45 @@ class FourChanCrawl(BaseDiscoverySource):
             tags_total=tags_total,
             tags_exhausted=tags_exhausted,
         )
+
+    @staticmethod
+    def _select_backfill_boards(
+        all_boards: list[str],
+        cursors: dict[str, str | None],
+        max_boards: int,
+    ) -> list[str]:
+        """Select a subset of boards for this backfill tick.
+
+        Prioritises non-exhausted boards that haven't been crawled yet (no cursor),
+        then boards with existing cursors (partially done). Rotates through boards
+        across ticks so all boards eventually get backfilled.
+        """
+        # Split into: no cursor yet, partially done, exhausted
+        uncrawled = []
+        partial = []
+        for board in all_boards:
+            key = f"/{board}/"
+            val = cursors.get(key)
+            if val == "exhausted":
+                continue
+            elif val is None:
+                uncrawled.append(board)
+            else:
+                partial.append(board)
+
+        # Prioritise: finish partial boards first, then start new ones
+        selected = (partial + uncrawled)[:max_boards]
+
+        if selected:
+            log.info(
+                "fourchan_backfill_board_selection",
+                selected=selected,
+                uncrawled=len(uncrawled),
+                partial=len(partial),
+                exhausted=len(all_boards) - len(uncrawled) - len(partial),
+            )
+
+        return selected
 
     async def _crawl_board(
         self,

@@ -92,7 +92,7 @@ class TestConfigAdditions:
         from src.config import Settings
 
         s = Settings()
-        assert s.per_platform_crawl_timeout == 300
+        assert s.per_platform_crawl_timeout == 1800
 
 
 
@@ -278,7 +278,7 @@ class TestSafeCrawlTimeout:
 
             await _safe_crawl(mock_job_store, mock_crawl)
 
-            mock_cleanup.assert_awaited_once_with("test_platform")
+            mock_cleanup.assert_awaited_once_with("test_platform", skip_circuit_breaker=False)
 
     @pytest.mark.asyncio
     async def test_safe_crawl_cleanup_on_normal_exception(self):

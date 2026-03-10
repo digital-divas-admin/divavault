@@ -708,7 +708,7 @@ async def _run_platform_crawls(job_store: JobStore) -> None:
                 log.error("parallel_phase_error", index=i, error=repr(result))
 
 
-async def _cleanup_crawl_state(platform: str | None = None) -> None:
+async def _cleanup_crawl_state(platform: str | None = None, *, skip_circuit_breaker: bool = False) -> None:
     """Reset crawl_phase, fail running scan_jobs, and push next_crawl_at forward
     after timeout/error.
 
@@ -718,12 +718,16 @@ async def _cleanup_crawl_state(platform: str | None = None) -> None:
 
     Args:
         platform: If provided, clean up only that platform. If None, clean up ALL enabled platforms.
+        skip_circuit_breaker: If True, reset crawl_phase but don't escalate the circuit breaker.
+            Used for partial-success timeouts (crawl collected results before timing out).
     """
     try:
         from src.resilience.circuit_breaker import circuit_breaker
 
-        # Use circuit breaker for per-platform backoff, fall back to 30min for bulk cleanup
-        if platform:
+        if skip_circuit_breaker:
+            # Partial success: use normal interval instead of escalating backoff
+            backoff = timedelta(minutes=settings.circuit_breaker_base_delay_minutes)
+        elif platform:
             backoff = await circuit_breaker.record_failure(platform)
         else:
             backoff = timedelta(minutes=30)
@@ -758,6 +762,7 @@ async def _cleanup_crawl_state(platform: str | None = None) -> None:
             platform=platform or "all",
             retry_at=retry_at.isoformat(),
             backoff_minutes=backoff.total_seconds() / 60,
+            skip_circuit_breaker=skip_circuit_breaker,
         )
     except Exception as e:
         log.error("crawl_state_cleanup_error", platform=platform or "all", error=repr(e))
@@ -766,18 +771,23 @@ async def _cleanup_crawl_state(platform: str | None = None) -> None:
 async def _safe_crawl(job_store: JobStore, crawl) -> None:
     """Wrapper for crawl with per-platform timeout and error handling."""
     timeout = settings.per_platform_crawl_timeout
+    crawl_start = datetime.now(timezone.utc)
     try:
         await asyncio.wait_for(
             _phase_crawl_and_insert(job_store, crawl),
             timeout=timeout,
         )
     except asyncio.TimeoutError:
+        # Check if images were inserted during this crawl (sweep completed before backfill timed out).
+        # If so, treat as partial success — don't escalate the circuit breaker.
+        partial_success = await _check_partial_success(crawl.platform, crawl_start)
         log.error(
             "platform_crawl_timeout",
             platform=crawl.platform,
             timeout_seconds=timeout,
+            partial_success=partial_success,
         )
-        await _cleanup_crawl_state(crawl.platform)
+        await _cleanup_crawl_state(crawl.platform, skip_circuit_breaker=partial_success)
     except Exception as e:
         log.error("platform_crawl_error", platform=crawl.platform, error=repr(e))
         # _phase_crawl_and_insert tries to cleanup before re-raising, but if
@@ -786,6 +796,32 @@ async def _safe_crawl(job_store: JobStore, crawl) -> None:
             await _cleanup_crawl_state(crawl.platform)
         except Exception:
             pass
+
+
+async def _check_partial_success(platform: str, since: datetime) -> bool:
+    """Check if any images were inserted for this platform since the given time.
+
+    Used to distinguish partial-success timeouts (sweep completed, backfill timed out)
+    from total failures (nothing was inserted).
+    """
+    try:
+        from sqlalchemy import exists, select as sa_select
+        from src.db.models import DiscoveredImage
+
+        async with async_session() as session:
+            result = await session.execute(
+                sa_select(
+                    exists(
+                        sa_select(DiscoveredImage.id).where(
+                            DiscoveredImage.platform == platform,
+                            DiscoveredImage.discovered_at >= since,
+                        )
+                    )
+                )
+            )
+            return result.scalar() or False
+    except Exception:
+        return False
 
 
 async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
