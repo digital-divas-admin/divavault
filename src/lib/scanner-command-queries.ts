@@ -348,6 +348,7 @@ function parseBackfillProgress(
 
 export async function getCommandCenterData(): Promise<CommandCenterData> {
   const supabase = await createServiceClient();
+  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const [
     // Funnel counts
@@ -514,17 +515,17 @@ export async function getCommandCenterData(): Promise<CommandCenterData> {
       .select("*")
       .gte("snapshot_date", new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0])
       .order("snapshot_date", { ascending: true }),
-    // Today's scan jobs
+    // Scan jobs (last 24h)
     supabase
       .from("scan_jobs")
       .select("id, source_name, scan_type, status, images_processed, matches_found, error_message, started_at, completed_at")
-      .gte("started_at", new Date().toISOString().split("T")[0])
+      .gte("started_at", last24h)
       .order("started_at", { ascending: false }),
-    // Today's crawl health snapshots
+    // Crawl health snapshots (last 24h)
     supabase
       .from("crawl_health_snapshots")
       .select("platform, crawl_type, images_discovered, images_new, faces_found, download_failures, duration_seconds, error_message, http_errors, created_at")
-      .gte("created_at", new Date().toISOString().split("T")[0])
+      .gte("created_at", last24h)
       .order("created_at", { ascending: false }),
     // Open degradation events
     supabase

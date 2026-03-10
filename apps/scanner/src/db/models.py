@@ -457,6 +457,8 @@ class PlatformCrawlSchedule(Base):
     tags_total: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     tags_exhausted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     estimated_total_images: Mapped[int | None] = mapped_column(BigInteger)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ScannerDailySnapshot(Base):

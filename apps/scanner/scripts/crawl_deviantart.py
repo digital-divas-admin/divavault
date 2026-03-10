@@ -19,6 +19,7 @@ import argparse
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 
 from sqlalchemy import text
 
@@ -28,6 +29,7 @@ from src.db.queries import batch_insert_inline_detected_images
 from src.discovery.base import DiscoveryContext
 from src.discovery.deviantart_crawl import DeviantArtCrawl, ALL_TAGS
 from src.ingest.embeddings import init_model
+from src.resilience.collector import collector
 from src.utils.logging import get_logger, setup_logging
 
 setup_logging()
@@ -54,6 +56,8 @@ async def main():
     print("Loading InsightFace model...")
     model = init_model()
     print("Model loaded.\n")
+
+    crawl_start = datetime.now(timezone.utc)
 
     # Load prioritized tag config from mapper
     effective_tags = list(ALL_TAGS)
@@ -183,10 +187,24 @@ async def main():
         ), {"terms": json.dumps(new_search_terms)})
         await session.commit()
 
-    # Print summary
-    elapsed = time.monotonic() - start
+    # Record crawl telemetry for daily report / resilience monitoring
     face_images = sum(1 for img in result.images if img.has_face)
     total_faces = sum(img.face_count for img in result.images)
+    await collector.record_crawl(
+        platform="deviantart",
+        crawl_type="backfill" if backfill_mode else "sweep",
+        started_at=crawl_start,
+        finished_at=datetime.now(timezone.utc),
+        images_discovered=len(result.images),
+        images_new=new_count,
+        download_failures=result.download_failures,
+        faces_found=total_faces,
+        tags_total=result.tags_total,
+        tags_exhausted=result.tags_exhausted,
+    )
+
+    # Print summary
+    elapsed = time.monotonic() - start
     print(f"\n{'='*60}")
     print(f"COMPLETE ({elapsed:.0f}s)")
     print(f"{'='*60}")

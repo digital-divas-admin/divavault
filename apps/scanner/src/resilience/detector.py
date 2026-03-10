@@ -1,9 +1,9 @@
 """Degradation detector: compares crawl snapshots against baselines to detect anomalies."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 
 from src.config import settings
 from src.db.connection import async_session
@@ -105,6 +105,120 @@ class DegradationDetector:
             log.error("degradation_check_error", platform=platform, error=str(e))
 
         return events
+
+    async def check_consecutive_failures(self, platform: str) -> list[DegradationEvent]:
+        """Check if last N snapshots all have errors. No baseline needed."""
+        events: list[DegradationEvent] = []
+        try:
+            critical_threshold = settings.resilience_consecutive_failure_critical
+            warning_threshold = settings.resilience_consecutive_failure_warning
+
+            async with async_session() as session:
+                result = await session.execute(
+                    select(CrawlHealthSnapshot.id, CrawlHealthSnapshot.error_message)
+                    .where(CrawlHealthSnapshot.platform == platform)
+                    .order_by(CrawlHealthSnapshot.created_at.desc())
+                    .limit(critical_threshold)
+                )
+                recent = result.all()
+
+            if len(recent) < warning_threshold:
+                return events
+
+            # The first row is the most recent snapshot
+            snapshot_id = recent[0][0]
+
+            # Count consecutive errors from most recent
+            consecutive_errors = 0
+            for row in recent:
+                if row[1] is not None:  # error_message is not null
+                    consecutive_errors += 1
+                else:
+                    break
+
+            if consecutive_errors >= critical_threshold:
+                severity = "critical"
+            elif consecutive_errors >= warning_threshold:
+                severity = "warning"
+            else:
+                return events
+
+            event = await self._create_event_if_new(
+                platform=platform,
+                degradation_type="consecutive_failures",
+                severity=severity,
+                symptom=f"{consecutive_errors} consecutive crawl failures",
+                baseline_value=None,
+                current_value=float(consecutive_errors),
+                deviation_pct=None,
+                snapshot_id=snapshot_id,
+            )
+            if event:
+                events.append(event)
+
+        except Exception as e:
+            log.error("consecutive_failure_check_error", platform=platform, error=str(e))
+
+        return events
+
+    async def check_prolonged_outage(self, platform: str) -> DegradationEvent | None:
+        """Check if no successful crawl within X hours. No baseline needed."""
+        try:
+            outage_hours = settings.resilience_prolonged_outage_hours
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=outage_hours)
+
+            async with async_session() as session:
+                # Find most recent successful snapshot (no error)
+                result = await session.execute(
+                    select(CrawlHealthSnapshot.created_at)
+                    .where(
+                        and_(
+                            CrawlHealthSnapshot.platform == platform,
+                            CrawlHealthSnapshot.error_message.is_(None),
+                        )
+                    )
+                    .order_by(CrawlHealthSnapshot.created_at.desc())
+                    .limit(1)
+                )
+                last_success = result.scalar_one_or_none()
+
+                # Get latest snapshot ID (any status) + existence check in one query
+                latest_q = await session.execute(
+                    select(CrawlHealthSnapshot.id)
+                    .where(CrawlHealthSnapshot.platform == platform)
+                    .order_by(CrawlHealthSnapshot.created_at.desc())
+                    .limit(1)
+                )
+                snapshot_id = latest_q.scalar_one_or_none()
+
+            if not snapshot_id:
+                return None  # No data yet
+
+            if last_success is not None and last_success >= cutoff:
+                return None  # Recent success exists
+
+            # Either no success ever, or last success is too old
+            if last_success:
+                hours_ago = (datetime.now(timezone.utc) - last_success).total_seconds() / 3600
+                symptom = f"No successful crawl in {hours_ago:.0f}h (threshold: {outage_hours}h)"
+            else:
+                hours_ago = None
+                symptom = f"No successful crawl ever recorded (threshold: {outage_hours}h)"
+
+            return await self._create_event_if_new(
+                platform=platform,
+                degradation_type="prolonged_outage",
+                severity="critical",
+                symptom=symptom,
+                baseline_value=float(outage_hours),
+                current_value=float(hours_ago) if hours_ago is not None else None,
+                deviation_pct=None,
+                snapshot_id=snapshot_id,
+            )
+
+        except Exception as e:
+            log.error("prolonged_outage_check_error", platform=platform, error=str(e))
+            return None
 
     async def _create_event_if_new(
         self,

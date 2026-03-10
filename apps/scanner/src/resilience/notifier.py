@@ -28,8 +28,47 @@ async def _post_to_ntfy(title: str, body: str, priority: str = "default", tags: 
         )
 
 
-async def notify_degradation(event: DegradationEvent) -> None:
-    """Send degradation alert. Logs always, pushes to ntfy.sh if configured."""
+# Only notify on these failure count thresholds to avoid spam
+_NOTIFY_THRESHOLDS = {3, 5, 10}
+
+
+async def notify_degradation(event: DegradationEvent, failure_count: int | None = None) -> None:
+    """Send degradation alert with optional escalation.
+
+    Args:
+        event: The degradation event to notify about.
+        failure_count: If provided, used for priority escalation and threshold gating.
+            Only notifies on threshold crossings (3, 5, 10) and circuit breaker trip.
+    """
+    # Gate: if failure_count is provided, only notify on threshold crossings
+    if failure_count is not None and failure_count not in _NOTIFY_THRESHOLDS:
+        from src.config import settings as cfg
+        if failure_count < cfg.circuit_breaker_max_failures:
+            # Not a threshold crossing and not a circuit breaker trip — skip notification
+            log.debug(
+                "degradation_notification_skipped",
+                platform=event.platform,
+                failure_count=failure_count,
+                reason="not_threshold",
+            )
+            return
+
+    # Compute ntfy priority based on failure count
+    if failure_count is not None:
+        if failure_count >= 6:
+            priority = "urgent"
+        elif failure_count >= 3:
+            priority = "high"
+        else:
+            priority = "default"
+    else:
+        priority = "high" if event.severity == "critical" else "default"
+
+    # Prepend failure count to body if available
+    body = event.symptom
+    if failure_count is not None:
+        body = f"[Failure #{failure_count}] {body}"
+
     log.warning(
         "degradation_alert",
         platform=event.platform,
@@ -37,13 +76,14 @@ async def notify_degradation(event: DegradationEvent) -> None:
         type=event.degradation_type,
         symptom=event.symptom,
         event_id=str(event.id),
+        failure_count=failure_count,
     )
 
     try:
         await _post_to_ntfy(
             title=f"[{event.severity.upper()}] {event.platform} degradation",
-            body=event.symptom,
-            priority="high" if event.severity == "critical" else "default",
+            body=body,
+            priority=priority,
             tags=f"warning,{event.platform}",
         )
         if settings.ntfy_topic:

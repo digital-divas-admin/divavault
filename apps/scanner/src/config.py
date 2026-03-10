@@ -121,15 +121,16 @@ class Settings(BaseSettings):
     scout_max_results_per_source: int = 50
     scout_assessment_timeout: int = 15  # seconds per URL
 
-    # Per-platform crawl timeout (seconds) — prevents one stuck platform from blocking others
-    per_platform_crawl_timeout: int = 300
+    # Per-platform crawl timeout (seconds) — prevents one stuck platform from blocking others.
+    # With 100+ mapper terms at 10 pages each (image + model searches), CivitAI needs ~30 min.
+    per_platform_crawl_timeout: int = 1800
 
     # Per-step timeouts (seconds, 0 = no timeout)
     step_timeout_ingest: int = 120
     step_timeout_detection: int = 900        # outer backstop (subprocess has own 600s timeout)
     step_timeout_contributor_scans: int = 300
     step_timeout_taxonomy_mapping: int = 600
-    step_timeout_platform_crawls: int = 600
+    step_timeout_platform_crawls: int = 2100  # must exceed per_platform_crawl_timeout (platforms run in parallel)
     step_timeout_honeypot: int = 60
     step_timeout_ad_intel: int = 300
     step_timeout_ml_intelligence: int = 120
@@ -154,7 +155,15 @@ class Settings(BaseSettings):
     resilience_auto_promote: bool = False
     resilience_canary_cycles: int = 2
     resilience_canary_threshold: float = 0.80
+    resilience_consecutive_failure_warning: int = 3
+    resilience_consecutive_failure_critical: int = 5
+    resilience_prolonged_outage_hours: int = 12
     ntfy_topic: str = ""
+
+    # Circuit breaker
+    circuit_breaker_max_failures: int = 10
+    circuit_breaker_base_delay_minutes: int = 30
+    circuit_breaker_max_delay_minutes: int = 1440  # 24h cap
 
     # Logging
     log_level: str = "INFO"

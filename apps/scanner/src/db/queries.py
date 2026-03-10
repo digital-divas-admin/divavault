@@ -303,9 +303,30 @@ async def update_scan_job(
         )
 
 
-async def recover_stale_jobs(session: AsyncSession, max_age_minutes: int = 30) -> int:
-    """Reset stale running/interrupted jobs to failed."""
+async def recover_stale_jobs(session: AsyncSession, max_age_minutes: int = 30) -> tuple[int, int]:
+    """Reset stale running/interrupted jobs to failed. Also unsticks platform schedules.
+
+    Returns (jobs_recovered, platforms_unstuck).
+    """
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
+    now = datetime.now(timezone.utc)
+
+    # 1. Find stale platform_crawl source_names before updating (for schedule fix)
+    stale_platforms_q = await session.execute(
+        select(ScanJob.source_name)
+        .where(
+            and_(
+                ScanJob.scan_type == "platform_crawl",
+                ScanJob.status.in_(["running", "interrupted"]),
+                ScanJob.started_at < cutoff,
+                ScanJob.source_name.isnot(None),
+            )
+        )
+        .distinct()
+    )
+    stale_platforms = [row[0] for row in stale_platforms_q.all()]
+
+    # 2. Fail the stale jobs
     result = await session.execute(
         update(ScanJob)
         .where(
@@ -317,10 +338,35 @@ async def recover_stale_jobs(session: AsyncSession, max_age_minutes: int = 30) -
         .values(
             status="failed",
             error_message="stale_job_recovered",
-            completed_at=datetime.now(timezone.utc),
+            completed_at=now,
         )
     )
-    return result.rowcount
+    jobs_recovered = result.rowcount
+
+    # 3. Unstick platform schedules that are stuck (crawl_phase set or next_crawl_at in the past)
+    platforms_unstuck = 0
+    if stale_platforms:
+        retry_at = now + timedelta(minutes=30)
+        unstick_result = await session.execute(
+            update(PlatformCrawlSchedule)
+            .where(
+                and_(
+                    PlatformCrawlSchedule.platform.in_(stale_platforms),
+                    PlatformCrawlSchedule.crawl_phase.isnot(None),
+                )
+            )
+            .values(crawl_phase=None, next_crawl_at=retry_at)
+        )
+        platforms_unstuck = unstick_result.rowcount
+        if platforms_unstuck > 0:
+            log.info(
+                "stale_schedules_unstuck",
+                platforms=stale_platforms,
+                count=platforms_unstuck,
+                retry_at=retry_at.isoformat(),
+            )
+
+    return (jobs_recovered, platforms_unstuck)
 
 
 # --- Discovered images queries ---

@@ -150,7 +150,10 @@ async def health():
         test_users = {"error": str(e)}
 
     # Resilience status
-    resilience_info = {"enabled": settings.resilience_enabled}
+    resilience_info: dict = {
+        "enabled": settings.resilience_enabled,
+        "circuit_breaker_max_failures": settings.circuit_breaker_max_failures,
+    }
     if settings.resilience_enabled:
         try:
             from sqlalchemy import func, select
@@ -164,22 +167,31 @@ async def health():
                 )
                 resilience_info["open_events"] = open_count.scalar() or 0
 
-                # Latest snapshot per platform (single GROUP BY query)
-                latest_q = await session.execute(
+                # Latest snapshot + last success per platform (combined GROUP BY)
+                from datetime import datetime, timedelta, timezone as tz
+                from sqlalchemy import case
+                snapshot_agg_q = await session.execute(
                     select(
                         CrawlHealthSnapshot.platform,
                         func.max(CrawlHealthSnapshot.created_at).label("latest"),
+                        func.max(case(
+                            (CrawlHealthSnapshot.error_message.is_(None), CrawlHealthSnapshot.created_at),
+                        )).label("last_success"),
                     )
                     .group_by(CrawlHealthSnapshot.platform)
                 )
+                snapshot_agg = snapshot_agg_q.all()
                 latest_snapshots = {
                     row.platform: row.latest.isoformat()
-                    for row in latest_q.all()
+                    for row in snapshot_agg
+                }
+                last_success = {
+                    row.platform: row.last_success.isoformat() if row.last_success else None
+                    for row in snapshot_agg
                 }
                 resilience_info["latest_snapshots"] = latest_snapshots
 
-                # Baselines: just report which platforms have enough snapshots (>= 3 in last 7 days)
-                from datetime import datetime, timedelta, timezone as tz
+                # Baselines: which platforms have enough snapshots (>= 3 in last 7 days)
                 cutoff = datetime.now(tz.utc) - timedelta(days=settings.resilience_baseline_days)
                 baseline_q = await session.execute(
                     select(CrawlHealthSnapshot.platform)
@@ -190,6 +202,39 @@ async def health():
                 resilience_info["baselines_available"] = [
                     row[0] for row in baseline_q.all()
                 ]
+
+                # Per-platform status (circuit breaker state + recent failures)
+                from src.db.models import PlatformCrawlSchedule, ScanJob
+                schedules_q = await session.execute(
+                    select(PlatformCrawlSchedule)
+                )
+                schedules = schedules_q.scalars().all()
+
+                # Failed jobs per platform in last 24h
+                cutoff_24h = datetime.now(tz.utc) - timedelta(hours=24)
+                failed_24h_q = await session.execute(
+                    select(ScanJob.source_name, func.count())
+                    .where(
+                        ScanJob.scan_type == "platform_crawl",
+                        ScanJob.status == "failed",
+                        ScanJob.created_at >= cutoff_24h,
+                    )
+                    .group_by(ScanJob.source_name)
+                )
+                failed_24h = dict(failed_24h_q.all())
+
+                platform_status = {}
+                for sched in schedules:
+                    platform_status[sched.platform] = {
+                        "next_crawl_at": sched.next_crawl_at.isoformat() if sched.next_crawl_at else None,
+                        "enabled": sched.enabled,
+                        "crawl_phase": sched.crawl_phase,
+                        "consecutive_failures": sched.consecutive_failures,
+                        "last_failure_at": sched.last_failure_at.isoformat() if sched.last_failure_at else None,
+                        "failed_jobs_24h": failed_24h.get(sched.platform, 0),
+                        "last_successful_crawl": last_success.get(sched.platform),
+                    }
+                resilience_info["platform_status"] = platform_status
         except Exception as e:
             resilience_info["error"] = str(e)
 

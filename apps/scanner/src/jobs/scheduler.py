@@ -135,9 +135,9 @@ async def _run_cleanup_step(job_store: JobStore) -> None:
     """Run periodic cleanup tasks (temp files, stale jobs)."""
     await run_cleanup()
     cleanup_old_temp_files()
-    recovered = await job_store.recover_stale(max_age_minutes=30)
-    if recovered > 0:
-        log.info("stale_jobs_recovered", count=recovered)
+    jobs_recovered, platforms_unstuck = await job_store.recover_stale(max_age_minutes=30)
+    if jobs_recovered > 0:
+        log.info("stale_jobs_recovered", count=jobs_recovered, platforms_unstuck=platforms_unstuck)
 
 
 async def run_scheduler(job_store: JobStore) -> None:
@@ -148,9 +148,9 @@ async def run_scheduler(job_store: JobStore) -> None:
     tick_count = 0
 
     # Recover stale jobs on startup
-    recovered = await job_store.recover_stale(max_age_minutes=30)
-    if recovered > 0:
-        log.info("stale_jobs_recovered", count=recovered)
+    jobs_recovered, platforms_unstuck = await job_store.recover_stale(max_age_minutes=30)
+    if jobs_recovered > 0:
+        log.info("stale_jobs_recovered", count=jobs_recovered, platforms_unstuck=platforms_unstuck)
 
     # Pre-create heartbeat directory if configured
     heartbeat_path = ""
@@ -709,23 +709,37 @@ async def _run_platform_crawls(job_store: JobStore) -> None:
 
 
 async def _cleanup_crawl_state(platform: str | None = None) -> None:
-    """Reset crawl_phase and fail running scan_jobs after timeout/error.
+    """Reset crawl_phase, fail running scan_jobs, and push next_crawl_at forward
+    after timeout/error.
+
+    Uses the circuit breaker to compute exponential backoff delay. Without the
+    next_crawl_at bump, a failed crawl would be immediately "due" again on the
+    next tick, creating an infinite retry loop.
 
     Args:
         platform: If provided, clean up only that platform. If None, clean up ALL enabled platforms.
     """
     try:
+        from src.resilience.circuit_breaker import circuit_breaker
+
+        # Use circuit breaker for per-platform backoff, fall back to 30min for bulk cleanup
+        if platform:
+            backoff = await circuit_breaker.record_failure(platform)
+        else:
+            backoff = timedelta(minutes=30)
+
+        retry_at = datetime.now(timezone.utc) + backoff
+
         async with async_session() as session:
             from src.db.models import PlatformCrawlSchedule, ScanJob
             from sqlalchemy import update as sa_update
 
-            # Reset crawl_phase
             phase_q = sa_update(PlatformCrawlSchedule)
             if platform:
                 phase_q = phase_q.where(PlatformCrawlSchedule.platform == platform)
             else:
                 phase_q = phase_q.where(PlatformCrawlSchedule.enabled == True)  # noqa: E712
-            await session.execute(phase_q.values(crawl_phase=None))
+            await session.execute(phase_q.values(crawl_phase=None, next_crawl_at=retry_at))
 
             # Fail running platform_crawl jobs in a single UPDATE
             error_msg = f"Cleaned up after {'platform' if platform else 'step'} crawl timeout"
@@ -739,7 +753,12 @@ async def _cleanup_crawl_state(platform: str | None = None) -> None:
             await session.execute(job_q.values(status="failed", error_message=error_msg))
 
             await session.commit()
-        log.info("crawl_state_cleaned", platform=platform or "all")
+        log.info(
+            "crawl_state_cleaned",
+            platform=platform or "all",
+            retry_at=retry_at.isoformat(),
+            backoff_minutes=backoff.total_seconds() / 60,
+        )
     except Exception as e:
         log.error("crawl_state_cleanup_error", platform=platform or "all", error=repr(e))
 
@@ -890,6 +909,13 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
             await session.commit()
 
         await job_store.update_crawl_phase(crawl.platform, None)
+
+        # Reset circuit breaker on successful crawl
+        try:
+            from src.resilience.circuit_breaker import circuit_breaker
+            await circuit_breaker.record_success(crawl.platform)
+        except Exception as cb_err:
+            log.error("circuit_breaker_success_error", platform=crawl.platform, error=str(cb_err))
 
         # Record telemetry for resilience monitoring
         try:

@@ -289,7 +289,7 @@ function PlatformCard({
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
-            No crawl recorded today.{" "}
+            No crawl in last 24h.{" "}
             {lastCrawlAt && <>Last crawl: {timeAgo(lastCrawlAt)}.</>}
           </p>
         )}
@@ -429,9 +429,9 @@ function PipelineThroughput({
 }
 
 function MatchSummary({ data }: { data: CommandCenterData }) {
-  const todayStart = new Date().toISOString().split("T")[0];
+  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const todayMatches = data.recentMatches.filter(
-    (m) => m.created_at && m.created_at >= todayStart
+    (m) => m.created_at && m.created_at >= last24h
   );
 
   const byTier = { high: 0, medium: 0, low: 0 };
@@ -446,7 +446,7 @@ function MatchSummary({ data }: { data: CommandCenterData }) {
     return (
       <div>
         <h3 className="text-sm font-medium mb-3">Match Summary</h3>
-        <p className="text-sm text-muted-foreground">No matches found today.</p>
+        <p className="text-sm text-muted-foreground">No matches in last 24h.</p>
       </div>
     );
   }
@@ -454,7 +454,7 @@ function MatchSummary({ data }: { data: CommandCenterData }) {
   return (
     <div>
       <h3 className="text-sm font-medium mb-3">
-        Match Summary ({todayMatches.length} today)
+        Match Summary ({todayMatches.length} in 24h)
       </h3>
       <div className="flex gap-3">
         {byTier.high > 0 && (
@@ -531,14 +531,78 @@ function BackfillProgress({ data }: { data: CommandCenterData }) {
   );
 }
 
+/** Badge for failure escalation level */
+function FailureEscalationBadge({ count }: { count: number }) {
+  if (count > 20) {
+    return (
+      <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/30 text-red-300 font-semibold animate-pulse">
+        Loop detected
+      </span>
+    );
+  }
+  if (count > 5) {
+    return (
+      <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/30 text-yellow-300 font-semibold">
+        Repeated
+      </span>
+    );
+  }
+  return null;
+}
+
+/** Circuit breaker status display */
+function CircuitBreakerStatus({
+  platformStatus,
+  maxFailures,
+}: {
+  platformStatus: Record<string, any> | undefined;
+  maxFailures: number;
+}) {
+  if (!platformStatus) return null;
+
+  const entries = Object.entries(platformStatus).filter(
+    ([, v]) => (v as any).consecutive_failures > 0
+  );
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="space-y-1 mt-2">
+      {entries.map(([platform, status]: [string, any]) => {
+        const tripped = status.consecutive_failures >= maxFailures;
+        return (
+          <div
+            key={`cb-${platform}`}
+            className={`text-xs rounded p-2 ${
+              tripped
+                ? "bg-red-500/20 text-red-300 animate-pulse"
+                : "bg-orange-500/10 text-orange-400"
+            }`}
+          >
+            <span className="font-medium capitalize">{platform}:</span>{" "}
+            {tripped ? (
+              <span className="font-semibold">TRIPPED (auto-disabled after {status.consecutive_failures} failures)</span>
+            ) : (
+              <span>
+                {status.consecutive_failures} consecutive failures — next retry with backoff
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ErrorsAndWarnings({
   scanJobs,
   degradationEvents,
   crawlSnapshots,
+  health,
 }: {
   scanJobs: TodayScanJob[];
   degradationEvents: DegradationEvent[];
   crawlSnapshots: TodayCrawlSnapshot[];
+  health: Record<string, any> | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const failedJobs = scanJobs.filter((j) => j.status === "failed");
@@ -547,8 +611,29 @@ function ErrorsAndWarnings({
     (s) => s.http_errors && Object.keys(s.http_errors).length > 0
   );
 
+  // Group failed jobs by source_name + error_message
+  const groupedFailures = useMemo(() => {
+    const failed = scanJobs.filter((j) => j.status === "failed");
+    const groups: Record<string, { source: string; error: string; count: number }> = {};
+    for (const job of failed) {
+      const key = `${job.source_name || "unknown"}::${job.error_message || "Unknown error"}`;
+      if (!groups[key]) {
+        groups[key] = {
+          source: job.source_name || "unknown",
+          error: job.error_message || "Unknown error",
+          count: 0,
+        };
+      }
+      groups[key].count++;
+    }
+    return Object.values(groups).sort((a, b) => b.count - a.count);
+  }, [scanJobs]);
+
   const totalIssues =
     failedJobs.length + degradationEvents.length + snapshotErrors.length + httpErrors.length;
+
+  const platformStatus = health?.resilience?.platform_status;
+  const cbMaxFailures: number = health?.resilience?.circuit_breaker_max_failures ?? 10;
 
   if (totalIssues === 0) {
     return (
@@ -558,6 +643,7 @@ function ErrorsAndWarnings({
           <CheckCircle2 className="h-4 w-4" />
           <span>No errors or warnings</span>
         </div>
+        <CircuitBreakerStatus platformStatus={platformStatus} maxFailures={cbMaxFailures} />
       </div>
     );
   }
@@ -576,17 +662,24 @@ function ErrorsAndWarnings({
         )}
       </button>
 
+      <CircuitBreakerStatus platformStatus={platformStatus} maxFailures={cbMaxFailures} />
+
       {expanded && (
-        <div className="space-y-2">
-          {failedJobs.map((job) => (
+        <div className="space-y-2 mt-2">
+          {groupedFailures.map((group) => (
             <div
-              key={job.id}
+              key={`${group.source}-${group.error}`}
               className="text-xs bg-red-500/10 text-red-400 rounded p-2"
             >
-              <span className="font-medium">
-                Failed scan ({job.source_name}):
-              </span>{" "}
-              {job.error_message || "Unknown error"}
+              <span className="font-medium capitalize">
+                {group.source}:{" "}
+                {group.count > 1 && (
+                  <span className="font-semibold">{group.count} failures</span>
+                )}
+                {group.count === 1 && "Failed scan"}
+              </span>
+              <FailureEscalationBadge count={group.count} />
+              <span className="block mt-0.5 opacity-80">{group.error}</span>
             </div>
           ))}
           {degradationEvents.map((event) => (
@@ -640,7 +733,7 @@ function BaselineComparisonTable({
   platformAvgs: Record<string, { images: number; faces: number }>;
 }) {
   const enabledPlatforms = data.platforms.filter((p) => p.enabled);
-  const todayStart = new Date().toISOString().split("T")[0];
+  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const rows: {
     metric: string;
@@ -683,7 +776,7 @@ function BaselineComparisonTable({
 
   // Add match count
   const todayMatches = data.recentMatches.filter(
-    (m) => m.created_at && m.created_at >= todayStart
+    (m) => m.created_at && m.created_at >= last24h
   ).length;
   rows.push({
     metric: "Matches",
@@ -704,7 +797,7 @@ function BaselineComparisonTable({
                 Metric
               </th>
               <th className="text-right py-2 text-xs font-medium text-muted-foreground">
-                Today
+                24h
               </th>
               <th className="text-right py-2 text-xs font-medium text-muted-foreground">
                 7d Avg
@@ -875,6 +968,7 @@ export function DailyReportTab({ data, health }: DailyReportTabProps) {
         scanJobs={data.todayScanJobs}
         degradationEvents={data.openDegradationEvents}
         crawlSnapshots={data.todayCrawlSnapshots}
+        health={health}
       />
 
       {/* G. Baseline Comparison Table */}

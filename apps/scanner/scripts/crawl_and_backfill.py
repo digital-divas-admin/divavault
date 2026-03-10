@@ -14,6 +14,7 @@ sys.path.insert(0, SCANNER_ROOT)
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -32,6 +33,7 @@ from src.discovery.base import DiscoveryContext
 from src.discovery.platform_crawl import CivitAICrawl
 from src.ingest.embeddings import init_model, get_model
 from src.matching.confidence import get_confidence_tier
+from src.resilience.collector import collector
 from src.utils.image_download import (
     check_content_type,
     check_magic_bytes,
@@ -494,6 +496,8 @@ async def main():
     print("Loading InsightFace model...")
     init_model()
 
+    crawl_start = datetime.now(timezone.utc)
+
     # Phase 1: Crawl
     images = await crawl_civitai()
 
@@ -509,6 +513,17 @@ async def main():
 
     # Phase 4: Backfill against all contributors
     matches = await backfill_all_contributors()
+
+    # Record crawl telemetry for daily report / resilience monitoring
+    await collector.record_crawl(
+        platform="civitai",
+        crawl_type="sweep",
+        started_at=crawl_start,
+        finished_at=datetime.now(timezone.utc),
+        images_discovered=len(images),
+        images_new=len(new_images),
+        faces_found=faces,
+    )
 
     # Summary
     elapsed = time.time() - start

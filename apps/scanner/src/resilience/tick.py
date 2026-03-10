@@ -42,18 +42,34 @@ async def _check_platform(platform: str, tick_number: int) -> None:
     if not latest:
         return
 
-    # 2. Get baseline
+    # 2a. Consecutive failure check (no baseline needed)
+    events: list[DegradationEvent] = []
+    try:
+        events += await degradation_detector.check_consecutive_failures(platform)
+    except Exception as e:
+        log.error("consecutive_failure_check_error", platform=platform, error=str(e))
+
+    # 2b. Prolonged outage check (no baseline needed)
+    try:
+        outage = await degradation_detector.check_prolonged_outage(platform)
+        if outage:
+            events.append(outage)
+    except Exception as e:
+        log.error("prolonged_outage_check_error", platform=platform, error=str(e))
+
+    # 3. Get baseline for standard checks
     baseline = await baseline_calculator.get_baseline(platform)
-    if not baseline:
-        return  # Not enough history
+    if baseline:
+        # 4. Run baseline-dependent degradation checks
+        events += await degradation_detector.check(platform, latest, baseline)
 
-    # 3. Run degradation checks
-    events = await degradation_detector.check(platform, latest, baseline)
-
-    # Notify on new events
+    # Notify on new events (with failure count for escalation)
     for event in events:
         try:
-            await notify_degradation(event)
+            failure_count = None
+            if event.degradation_type == "consecutive_failures" and event.current_value:
+                failure_count = int(event.current_value)
+            await notify_degradation(event, failure_count=failure_count)
         except Exception as e:
             log.error("notify_error", event_id=str(event.id), error=str(e))
 

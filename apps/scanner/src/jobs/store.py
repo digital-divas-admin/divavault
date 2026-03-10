@@ -172,11 +172,11 @@ class PostgresJobStore(JobStore):
             await update_crawl_schedule_after_run(session, platform, search_terms)
             await session.commit()
 
-    async def recover_stale(self, max_age_minutes: int) -> int:
+    async def recover_stale(self, max_age_minutes: int) -> tuple[int, int]:
         async with async_session() as session:
-            count = await recover_stale_jobs(session, max_age_minutes)
+            result = await recover_stale_jobs(session, max_age_minutes)
             await session.commit()
-            return count
+            return result
 
     async def update_crawl_phase(self, platform: str, phase: str | None) -> None:
         async with async_session() as session:
