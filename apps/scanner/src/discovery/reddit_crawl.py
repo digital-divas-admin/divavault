@@ -163,10 +163,21 @@ class RedditCrawl(BaseDiscoverySource):
         """Crawl a single subreddit's /new feed.
 
         Returns (images, last_after_fullname, is_exhausted).
+
+        Sweep vs backfill cursor semantics:
+        - **Sweep**: Always starts from newest (no `after`). The saved cursor is
+          used as a *stop condition* — when we encounter a post we've already
+          seen, we stop early. Saves the newest post's fullname for next time.
+        - **Backfill**: Uses `after` to continue deeper into history. Saves the
+          last pagination cursor so the next run picks up where it left off.
         """
         images: list[DiscoveredImageResult] = []
-        current_after = after
-        first_fullname = None  # Track the first post for sweep cursor
+        first_fullname = None  # Track newest post for sweep cursor
+
+        # Sweep starts from top; backfill continues from saved cursor
+        stop_at = after if not backfill else None
+        current_after = after if backfill else None
+        hit_stop = False
 
         for page_num in range(max_pages):
             data = await self._fetch_page(session, limiter, subreddit, current_after)
@@ -177,7 +188,7 @@ class RedditCrawl(BaseDiscoverySource):
             children = listing.get("children", [])
             if not children:
                 # No more posts — exhausted
-                return images, current_after, True
+                return images, first_fullname or current_after, True
 
             # Extract images from this page
             for child in children:
@@ -185,14 +196,30 @@ class RedditCrawl(BaseDiscoverySource):
                 if not post:
                     continue
 
-                # Track first fullname for sweep cursor (newest post on first page)
                 fullname = post.get("name")
+
+                # Track newest post for sweep cursor
                 if page_num == 0 and first_fullname is None and fullname:
                     first_fullname = fullname
+
+                # Sweep stop condition: we've reached content from the last crawl
+                if stop_at and fullname == stop_at:
+                    hit_stop = True
+                    break
 
                 # Extract images from this post
                 post_images = self._extract_images(subreddit, post)
                 images.extend(post_images)
+
+            if hit_stop:
+                log.info(
+                    "reddit_sweep_stop",
+                    subreddit=subreddit,
+                    page=page_num,
+                    reason="reached_previous_cursor",
+                    images_found=len(images),
+                )
+                return images, first_fullname or stop_at, False
 
             # Get next page cursor
             next_after = listing.get("after")
@@ -203,7 +230,7 @@ class RedditCrawl(BaseDiscoverySource):
             current_after = next_after
 
         # Reached max_pages without exhausting — not done yet
-        # For sweep: save the first (newest) fullname so next sweep starts from there
+        # For sweep: save the newest fullname so next sweep checks from there
         # For backfill: save the last "after" cursor so we continue deeper
         final_cursor = current_after if backfill else (first_fullname or current_after)
         return images, final_cursor, False
