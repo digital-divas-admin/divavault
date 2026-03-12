@@ -50,6 +50,10 @@ next-env.d.ts
 # Scanner logs
 apps/scanner/logs/
 
+# Scanner test harness (cached HTTP responses + large fixtures)
+apps/scanner/cache/
+apps/scanner/fixtures/
+
 # Python
 __pycache__/
 *.pyc

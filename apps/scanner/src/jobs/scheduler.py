@@ -444,8 +444,8 @@ async def _execute_contributor_scan(job_store, scan) -> None:
                 "images_processed": images_processed,
                 "matches_found": matches_found,
             })
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("observer_emit_error", error=repr(e))
 
     except Exception as e:
         await job_store.mark_scan_failed(job_id, str(e)[:500])
@@ -471,8 +471,8 @@ async def _check_honeypot_detections() -> None:
                     "total_detected": report["total_detected"],
                     "detection_rate": report["detection_rate"],
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("observer_emit_error", error=repr(e))
     except Exception as e:
         log.error("honeypot_check_error", error=str(e))
 
@@ -734,29 +734,32 @@ async def _cleanup_crawl_state(platform: str | None = None, *, skip_circuit_brea
 
         retry_at = datetime.now(timezone.utc) + backoff
 
-        async with async_session() as session:
-            from src.db.models import PlatformCrawlSchedule, ScanJob
-            from sqlalchemy import update as sa_update
+        if not settings.scan_dry_run:
+            async with async_session() as session:
+                from src.db.models import PlatformCrawlSchedule, ScanJob
+                from sqlalchemy import update as sa_update
 
-            phase_q = sa_update(PlatformCrawlSchedule)
-            if platform:
-                phase_q = phase_q.where(PlatformCrawlSchedule.platform == platform)
-            else:
-                phase_q = phase_q.where(PlatformCrawlSchedule.enabled == True)  # noqa: E712
-            await session.execute(phase_q.values(crawl_phase=None, next_crawl_at=retry_at))
+                phase_q = sa_update(PlatformCrawlSchedule)
+                if platform:
+                    phase_q = phase_q.where(PlatformCrawlSchedule.platform == platform)
+                else:
+                    phase_q = phase_q.where(PlatformCrawlSchedule.enabled == True)  # noqa: E712
+                await session.execute(phase_q.values(crawl_phase=None, next_crawl_at=retry_at))
 
-            # Fail running platform_crawl jobs in a single UPDATE
-            error_msg = f"Cleaned up after {'platform' if platform else 'step'} crawl timeout"
-            job_q = (
-                sa_update(ScanJob)
-                .where(ScanJob.scan_type == "platform_crawl")
-                .where(ScanJob.status == "running")
-            )
-            if platform:
-                job_q = job_q.where(ScanJob.source_name == platform)
-            await session.execute(job_q.values(status="failed", error_message=error_msg))
+                # Fail running platform_crawl jobs in a single UPDATE
+                error_msg = f"Cleaned up after {'platform' if platform else 'step'} crawl timeout"
+                job_q = (
+                    sa_update(ScanJob)
+                    .where(ScanJob.scan_type == "platform_crawl")
+                    .where(ScanJob.status == "running")
+                )
+                if platform:
+                    job_q = job_q.where(ScanJob.source_name == platform)
+                await session.execute(job_q.values(status="failed", error_message=error_msg))
 
-            await session.commit()
+                await session.commit()
+        else:
+            log.info("dry_run_skip", action="_cleanup_crawl_state", platform=platform or "all")
         log.info(
             "crawl_state_cleaned",
             platform=platform or "all",
@@ -794,8 +797,8 @@ async def _safe_crawl(job_store: JobStore, crawl) -> None:
         # its cleanup also fails (DB error), crawl_phase can get stuck. Belt-and-suspenders:
         try:
             await _cleanup_crawl_state(crawl.platform)
-        except Exception:
-            pass
+        except Exception as cleanup_err:
+            log.error("cleanup_crawl_state_failed", platform=crawl.platform, error=repr(cleanup_err))
 
 
 async def _check_partial_success(platform: str, since: datetime) -> bool:
@@ -909,8 +912,8 @@ async def _phase_crawl_and_insert(job_store: JobStore, crawl) -> None:
                 "new_inserted": new_count,
                 "strategy": scraper.get_detection_strategy().value,
             })
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("observer_emit_error", error=repr(e))
 
         # Persist sweep cursors
         await _persist_crawl_state(
@@ -1106,15 +1109,18 @@ async def _crawl_deferred(
 
     # Store estimated_total_images if available (e.g. CivitAI metadata.totalItems)
     if discovery_result.estimated_total_images is not None:
-        async with async_session() as session:
-            from src.db.models import PlatformCrawlSchedule
-            from sqlalchemy import update as sa_update
-            await session.execute(
-                sa_update(PlatformCrawlSchedule)
-                .where(PlatformCrawlSchedule.platform == platform)
-                .values(estimated_total_images=discovery_result.estimated_total_images)
-            )
-            await session.commit()
+        if not settings.scan_dry_run:
+            async with async_session() as session:
+                from src.db.models import PlatformCrawlSchedule
+                from sqlalchemy import update as sa_update
+                await session.execute(
+                    sa_update(PlatformCrawlSchedule)
+                    .where(PlatformCrawlSchedule.platform == platform)
+                    .values(estimated_total_images=discovery_result.estimated_total_images)
+                )
+                await session.commit()
+        else:
+            log.info("dry_run_skip", action="estimated_total_images", platform=platform)
 
     # Build cursors dict for persistence
     cursors_dict = {}
@@ -1167,15 +1173,18 @@ async def _persist_crawl_state(
     await job_store.mark_crawl_complete(crawl.platform, new_search_terms)
 
     # Update coverage stats
-    async with async_session() as session:
-        await update_crawl_coverage(
-            session,
-            platform=crawl.platform,
-            total_images=new_count,
-            tags_total=tags_total,
-            tags_exhausted=tags_exhausted,
-        )
-        await session.commit()
+    if not settings.scan_dry_run:
+        async with async_session() as session:
+            await update_crawl_coverage(
+                session,
+                platform=crawl.platform,
+                total_images=new_count,
+                tags_total=tags_total,
+                tags_exhausted=tags_exhausted,
+            )
+            await session.commit()
+    else:
+        log.info("dry_run_skip", action="update_crawl_coverage", platform=crawl.platform)
 
 
 def _parse_cursor_timestamp(cursor: str | None) -> str | None:
@@ -1305,13 +1314,16 @@ async def _run_backfill_pass(
     search_terms_data["backfill"] = backfill_state
 
     # Persist updated backfill state
-    async with async_session() as session:
-        await session.execute(sa_text(
-            "UPDATE platform_crawl_schedule "
-            "SET search_terms = CAST(:terms AS jsonb) "
-            "WHERE platform = :p"
-        ), {"terms": json.dumps(search_terms_data), "p": crawl.platform})
-        await session.commit()
+    if not settings.scan_dry_run:
+        async with async_session() as session:
+            await session.execute(sa_text(
+                "UPDATE platform_crawl_schedule "
+                "SET search_terms = CAST(:terms AS jsonb) "
+                "WHERE platform = :p"
+            ), {"terms": json.dumps(search_terms_data), "p": crawl.platform})
+            await session.commit()
+    else:
+        log.info("dry_run_skip", action="persist_backfill_state", platform=crawl.platform)
 
     return bf_new
 
@@ -1375,8 +1387,8 @@ async def _phase_face_detection(job_store: JobStore, pending: int) -> None:
                 "max_chunks": max_chunks,
                 "returncode": proc.returncode,
             })
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("observer_emit_error", error=repr(e))
 
         # Refresh section stats after detection so face counts are up-to-date
         if proc.returncode == 0:
@@ -1547,8 +1559,8 @@ async def _phase_matching(job_store: JobStore) -> None:
                 "matches_found": total_matches,
                 "registry_size": registry_count,
             })
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("observer_emit_error", error=repr(e))
 
     except Exception as e:
         log.error(
@@ -1760,8 +1772,8 @@ async def _handle_match(
             "platform": page_url,
             "is_known_account": is_known,
         })
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("observer_emit_error", error=repr(e))
 
     if is_known:
         await update_match(
@@ -1793,6 +1805,8 @@ async def _handle_match(
                     ai_detection_score=ai_result["score"],
                     ai_generator=ai_result.get("generator"),
                 )
+            else:
+                log.warning("ai_detection_returned_none", match_id=str(match.id), image_url=image_url[:120])
 
     # Evidence capture (paid tiers, medium+ confidence)
     if should_capture_evidence(confidence, is_known, tier_config) and page_url:
@@ -1810,7 +1824,11 @@ async def _handle_match(
                     sha256_hash=upload_result["sha256_hash"],
                     file_size_bytes=upload_result["file_size_bytes"],
                 )
+            else:
+                log.warning("evidence_upload_failed", match_id=str(match.id), page_url=page_url[:120])
             screenshot["path"].unlink(missing_ok=True)
+        else:
+            log.warning("evidence_capture_failed", match_id=str(match.id), page_url=page_url[:120])
 
     # Notification
     if should_notify(confidence, is_known, tier_config):

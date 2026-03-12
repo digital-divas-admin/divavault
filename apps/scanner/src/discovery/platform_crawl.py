@@ -1,5 +1,7 @@
 """CivitAI platform crawl discovery source."""
 
+import asyncio
+
 import aiohttp
 
 from src.config import settings
@@ -52,7 +54,12 @@ class CivitAICrawl(BaseDiscoverySource):
         effective_search_cursors = context.backfill_cursors if backfill else context.search_cursors
         effective_model_cursors = context.backfill_model_cursors if backfill else context.model_cursors
 
-        async with aiohttp.ClientSession() as session:
+        _managed_session = context.http_session_override is None
+        if _managed_session:
+            session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120, connect=15))
+        else:
+            session = context.http_session_override
+        try:
             # 1. Paginated global feed (newest images, cursor-resumed)
             try:
                 image_results, last_cursor, estimated_total = await self._fetch_images(
@@ -63,7 +70,7 @@ class CivitAICrawl(BaseDiscoverySource):
                 log.warning("civitai_circuit_open")
                 return DiscoveryResult(images=results, next_cursor=last_cursor)
             except Exception as e:
-                log.error("civitai_images_error", error=str(e))
+                log.error("civitai_images_error", error=repr(e))
 
             # 2. Targeted image searches (query-based, cursor-resumed per term)
             try:
@@ -76,7 +83,7 @@ class CivitAICrawl(BaseDiscoverySource):
             except CircuitOpenError:
                 log.warning("civitai_circuit_open")
             except Exception as e:
-                log.error("civitai_image_search_error", error=str(e))
+                log.error("civitai_image_search_error", error=repr(e))
 
             # 3. LoRA model sample images (filtered by human-relevant tags)
             model_cursors: dict[str, str | None] | None = None
@@ -90,7 +97,10 @@ class CivitAICrawl(BaseDiscoverySource):
             except CircuitOpenError:
                 log.warning("civitai_circuit_open")
             except Exception as e:
-                log.error("civitai_lora_error", error=str(e))
+                log.error("civitai_lora_error", error=repr(e))
+        finally:
+            if _managed_session:
+                await session.close()
 
         # Compute tag exhaustion stats
         effective_tag_count = len(context.search_terms) if context.search_terms else len(LORA_HUMAN_TAGS)
@@ -167,7 +177,7 @@ class CivitAICrawl(BaseDiscoverySource):
                 log.warning("civitai_circuit_open_during_pagination", page=page)
                 break
             except Exception as e:
-                log.error("civitai_page_error", page=page, error=str(e))
+                log.error("civitai_page_error", page=page, error=repr(e))
                 break
 
         # Capture totalItems from a lightweight API call (page 1, limit 1)
@@ -186,7 +196,7 @@ class CivitAICrawl(BaseDiscoverySource):
                     if total_items is not None:
                         estimated_total = int(total_items)
         except Exception as e:
-            log.warning("civitai_total_items_error", error=str(e))
+            log.warning("civitai_total_items_error", error=repr(e))
 
         return all_results, last_valid_cursor, estimated_total
 
@@ -240,7 +250,7 @@ class CivitAICrawl(BaseDiscoverySource):
                     log.warning("civitai_circuit_open_image_search", query=term, page=page)
                     break
                 except Exception as e:
-                    log.error("civitai_image_search_error", query=term, page=page, error=str(e))
+                    log.error("civitai_image_search_error", query=term, page=page, error=repr(e))
                     break
 
             updated_cursors[term] = cursor
@@ -276,11 +286,24 @@ class CivitAICrawl(BaseDiscoverySource):
         await limiter.acquire()
         ssl_check = False if self._proxy else None
         async with session.get(CIVITAI_IMAGES_URL, params=params, proxy=self._proxy, ssl=ssl_check) as resp:
+            if resp.status == 429:
+                retry_after = int(resp.headers.get("Retry-After", "60"))
+                retry_after = min(retry_after, 120)
+                log.warning("civitai_rate_limited", method="_fetch_image_search_page", retry_after=retry_after)
+                await asyncio.sleep(retry_after)
+                return results, None  # Let the caller's pagination loop retry on next tick
+            if resp.status >= 500:
+                log.warning("civitai_server_error", method="_fetch_image_search_page", status=resp.status)
+                return results, None  # Transient; will be retried by retry_async decorator if wrapped
             if resp.status != 200:
-                log.warning("civitai_image_search_api_error", status=resp.status, query=query)
-                return results, None
+                log.warning("civitai_api_error", method="_fetch_image_search_page", status=resp.status, query=query)
+                return results, None  # Client error; don't retry
 
-            data = await resp.json()
+            try:
+                data = await resp.json()
+            except (aiohttp.ContentTypeError, ValueError) as e:
+                log.warning("civitai_json_decode_error", method="_fetch_image_search_page", error=repr(e))
+                return results, None
 
         metadata = data.get("metadata", {})
         next_cursor = metadata.get("nextCursor")
@@ -338,11 +361,24 @@ class CivitAICrawl(BaseDiscoverySource):
         await limiter.acquire()
         ssl_check = False if self._proxy else None
         async with session.get(CIVITAI_IMAGES_URL, params=params, proxy=self._proxy, ssl=ssl_check) as resp:
+            if resp.status == 429:
+                retry_after = int(resp.headers.get("Retry-After", "60"))
+                retry_after = min(retry_after, 120)
+                log.warning("civitai_rate_limited", method="_fetch_images_page", retry_after=retry_after)
+                await asyncio.sleep(retry_after)
+                return results, None  # Let the caller's pagination loop retry on next tick
+            if resp.status >= 500:
+                log.warning("civitai_server_error", method="_fetch_images_page", status=resp.status)
+                return results, None  # Transient; will be retried by retry_async decorator if wrapped
             if resp.status != 200:
-                log.warning("civitai_images_api_error", status=resp.status)
-                return results, None
+                log.warning("civitai_api_error", method="_fetch_images_page", status=resp.status)
+                return results, None  # Client error; don't retry
 
-            data = await resp.json()
+            try:
+                data = await resp.json()
+            except (aiohttp.ContentTypeError, ValueError) as e:
+                log.warning("civitai_json_decode_error", method="_fetch_images_page", error=repr(e))
+                return results, None
 
         items = data.get("items", [])
         metadata = data.get("metadata", {})
@@ -408,10 +444,23 @@ class CivitAICrawl(BaseDiscoverySource):
         await limiter.acquire()
         ssl_check = False if self._proxy else None
         async with session.get(CIVITAI_MODELS_URL, params=params, proxy=self._proxy, ssl=ssl_check) as resp:
+            if resp.status == 429:
+                retry_after = int(resp.headers.get("Retry-After", "60"))
+                retry_after = min(retry_after, 120)
+                log.warning("civitai_rate_limited", method="_fetch_lora_models_page", retry_after=retry_after)
+                await asyncio.sleep(retry_after)
+                return [], None  # Let the caller's pagination loop retry on next tick
+            if resp.status >= 500:
+                log.warning("civitai_server_error", method="_fetch_lora_models_page", status=resp.status, tag=tag)
+                return [], None  # Transient; will be retried by retry_async decorator if wrapped
             if resp.status != 200:
-                log.warning("civitai_lora_api_error", status=resp.status, tag=tag)
+                log.warning("civitai_api_error", method="_fetch_lora_models_page", status=resp.status, tag=tag)
+                return [], None  # Client error; don't retry
+            try:
+                data = await resp.json()
+            except (aiohttp.ContentTypeError, ValueError) as e:
+                log.warning("civitai_json_decode_error", method="_fetch_lora_models_page", error=repr(e))
                 return [], None
-            data = await resp.json()
 
         next_cursor = data.get("metadata", {}).get("nextCursor")
         results: list[DiscoveredImageResult] = []
@@ -484,7 +533,7 @@ class CivitAICrawl(BaseDiscoverySource):
                 except CircuitOpenError:
                     break
                 except Exception as e:
-                    log.error("civitai_lora_page_error", tag=tag, page=page, error=str(e))
+                    log.error("civitai_lora_page_error", tag=tag, page=page, error=repr(e))
                     break
 
             updated_cursors[tag] = cursor

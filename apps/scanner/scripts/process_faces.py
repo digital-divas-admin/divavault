@@ -37,9 +37,17 @@ async def count():
         print(r.scalar())
 asyncio.run(count())
 """],
-        capture_output=True, text=True
+        capture_output=True, text=True, timeout=60
     )
-    return int(result.stdout.strip())
+    if result.returncode != 0:
+        print(f"  Count query failed: {result.stderr[-200:]}", flush=True)
+        return 0
+    for line in reversed(result.stdout.strip().split("\n")):
+        line = line.strip()
+        if line.isdigit():
+            return int(line)
+    print(f"  Could not parse count from output: {result.stdout[-200:]}", flush=True)
+    return 0
 
 
 def process_chunk(chunk_size: int) -> tuple[int, int, int, int]:

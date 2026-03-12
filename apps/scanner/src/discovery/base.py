@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 from uuid import UUID
 
 import numpy as np
@@ -55,6 +56,9 @@ class DiscoveryContext:
     backfill: bool = False
     backfill_cursors: dict[str, str] | None = None
     backfill_model_cursors: dict[str, str] | None = None
+
+    # HTTP session override for recording/replay (test harness)
+    http_session_override: Any = None
 
 
 @dataclass

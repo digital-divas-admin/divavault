@@ -149,7 +149,11 @@ class DeviantArtCrawl(BaseDiscoverySource):
                             return None
                         temp_dir.mkdir(parents=True, exist_ok=True)
                         path = temp_dir / f"{uuid4().hex[:8]}.jpg"
-                        path.write_bytes(data)
+                        try:
+                            path.write_bytes(data)
+                        except OSError as e:
+                            log.error("file_write_error", path=str(path), error=repr(e))
+                            return None
                         return path
             except Exception as e:
                 log.debug("download_error", url=url[:120], error=repr(e))
@@ -163,7 +167,8 @@ class DeviantArtCrawl(BaseDiscoverySource):
                 if img is None:
                     return []
                 return model.get(img)
-            except Exception:
+            except Exception as e:
+                log.warning("inline_face_detection_error", path=str(image_path), error=repr(e))
                 return []
 
         async def _get_known_urls(page_urls: list[str]) -> set[str]:
@@ -286,138 +291,157 @@ class DeviantArtCrawl(BaseDiscoverySource):
             http_session: aiohttp.ClientSession,
             tag: str,
         ) -> None:
+            """Inner work for a single tag — called inside semaphore + timeout."""
+            # In backfill mode, skip tags already fully exhausted
+            if backfill_mode and saved_cursors.get(tag) == "exhausted":
+                async with cursors_lock:
+                    updated_cursors[tag] = "exhausted"
+                return
+
+            if backfill_mode:
+                max_pages = settings.deviantart_backfill_pages
+            else:
+                max_pages = tag_depths.get(tag, settings.deviantart_max_pages)
+            start_offset = saved_cursors.get(tag)
+            mode, position = self._parse_cursor(start_offset)
+
+            try:
+                for page_num in range(1, max_pages + 1):
+                    # Fetch page
+                    if mode == "rss":
+                        page_results, has_next = await self._fetch_rss_page(
+                            http_session, limiter, tag, position
+                        )
+                        if not page_results and page_num == 1 and position == 0:
+                            mode = "html"
+                            position = 1
+                            page_results, has_next = await self._fetch_html_page(
+                                http_session, limiter, tag, position
+                            )
+                    else:
+                        page_results, has_next = await self._fetch_html_page(
+                            http_session, limiter, tag, position
+                        )
+
+                    if not page_results:
+                        if not has_next:
+                            async with cursors_lock:
+                                updated_cursors[tag] = "exhausted" if backfill_mode else None
+                            return
+                        if mode == "rss":
+                            position += RSS_PAGE_SIZE
+                        else:
+                            position += 1
+                        continue
+
+                    # Dedup check
+                    page_urls = [r.page_url for r in page_results if r.page_url]
+                    known = await _get_known_urls(page_urls)
+
+                    # Download + detect + collect
+                    detected, ps = await _process_page(http_session, page_results, known, tag=tag)
+
+                    async with images_lock:
+                        all_images.extend(detected)
+                    async with stats_lock:
+                        inline_stats["downloaded"] += ps["downloaded"]
+                        inline_stats["failures"] += ps["failures"]
+                        inline_stats["faces"] += ps["faces"]
+
+                    # Save intermediate cursor so timeout preserves progress
+                    async with cursors_lock:
+                        updated_cursors[tag] = f"{mode}:{position}"
+
+                    # Early stop on mostly-known content — only in the
+                    # new-content zone (no saved cursor = scanning newest).
+                    # If we resumed from a saved cursor, we're deepening into
+                    # history and should NOT early-stop on dedup.
+                    # In backfill mode, always in depth zone — never early-stop.
+                    is_depth_zone = start_offset is not None or backfill_mode
+                    if len(page_results) > 0 and page_num > 1 and not is_depth_zone:
+                        dedup_ratio = ps["dedup"] / len(page_results)
+                        if dedup_ratio >= DEDUP_STOP_RATIO:
+                            async with cursors_lock:
+                                updated_cursors[tag] = f"{mode}:{position}"
+                            return
+
+                    # Advance
+                    if has_next and len(page_results) > 0:
+                        if mode == "rss":
+                            position += RSS_PAGE_SIZE
+                        else:
+                            position += 1
+                    else:
+                        async with cursors_lock:
+                            updated_cursors[tag] = "exhausted" if backfill_mode else None
+                        return
+
+                # Reached max_pages
+                async with cursors_lock:
+                    updated_cursors[tag] = f"{mode}:{position}"
+
+            except CircuitOpenError:
+                circuit_tripped.set()
+                async with cursors_lock:
+                    updated_cursors[tag] = saved_cursors.get(tag)
+            except Exception as e:
+                log.error("inline_tag_error", tag=tag, error=repr(e))
+                async with cursors_lock:
+                    updated_cursors[tag] = saved_cursors.get(tag)
+            finally:
+                gc.collect()
+
+        async def _crawl_tag_with_timeout(
+            http_session: aiohttp.ClientSession, tag: str
+        ) -> None:
+            # Fast exit before waiting for semaphore
             if circuit_tripped.is_set():
                 async with cursors_lock:
                     updated_cursors[tag] = saved_cursors.get(tag)
                 return
 
             async with semaphore:
+                # Re-check after acquiring semaphore (may have tripped while queued)
                 if circuit_tripped.is_set():
                     async with cursors_lock:
                         updated_cursors[tag] = saved_cursors.get(tag)
                     return
-
-                # In backfill mode, skip tags already fully exhausted
-                if backfill_mode and saved_cursors.get(tag) == "exhausted":
-                    async with cursors_lock:
-                        updated_cursors[tag] = "exhausted"
-                    return
-
-                if backfill_mode:
-                    max_pages = settings.deviantart_backfill_pages
-                else:
-                    max_pages = tag_depths.get(tag, settings.deviantart_max_pages)
-                start_offset = saved_cursors.get(tag)
-                mode, position = self._parse_cursor(start_offset)
-
                 try:
-                    for page_num in range(1, max_pages + 1):
-                        # Fetch page
-                        if mode == "rss":
-                            page_results, has_next = await self._fetch_rss_page(
-                                http_session, limiter, tag, position
-                            )
-                            if not page_results and page_num == 1 and position == 0:
-                                mode = "html"
-                                position = 1
-                                page_results, has_next = await self._fetch_html_page(
-                                    http_session, limiter, tag, position
-                                )
-                        else:
-                            page_results, has_next = await self._fetch_html_page(
-                                http_session, limiter, tag, position
-                            )
-
-                        if not page_results:
-                            if not has_next:
-                                async with cursors_lock:
-                                    updated_cursors[tag] = "exhausted" if backfill_mode else None
-                                return
-                            if mode == "rss":
-                                position += RSS_PAGE_SIZE
-                            else:
-                                position += 1
-                            continue
-
-                        # Dedup check
-                        page_urls = [r.page_url for r in page_results if r.page_url]
-                        known = await _get_known_urls(page_urls)
-
-                        # Download + detect + collect
-                        detected, ps = await _process_page(http_session, page_results, known, tag=tag)
-
-                        async with images_lock:
-                            all_images.extend(detected)
-                        async with stats_lock:
-                            inline_stats["downloaded"] += ps["downloaded"]
-                            inline_stats["failures"] += ps["failures"]
-                            inline_stats["faces"] += ps["faces"]
-
-                        # Early stop on mostly-known content — only in the
-                        # new-content zone (no saved cursor = scanning newest).
-                        # If we resumed from a saved cursor, we're deepening into
-                        # history and should NOT early-stop on dedup.
-                        # In backfill mode, always in depth zone — never early-stop.
-                        is_depth_zone = start_offset is not None or backfill_mode
-                        if len(page_results) > 0 and page_num > 1 and not is_depth_zone:
-                            dedup_ratio = ps["dedup"] / len(page_results)
-                            if dedup_ratio >= DEDUP_STOP_RATIO:
-                                async with cursors_lock:
-                                    updated_cursors[tag] = f"{mode}:{position}"
-                                return
-
-                        # Advance
-                        if has_next and len(page_results) > 0:
-                            if mode == "rss":
-                                position += RSS_PAGE_SIZE
-                            else:
-                                position += 1
-                        else:
-                            async with cursors_lock:
-                                updated_cursors[tag] = "exhausted" if backfill_mode else None
-                            return
-
-                    # Reached max_pages
+                    await asyncio.wait_for(
+                        _crawl_tag_inline(http_session, tag),
+                        timeout=TAG_TIMEOUT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    log.warning("inline_tag_timeout", tag=tag, timeout=TAG_TIMEOUT_SECONDS)
+                    # Preserve existing cursor so it retries next tick
                     async with cursors_lock:
-                        updated_cursors[tag] = f"{mode}:{position}"
+                        if tag not in updated_cursors:
+                            updated_cursors[tag] = saved_cursors.get(tag)
 
-                except CircuitOpenError:
-                    circuit_tripped.set()
-                    async with cursors_lock:
-                        updated_cursors[tag] = saved_cursors.get(tag)
-                except Exception as e:
-                    log.error("inline_tag_error", tag=tag, error=repr(e))
-                    async with cursors_lock:
-                        updated_cursors[tag] = saved_cursors.get(tag)
-                finally:
-                    gc.collect()
-
-        async def _crawl_tag_with_timeout(
-            http_session: aiohttp.ClientSession, tag: str
-        ) -> None:
-            try:
-                await asyncio.wait_for(
-                    _crawl_tag_inline(http_session, tag),
-                    timeout=TAG_TIMEOUT_SECONDS,
-                )
-            except asyncio.TimeoutError:
-                log.warning("inline_tag_timeout", tag=tag, timeout=TAG_TIMEOUT_SECONDS)
-                # Preserve existing cursor so it retries next tick
-                async with cursors_lock:
-                    if tag not in updated_cursors:
-                        updated_cursors[tag] = saved_cursors.get(tag)
-
-        connector = aiohttp.TCPConnector(limit=30)
-        async with aiohttp.ClientSession(
-            headers={
-                "User-Agent": USER_AGENT,
-                "Referer": "https://www.deviantart.com/",
-            },
-            auto_decompress=True,
-            connector=connector,
-        ) as http_session:
+        _managed_session = context.http_session_override is None
+        if _managed_session:
+            connector = aiohttp.TCPConnector(limit=30)
+            http_session = aiohttp.ClientSession(
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Referer": "https://www.deviantart.com/",
+                },
+                auto_decompress=True,
+                connector=connector,
+                timeout=aiohttp.ClientTimeout(total=120, connect=15),
+            )
+        else:
+            http_session = context.http_session_override
+        try:
             tasks = [_crawl_tag_with_timeout(http_session, tag) for tag in effective_tags]
-            await asyncio.gather(*tasks)
+            gather_results = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, result in enumerate(gather_results):
+                if isinstance(result, Exception):
+                    tag_name = effective_tags[i] if i < len(effective_tags) else "unknown"
+                    log.error("tag_crawl_exception", tag=tag_name, error=repr(result))
+        finally:
+            if _managed_session:
+                await http_session.close()
 
         detection_pool.shutdown(wait=False)
         gc.collect()
@@ -464,59 +488,74 @@ class DeviantArtCrawl(BaseDiscoverySource):
             session: aiohttp.ClientSession,
             tag: str,
         ) -> None:
+            """Inner work for a single tag — called inside semaphore + timeout."""
+            start_offset = saved_cursors.get(tag)
+            tag_max = tag_depths.get(tag)
+            try:
+                tag_results, final_offset = await self._fetch_tag_pages(
+                    session, limiter, tag, start_offset, tag_max_pages=tag_max
+                )
+                async with results_lock:
+                    results.extend(tag_results)
+                async with cursors_lock:
+                    updated_cursors[tag] = final_offset
+            except CircuitOpenError:
+                log.warning("deviantart_circuit_open", tag=tag)
+                circuit_tripped.set()
+                async with cursors_lock:
+                    updated_cursors[tag] = saved_cursors.get(tag)
+            except Exception as e:
+                log.error("deviantart_tag_error", tag=tag, error=repr(e))
+                async with cursors_lock:
+                    updated_cursors[tag] = saved_cursors.get(tag)
+
+        async def _fetch_tag_with_timeout(
+            session: aiohttp.ClientSession, tag: str
+        ) -> None:
+            # Fast exit before waiting for semaphore
             if circuit_tripped.is_set():
                 async with cursors_lock:
                     updated_cursors[tag] = saved_cursors.get(tag)
                 return
 
             async with semaphore:
+                # Re-check after acquiring semaphore (may have tripped while queued)
                 if circuit_tripped.is_set():
                     async with cursors_lock:
                         updated_cursors[tag] = saved_cursors.get(tag)
                     return
-
-                start_offset = saved_cursors.get(tag)
-                tag_max = tag_depths.get(tag)
                 try:
-                    tag_results, final_offset = await self._fetch_tag_pages(
-                        session, limiter, tag, start_offset, tag_max_pages=tag_max
+                    await asyncio.wait_for(
+                        _fetch_one_tag(session, tag),
+                        timeout=TAG_TIMEOUT_SECONDS,
                     )
-                    async with results_lock:
-                        results.extend(tag_results)
+                except asyncio.TimeoutError:
+                    log.warning("deferred_tag_timeout", tag=tag, timeout=TAG_TIMEOUT_SECONDS)
                     async with cursors_lock:
-                        updated_cursors[tag] = final_offset
-                except CircuitOpenError:
-                    log.warning("deviantart_circuit_open", tag=tag)
-                    circuit_tripped.set()
-                    async with cursors_lock:
-                        updated_cursors[tag] = saved_cursors.get(tag)
-                except Exception as e:
-                    log.error("deviantart_tag_error", tag=tag, error=repr(e))
-                    async with cursors_lock:
-                        updated_cursors[tag] = saved_cursors.get(tag)
+                        if tag not in updated_cursors:
+                            updated_cursors[tag] = saved_cursors.get(tag)
 
-        async def _fetch_tag_with_timeout(
-            session: aiohttp.ClientSession, tag: str
-        ) -> None:
-            try:
-                await asyncio.wait_for(
-                    _fetch_one_tag(session, tag),
-                    timeout=TAG_TIMEOUT_SECONDS,
-                )
-            except asyncio.TimeoutError:
-                log.warning("deferred_tag_timeout", tag=tag, timeout=TAG_TIMEOUT_SECONDS)
-                async with cursors_lock:
-                    if tag not in updated_cursors:
-                        updated_cursors[tag] = saved_cursors.get(tag)
-
-        async with aiohttp.ClientSession(
-            headers={"User-Agent": USER_AGENT},
-            auto_decompress=True,
-        ) as session:
+        _managed_session = context.http_session_override is None
+        if _managed_session:
+            session = aiohttp.ClientSession(
+                headers={"User-Agent": USER_AGENT},
+                auto_decompress=True,
+                timeout=aiohttp.ClientTimeout(total=120, connect=15),
+            )
+        else:
+            session = context.http_session_override
+        try:
             # Tags arrive pre-sorted by priority; semaphore FIFO ensures
             # highest-priority tags start first.
             tasks = [_fetch_tag_with_timeout(session, tag) for tag in effective_tags]
-            await asyncio.gather(*tasks)
+            gather_results = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, result in enumerate(gather_results):
+                if isinstance(result, Exception):
+                    tag_name = effective_tags[i] if i < len(effective_tags) else "unknown"
+                    log.error("tag_crawl_exception", tag=tag_name, error=repr(result))
+        finally:
+            if _managed_session:
+                await session.close()
 
         tags_exhausted = sum(1 for c in updated_cursors.values() if c is None)
 
@@ -630,6 +669,15 @@ class DeviantArtCrawl(BaseDiscoverySource):
         await limiter.acquire()
         ssl_check = False if self._proxy else None
         async with session.get(DEVIANTART_RSS_URL, params=params, proxy=self._proxy, ssl=ssl_check) as resp:
+            if resp.status == 429:
+                retry_after = int(resp.headers.get("Retry-After", "60"))
+                retry_after = min(retry_after, 120)
+                log.warning("deviantart_rate_limited", method="_fetch_rss_page", tag=tag, retry_after=retry_after)
+                await asyncio.sleep(retry_after)
+                return results, False
+            if resp.status >= 500:
+                log.warning("deviantart_server_error", method="_fetch_rss_page", tag=tag, status=resp.status)
+                return results, False  # Transient; will be retried by retry_async decorator
             if resp.status != 200:
                 log.warning("deviantart_rss_error", status=resp.status, tag=tag, offset=offset)
                 return results, False
@@ -704,6 +752,15 @@ class DeviantArtCrawl(BaseDiscoverySource):
         await limiter.acquire()
         ssl_check = False if self._proxy else None
         async with session.get(url, params=params, proxy=self._proxy, ssl=ssl_check) as resp:
+            if resp.status == 429:
+                retry_after = int(resp.headers.get("Retry-After", "60"))
+                retry_after = min(retry_after, 120)
+                log.warning("deviantart_rate_limited", method="_fetch_html_page", tag=tag, retry_after=retry_after)
+                await asyncio.sleep(retry_after)
+                return results, False
+            if resp.status >= 500:
+                log.warning("deviantart_server_error", method="_fetch_html_page", tag=tag, status=resp.status)
+                return results, False  # Transient; will be retried by retry_async decorator
             if resp.status != 200:
                 log.warning("deviantart_html_error", status=resp.status, tag=tag, page=page)
                 return results, False

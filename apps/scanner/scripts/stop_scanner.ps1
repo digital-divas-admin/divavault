@@ -18,7 +18,7 @@ function Write-Log {
 
 # Check PID file exists
 if (-not (Test-Path $PidFile)) {
-    Write-Log "No PID file found at $PidFile — scanner may not be running."
+    Write-Log "No PID file found at $PidFile - scanner may not be running."
 
     # Try to find the process anyway
     $procs = Get-Process -Name "python" -ErrorAction SilentlyContinue |
@@ -29,27 +29,32 @@ if (-not (Test-Path $PidFile)) {
         Write-Log "No scanner process found. Nothing to stop."
         exit 0
     }
-    $pid = $procs[0].Id
+    $scannerPid = $procs[0].Id
 } else {
-    $pid = (Get-Content $PidFile -Raw).Trim()
-    Write-Log "Read PID $pid from $PidFile"
+    $scannerPid = (Get-Content $PidFile -Raw).Trim()
+    Write-Log "Read PID $scannerPid from $PidFile"
 }
 
 # Check if process is running
-$process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+$process = Get-Process -Id $scannerPid -ErrorAction SilentlyContinue
 if (-not $process) {
-    Write-Log "Process $pid is not running. Cleaning up PID file."
+    Write-Log "Process $scannerPid is not running. Cleaning up PID file."
     if (Test-Path $PidFile) {
         Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
     }
     exit 0
 }
 
-Write-Log "Sending stop signal to scanner (PID $pid)..."
+Write-Log "Sending stop signal to scanner (PID $scannerPid)..."
+
+# Create sentinel file so the supervisor knows this is a deliberate shutdown
+$StopFile = Join-Path $LogDir "stop_requested"
+Get-Date -Format "yyyy-MM-dd HH:mm:ss" | Out-File -FilePath $StopFile -Encoding utf8 -Force
+Write-Log "Created stop sentinel file: $StopFile"
 
 # Send Ctrl+C via GenerateConsoleCtrlEvent (graceful shutdown for uvicorn)
 # taskkill without /F sends WM_CLOSE which triggers graceful shutdown
-taskkill /PID $pid /T 2>$null
+taskkill /PID $scannerPid /T 2>$null
 
 # Wait for graceful exit
 $elapsed = 0
@@ -58,7 +63,7 @@ while ($elapsed -lt $GracefulTimeoutSec) {
     Start-Sleep -Seconds $checkInterval
     $elapsed += $checkInterval
 
-    $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    $process = Get-Process -Id $scannerPid -ErrorAction SilentlyContinue
     if (-not $process) {
         Write-Log "Scanner stopped gracefully after ${elapsed}s."
         if (Test-Path $PidFile) {
@@ -71,12 +76,12 @@ while ($elapsed -lt $GracefulTimeoutSec) {
 
 # Force kill after timeout
 Write-Log "Graceful shutdown timed out after ${GracefulTimeoutSec}s. Force killing..."
-taskkill /PID $pid /T /F 2>$null
+taskkill /PID $scannerPid /T /F 2>$null
 Start-Sleep -Seconds 2
 
-$process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+$process = Get-Process -Id $scannerPid -ErrorAction SilentlyContinue
 if ($process) {
-    Write-Log "ERROR: Failed to kill process $pid"
+    Write-Log "ERROR: Failed to kill process $scannerPid"
     exit 1
 } else {
     Write-Log "Scanner force-killed successfully."
@@ -85,6 +90,16 @@ if ($process) {
 # Clean up PID file
 if (Test-Path $PidFile) {
     Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
+}
+
+# Also stop any cloudflared tunnel processes
+$cfProcs = Get-Process -Name "cloudflared" -ErrorAction SilentlyContinue
+if ($cfProcs) {
+    Write-Log "Stopping cloudflared processes: $($cfProcs.Id -join ', ')"
+    $cfProcs | Stop-Process -Force -ErrorAction SilentlyContinue
+    Write-Log "Cloudflared stopped."
+} else {
+    Write-Log "No cloudflared processes found."
 }
 
 exit 0

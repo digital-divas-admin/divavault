@@ -8,6 +8,8 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ScannerRoot = Split-Path -Parent $ScriptDir
 $LogDir = Join-Path $ScannerRoot "logs"
 $PidFile = Join-Path $LogDir "scanner.pid"
+$SupervisorPidFile = Join-Path $LogDir "supervisor.pid"
+$StopFile = Join-Path $LogDir "stop_requested"
 $SupervisorLog = Join-Path $LogDir "supervisor.log"
 $PythonExe = Join-Path $ScannerRoot ".venv\Scripts\python.exe"
 $CloudflaredExe = "C:\Users\alexi\cloudflared.exe"
@@ -27,6 +29,25 @@ function Write-SupervisorLog {
     $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     "[$ts] $Message" | Out-File -Append -FilePath $SupervisorLog -Encoding utf8
     Write-Host "[$ts] $Message"
+}
+
+function Clear-Port {
+    param([int]$Port = 8000)
+    $netstat = netstat -ano | Select-String ":$Port\s+.*LISTENING"
+    if (-not $netstat) { return }
+    # Extract PID from the last column
+    $occupyingPid = ($netstat.Line.Trim() -split '\s+')[-1]
+    if (-not $occupyingPid -or $occupyingPid -eq "0") { return }
+    Write-SupervisorLog "Port $Port is occupied by PID $occupyingPid - killing orphan process"
+    taskkill /PID $occupyingPid /F /T 2>$null
+    Start-Sleep -Seconds 2
+    # Verify
+    $check = netstat -ano | Select-String ":$Port\s+.*LISTENING"
+    if ($check) {
+        Write-SupervisorLog "WARNING: Port $Port still occupied after kill attempt"
+    } else {
+        Write-SupervisorLog "Port $Port cleared successfully"
+    }
 }
 
 function Remove-OldLogs {
@@ -51,16 +72,17 @@ $script:tunnelProcess = $null
 
 function Start-Tunnel {
     if (-not (Test-Path $CloudflaredExe)) {
-        Write-SupervisorLog "WARNING: cloudflared not found at $CloudflaredExe — tunnel disabled"
+        Write-SupervisorLog "WARNING: cloudflared not found at $CloudflaredExe - tunnel disabled"
         return
     }
 
     $tunnelLog = Join-Path $LogDir "tunnel.log"
+    $tunnelErrLog = Join-Path $LogDir "tunnel.err.log"
     $tunnelArgs = @{
         FilePath               = $CloudflaredExe
         ArgumentList           = "tunnel", "run", $TunnelName
         RedirectStandardOutput = $tunnelLog
-        RedirectStandardError  = $tunnelLog
+        RedirectStandardError  = $tunnelErrLog
         PassThru               = $true
         NoNewWindow            = $true
     }
@@ -92,17 +114,17 @@ function Test-TunnelHealth {
         return $false
     }
 
-    # Check localhost first — if scanner itself is down, don't blame the tunnel
+    # Check localhost first - if scanner itself is down, don't blame the tunnel
     try {
         $local = Invoke-WebRequest -Uri "http://localhost:8000/health" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
         if ($local.StatusCode -ne 200) {
             return $true  # Scanner unhealthy, but not a tunnel issue
         }
     } catch {
-        return $true  # Scanner unreachable locally — not a tunnel problem
+        return $true  # Scanner unreachable locally - not a tunnel problem
     }
 
-    # Scanner is healthy locally — verify the tunnel is routing correctly
+    # Scanner is healthy locally - verify the tunnel is routing correctly
     try {
         $response = Invoke-WebRequest -Uri $TunnelHealthUrl -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
         if ($response.StatusCode -eq 200) {
@@ -130,10 +152,44 @@ Write-SupervisorLog "Scanner root: $ScannerRoot"
 Write-SupervisorLog "Python: $PythonExe"
 Write-SupervisorLog "Log dir: $LogDir"
 
+# Duplicate prevention: check if another supervisor is already running
+if (Test-Path $SupervisorPidFile) {
+    $existingPid = (Get-Content $SupervisorPidFile -Raw).Trim()
+    $existingProc = Get-Process -Id $existingPid -ErrorAction SilentlyContinue
+    if ($existingProc) {
+        Write-SupervisorLog "Another supervisor is already running (PID $existingPid). Exiting."
+        exit 0
+    }
+    Write-SupervisorLog "Stale supervisor PID file found (PID $existingPid not running). Cleaning up."
+    Remove-Item $SupervisorPidFile -Force -ErrorAction SilentlyContinue
+}
+
+# Write our supervisor PID
+$PID | Out-File -FilePath $SupervisorPidFile -Encoding ascii -Force
+Write-SupervisorLog "Supervisor PID: $PID"
+
+# Clear stale stop file from a previous deliberate shutdown
+if (Test-Path $StopFile) {
+    Write-SupervisorLog "Clearing stale stop file from previous shutdown."
+    Remove-Item $StopFile -Force -ErrorAction SilentlyContinue
+}
+
 # Verify python exists
 if (-not (Test-Path $PythonExe)) {
     Write-SupervisorLog "ERROR: Python not found at $PythonExe"
     exit 1
+}
+
+# Kill any orphan cloudflared from previous sessions (one-time startup cleanup)
+$stale = Get-Process -Name "cloudflared" -ErrorAction SilentlyContinue
+if ($stale) {
+    Write-SupervisorLog "Killing stale cloudflared processes: $($stale.Id -join ', ')"
+    $stale | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    $remaining = Get-Process -Name "cloudflared" -ErrorAction SilentlyContinue
+    if ($remaining) {
+        Write-SupervisorLog "WARNING: cloudflared still running after kill attempt"
+    }
 }
 
 # Start tunnel before entering the scanner loop
@@ -149,6 +205,9 @@ try {
         $errFile = "$logFile.err"
 
         Write-SupervisorLog "Starting scanner, logging to scanner_$timestamp.log"
+
+        # Kill any orphan process holding port 8000 before starting
+        Clear-Port -Port 8000
 
         # Start the scanner process
         $procArgs = @{
@@ -166,13 +225,13 @@ try {
         $process.Id | Out-File -FilePath $PidFile -Encoding ascii -Force
         Write-SupervisorLog "Scanner started with PID $($process.Id)"
 
-        # Active monitoring loop — check both scanner and tunnel every $MonitorIntervalSec
+        # Active monitoring loop - check both scanner and tunnel every $MonitorIntervalSec
         while (-not $process.HasExited) {
             # Wait with periodic wake-ups to check tunnel health
             $process.WaitForExit($MonitorIntervalSec * 1000) | Out-Null
 
             if (-not $process.HasExited) {
-                # Scanner is still running — check tunnel health
+                # Scanner is still running - check tunnel health
                 if (-not (Test-TunnelHealth)) {
                     Restart-Tunnel
                 }
@@ -197,17 +256,23 @@ try {
 
         Write-SupervisorLog "Scanner exited with code $exitCode"
 
-        # If exit code is 0, it was a clean shutdown (e.g. stop_scanner.ps1) — don't restart
-        if ($exitCode -eq 0) {
-            Write-SupervisorLog "Clean exit (code 0). Supervisor stopping."
+        # Only stop if stop_scanner.ps1 created the sentinel file (deliberate shutdown)
+        if (Test-Path $StopFile) {
+            Write-SupervisorLog "Stop file found - deliberate shutdown. Supervisor stopping."
             break
         }
 
-        Write-SupervisorLog "Restarting in $RestartDelaySec seconds..."
+        Write-SupervisorLog "No stop file - restarting in $RestartDelaySec seconds..."
         Start-Sleep -Seconds $RestartDelaySec
     }
 } finally {
     # Clean up tunnel on supervisor exit
     Stop-Tunnel
+
+    # Clean up supervisor PID file
+    if (Test-Path $SupervisorPidFile) {
+        Remove-Item $SupervisorPidFile -Force -ErrorAction SilentlyContinue
+    }
+
     Write-SupervisorLog "=== Scanner supervisor stopped ==="
 }

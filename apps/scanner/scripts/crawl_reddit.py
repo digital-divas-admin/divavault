@@ -51,7 +51,36 @@ async def main():
         "--backfill", action="store_true",
         help="Run in backfill mode (deeper pagination, persistent cursors)",
     )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Suppress scheduling writes (cursors, last_crawl_at, next_crawl_at)",
+    )
+    parser.add_argument(
+        "--capture", type=str, default=None,
+        help="Directory to save HTTP responses for replay",
+    )
+    parser.add_argument(
+        "--replay", type=str, default=None,
+        help="Directory to replay HTTP responses from (no network)",
+    )
+    parser.add_argument(
+        "--dump-stage", type=str, default=None, choices=["fetch"],
+        help="Dump stage output to --dump-dir",
+    )
+    parser.add_argument(
+        "--dump-dir", type=str, default=None,
+        help="Directory for stage fixture dumps",
+    )
     args = parser.parse_args()
+    dry_run = args.dry_run
+
+    if dry_run:
+        print("=" * 60)
+        print("DRY RUN MODE — scheduling writes suppressed")
+        print("  Data inserts: YES (results inspectable in DB)")
+        print("  Schedule mutations: NO (cursors, last_crawl_at, next_crawl_at untouched)")
+        print("=" * 60)
+        print()
 
     start = time.monotonic()
     crawl_start = datetime.now(timezone.utc)
@@ -84,12 +113,35 @@ async def main():
                 search_cursors = existing_state.get("search_cursors", {})
                 bf = existing_state.get("backfill", {})
                 backfill_cursors = bf.get("cursors", {})
+                # Validate cursor types
+                from src.utils.cursors import validate_cursor_dict
+                search_cursors = validate_cursor_dict(search_cursors)
+                backfill_cursors = validate_cursor_dict(backfill_cursors)
                 if search_cursors:
                     print(f"  Loaded {len(search_cursors)} sweep cursors")
                 if backfill_cursors:
                     print(f"  Loaded {len(backfill_cursors)} backfill cursors")
     except Exception as e:
-        print(f"  Warning: could not load cursors: {e}")
+        log.warning("cursor_load_error", error=repr(e))
+
+    # Set up HTTP session override for recording/replay
+    http_session_override = None
+    _real_session = None
+    if args.capture:
+        import aiohttp
+        from pathlib import Path
+        from src.utils.http_recorder import RecordingSession
+        _real_session = aiohttp.ClientSession(
+            headers={"User-Agent": "ConsentedAI-Scanner/1.0 (face-protection; contact@consentedai.com)"},
+            timeout=aiohttp.ClientTimeout(total=20),
+        )
+        http_session_override = RecordingSession(_real_session, Path(args.capture))
+        print(f"  Recording HTTP responses to: {args.capture}")
+    elif args.replay:
+        from pathlib import Path
+        from src.utils.http_recorder import ReplaySession
+        http_session_override = ReplaySession(Path(args.replay))
+        print(f"  Replaying HTTP responses from: {args.replay}")
 
     # Build context
     search_terms = [f"r/{s}" for s in subs]
@@ -99,11 +151,20 @@ async def main():
         backfill=args.backfill,
         search_cursors=search_cursors if not args.backfill else None,
         backfill_cursors=backfill_cursors if args.backfill else None,
+        http_session_override=http_session_override,
     )
 
     # Run crawl
     crawler = RedditCrawl()
     result = await crawler.discover(context)
+
+    # Dump fixture if requested
+    if args.dump_stage == "fetch" and args.dump_dir:
+        from pathlib import Path as _Path
+        from src.fixtures.dumper import dump_discovery_result
+        dump_path = _Path(args.dump_dir) / "fetch.json"
+        dump_discovery_result(result, dump_path)
+        print(f"Fixture dumped: {dump_path}")
 
     print(f"\nCrawl complete:")
     print(f"  Images found: {len(result.images)}")
@@ -154,30 +215,39 @@ async def main():
                     k: v for k, v in result.search_cursors.items() if v is not None
                 }
 
-            import json
-            async with async_session() as session:
-                await session.execute(text(
-                    "UPDATE platform_crawl_schedule SET search_terms = :st, last_crawl_at = now() WHERE platform = 'reddit'"
-                ), {"st": json.dumps(existing_state)})
-                await session.commit()
-            print(f"  Cursors saved ({len(result.search_cursors)} subreddits)")
+            if not dry_run:
+                import json
+                async with async_session() as session:
+                    await session.execute(text(
+                        "UPDATE platform_crawl_schedule SET search_terms = :st, last_crawl_at = now() WHERE platform = 'reddit'"
+                    ), {"st": json.dumps(existing_state)})
+                    await session.commit()
+                print(f"  Cursors saved ({len(result.search_cursors)} subreddits)")
+            else:
+                print(f"  [dry-run] Skipped cursor persistence ({len(result.search_cursors)} subreddits)")
         except Exception as e:
-            print(f"  Warning: could not save cursors: {e}")
+            log.warning("cursor_save_error", error=repr(e))
     else:
         # Update last_crawl_at even when no cursors to save
-        try:
-            async with async_session() as session:
-                await session.execute(text(
-                    "UPDATE platform_crawl_schedule SET last_crawl_at = now() WHERE platform = 'reddit'"
-                ))
-                await session.commit()
-        except Exception as e:
-            print(f"  Warning: could not update last_crawl_at: {e}")
+        if not dry_run:
+            try:
+                async with async_session() as session:
+                    await session.execute(text(
+                        "UPDATE platform_crawl_schedule SET last_crawl_at = now() WHERE platform = 'reddit'"
+                    ))
+                    await session.commit()
+            except Exception as e:
+                log.warning("last_crawl_at_update_error", error=repr(e))
+        else:
+            print("  [dry-run] Skipped last_crawl_at update")
 
     # Record crawl telemetry for daily report / resilience monitoring
+    crawl_type = "backfill" if args.backfill else "sweep"
+    if dry_run:
+        crawl_type = f"[dry-run] {crawl_type}"
     await collector.record_crawl(
         platform="reddit",
-        crawl_type="backfill" if args.backfill else "sweep",
+        crawl_type=crawl_type,
         started_at=crawl_start,
         finished_at=datetime.now(timezone.utc),
         images_discovered=len(result.images),
@@ -186,9 +256,21 @@ async def main():
         tags_exhausted=result.tags_exhausted,
     )
 
+    # Clean up HTTP session override
+    if _real_session is not None:
+        await _real_session.close()
+
     elapsed = time.monotonic() - start
     print(f"\nDone in {elapsed:.1f}s")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.")
+    except Exception as e:
+        log.error("fatal_error", error=repr(e))
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

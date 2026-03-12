@@ -24,10 +24,19 @@ MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 DOWNLOAD_TIMEOUT = 10  # seconds
 MAX_IMAGE_DIMENSION = 8192
 RESIZE_TARGET = 4096  # resize long edge to this if > MAX_IMAGE_DIMENSION
-MAX_CONCURRENT = 5
-
 # Image validation constants
 IMAGE_MAGIC_PREFIXES = (b"\xff\xd8", b"\x89P", b"RI", b"GI", b"BM")
+
+# Lazy semaphore so it reads config at first use (not module import)
+_download_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_download_semaphore() -> asyncio.Semaphore:
+    """Get or create the download semaphore (lazy init from config)."""
+    global _download_semaphore
+    if _download_semaphore is None:
+        _download_semaphore = asyncio.Semaphore(settings.download_max_concurrent)
+    return _download_semaphore
 
 
 def check_content_type(content_type: str | None) -> bool:
@@ -60,9 +69,6 @@ def fourchan_thumbnail_url(original_url: str) -> str | None:
     if last_dot == -1:
         return None
     return f"{original_url[:last_dot]}s.jpg"
-
-# Semaphore to limit concurrent downloads
-_download_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
 # Ensure temp dir exists
 _temp_dir = Path(settings.temp_dir)
@@ -106,7 +112,7 @@ async def download_image(
     Returns path to the downloaded file, or None on failure.
     Validates Content-Length, file integrity, and dimensions.
     """
-    async with _download_semaphore:
+    async with _get_download_semaphore():
         own_session = session is None
         if own_session:
             session = aiohttp.ClientSession()
@@ -363,7 +369,7 @@ async def download_from_supabase(
             "Authorization": f"Bearer {settings.supabase_service_role_key}",
             "apikey": settings.supabase_service_role_key,
         }
-        async with _download_semaphore:
+        async with _get_download_semaphore():
             try:
                 async with asyncio.timeout(DOWNLOAD_TIMEOUT):
                     async with session.get(url, headers=headers) as resp:

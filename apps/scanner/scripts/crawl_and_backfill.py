@@ -11,6 +11,7 @@ SCANNER_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(SCANNER_ROOT)
 sys.path.insert(0, SCANNER_ROOT)
 
+import argparse
 import asyncio
 import json
 import time
@@ -48,7 +49,7 @@ TEMP_DIR = Path(settings.temp_dir)
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 
-async def crawl_civitai() -> list[dict]:
+async def crawl_civitai(dry_run: bool = False, http_session_override=None, dump_stage: str | None = None, dump_dir: str | None = None) -> list[dict]:
     """Run CivitAI crawler and return discovered image URLs."""
     crawl = CivitAICrawl()
 
@@ -83,6 +84,13 @@ async def crawl_civitai() -> list[dict]:
         row = r.fetchone()
         search_terms_data = (row[0] if row else None) or {}
 
+    # Validate cursor types
+    from src.utils.cursors import validate_cursor_dict
+    for cursor_key in ("search_cursors", "model_cursors"):
+        raw_cursors = search_terms_data.get(cursor_key)
+        if raw_cursors and isinstance(raw_cursors, dict):
+            search_terms_data[cursor_key] = validate_cursor_dict(raw_cursors)
+
     ctx = DiscoveryContext(
         platform="civitai",
         cursor=search_terms_data.get("cursor"),
@@ -90,6 +98,7 @@ async def crawl_civitai() -> list[dict]:
         model_cursors=search_terms_data.get("model_cursors"),
         search_terms=effective_terms,
         tag_depths=tag_depths,
+        http_session_override=http_session_override,
     )
 
     print(f"\n{'='*60}")
@@ -104,6 +113,13 @@ async def crawl_civitai() -> list[dict]:
     result = await crawl.discover(ctx)
 
     print(f"\nCrawl complete: {len(result.images)} image URLs discovered")
+
+    # Dump fixture if requested
+    if dump_stage == "fetch" and dump_dir:
+        from src.fixtures.dumper import dump_discovery_result
+        dump_path = Path(dump_dir) / "fetch.json"
+        dump_discovery_result(result, dump_path)
+        print(f"Fixture dumped: {dump_path}")
 
     # Persist cursors for next run
     new_search_terms = dict(search_terms_data)
@@ -128,12 +144,15 @@ async def crawl_civitai() -> list[dict]:
     elif "model_cursors" in new_search_terms:
         del new_search_terms["model_cursors"]
 
-    async with async_session() as session:
-        await session.execute(text(
-            "UPDATE platform_crawl_schedule SET search_terms = CAST(:terms AS jsonb), last_crawl_at = now() WHERE platform = 'civitai'"
-        ), {"terms": json.dumps(new_search_terms)})
-        await session.commit()
-    print("Cursors persisted for next run")
+    if not dry_run:
+        async with async_session() as session:
+            await session.execute(text(
+                "UPDATE platform_crawl_schedule SET search_terms = CAST(:terms AS jsonb), last_crawl_at = now() WHERE platform = 'civitai'"
+            ), {"terms": json.dumps(new_search_terms)})
+            await session.commit()
+        print("Cursors persisted for next run")
+    else:
+        print("[dry-run] Skipped cursor persistence")
 
     return [
         {"source_url": img.source_url, "page_url": img.page_url, "page_title": img.page_title}
@@ -208,8 +227,12 @@ async def download_thumbnail(
             path = TEMP_DIR / f"{image_id}_thumb.jpg"
             path.write_bytes(data)
             return path, None
+    except asyncio.TimeoutError:
+        return None, "timeout"
+    except aiohttp.ClientError as e:
+        return None, f"client_error:{type(e).__name__}"
     except Exception as e:
-        return None, "exception"
+        return None, f"exception:{type(e).__name__}"
 
 
 async def download_original(
@@ -230,6 +253,10 @@ async def download_original(
             path = TEMP_DIR / f"{image_id}.jpg"
             path.write_bytes(data)
             return path
+    except asyncio.TimeoutError:
+        return None
+    except aiohttp.ClientError:
+        return None
     except Exception:
         return None
 
@@ -249,8 +276,8 @@ async def process_images(new_images: list[dict]) -> int:
     skip_counts: dict[str, int] = {}
     start = time.time()
 
-    batch_size = 20
-    connector = aiohttp.TCPConnector(limit=10)
+    batch_size = 50
+    connector = aiohttp.TCPConnector(limit=30)
 
     async with aiohttp.ClientSession(connector=connector) as http_session:
         for batch_start in range(0, len(new_images), batch_size):
@@ -326,7 +353,9 @@ async def process_images(new_images: list[dict]) -> int:
                             used_fallback = True
 
                         if detect_path is None:
-                            # Both original and fallback failed
+                            # Both original and fallback failed — mark as
+                            # face-positive (from thumbnail) so it's not
+                            # retried, but no embeddings available.
                             await db_session.execute(text(
                                 "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
                             ), {"id": img["id"], "fc": thumb_face_count})
@@ -343,10 +372,10 @@ async def process_images(new_images: list[dict]) -> int:
                             faces = model.get(cv_img)
 
                             face_count = len(faces) if len(faces) > 0 else thumb_face_count
-                            await db_session.execute(text(
-                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
-                            ), {"id": img["id"], "fc": face_count})
 
+                            # Insert embeddings FIRST — only mark has_face
+                            # after success so failures leave has_face IS NULL
+                            # and process_faces.py can retry later.
                             for face_idx, face in enumerate(faces):
                                 await insert_discovered_face_embedding(
                                     db_session, img["id"], face_idx,
@@ -354,15 +383,20 @@ async def process_images(new_images: list[dict]) -> int:
                                 )
                                 faces_found += 1
 
+                            # Embeddings succeeded — now safe to mark as processed
+                            await db_session.execute(text(
+                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
+                            ), {"id": img["id"], "fc": face_count})
+
                             # Upload thumbnail for match review
                             await upload_thumbnail(
                                 detect_path, platform="civitai", http_session=http_session,
                             )
 
                         except Exception:
-                            await db_session.execute(text(
-                                "UPDATE discovered_images SET has_face = true, face_count = :fc WHERE id = :id"
-                            ), {"id": img["id"], "fc": thumb_face_count})
+                            # Leave has_face as NULL so process_faces.py
+                            # will retry this image later.
+                            pass
                         finally:
                             detect_path.unlink(missing_ok=True)
                             if used_fallback and orig_path:
@@ -490,6 +524,38 @@ async def backfill_all_contributors() -> int:
 
 
 async def main():
+    parser = argparse.ArgumentParser(description="CivitAI full crawl + face detection + backfill pipeline")
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Suppress scheduling writes (cursors, last_crawl_at, next_crawl_at)",
+    )
+    parser.add_argument(
+        "--capture", type=str, default=None,
+        help="Directory to save HTTP responses for replay",
+    )
+    parser.add_argument(
+        "--replay", type=str, default=None,
+        help="Directory to replay HTTP responses from (no network)",
+    )
+    parser.add_argument(
+        "--dump-stage", type=str, default=None, choices=["fetch"],
+        help="Dump stage output to --dump-dir",
+    )
+    parser.add_argument(
+        "--dump-dir", type=str, default=None,
+        help="Directory for stage fixture dumps",
+    )
+    args = parser.parse_args()
+    dry_run = args.dry_run
+
+    if dry_run:
+        print("=" * 60)
+        print("DRY RUN MODE — scheduling writes suppressed")
+        print("  Data inserts: YES (results inspectable in DB)")
+        print("  Schedule mutations: NO (cursors, last_crawl_at, next_crawl_at untouched)")
+        print("=" * 60)
+        print()
+
     start = time.time()
 
     # Initialize InsightFace
@@ -498,8 +564,26 @@ async def main():
 
     crawl_start = datetime.now(timezone.utc)
 
+    # Set up HTTP session override for recording/replay
+    http_session_override = None
+    _real_session = None
+    if args.capture:
+        from src.utils.http_recorder import RecordingSession
+        _real_session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120, connect=15))
+        http_session_override = RecordingSession(_real_session, Path(args.capture))
+        print(f"Recording HTTP responses to: {args.capture}")
+    elif args.replay:
+        from src.utils.http_recorder import ReplaySession
+        http_session_override = ReplaySession(Path(args.replay))
+        print(f"Replaying HTTP responses from: {args.replay}")
+
     # Phase 1: Crawl
-    images = await crawl_civitai()
+    images = await crawl_civitai(
+        dry_run=dry_run,
+        http_session_override=http_session_override,
+        dump_stage=args.dump_stage,
+        dump_dir=args.dump_dir,
+    )
 
     # Phase 2: Insert + deduplicate
     new_images = await insert_discovered_images(images)
@@ -515,15 +599,20 @@ async def main():
     matches = await backfill_all_contributors()
 
     # Record crawl telemetry for daily report / resilience monitoring
+    crawl_type = "[dry-run] sweep" if dry_run else "sweep"
     await collector.record_crawl(
         platform="civitai",
-        crawl_type="sweep",
+        crawl_type=crawl_type,
         started_at=crawl_start,
         finished_at=datetime.now(timezone.utc),
         images_discovered=len(images),
         images_new=len(new_images),
         faces_found=faces,
     )
+
+    # Clean up HTTP session override
+    if _real_session is not None:
+        await _real_session.close()
 
     # Summary
     elapsed = time.time() - start
@@ -537,4 +626,12 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.")
+    except Exception as e:
+        log.error("fatal_error", error=repr(e))
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

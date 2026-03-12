@@ -77,7 +77,7 @@ class MetaAdScanner:
 
         total_inserted = 0
 
-        async with aiohttp.ClientSession() as http_session:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60, connect=10)) as http_session:
             for term in search_terms:
                 if total_inserted >= max_ads:
                     break

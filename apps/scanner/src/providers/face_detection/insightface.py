@@ -1,6 +1,7 @@
 """InsightFace face detection + embedding provider."""
 
 import os
+import time
 from pathlib import Path
 
 from insightface.app import FaceAnalysis
@@ -67,16 +68,20 @@ class InsightFaceFaceDetection(FaceDetectionProvider):
         return self._model
 
     def detect(self, image_path: Path) -> list[DetectedFace]:
+        log.debug("face_detection_start", path=str(image_path))
         img = load_and_resize(image_path)
         if img is None:
             return []
 
+        t0 = time.monotonic()
         try:
             model = self.get_model()
             faces = model.get(img)
         except Exception as e:
-            log.error("face_detection_error", path=str(image_path), error=str(e))
+            log.error("face_detection_error", path=str(image_path), error=repr(e))
             return []
+
+        elapsed = time.monotonic() - t0
 
         results = []
         for face in faces:
@@ -89,4 +94,5 @@ class InsightFaceFaceDetection(FaceDetectionProvider):
                 )
             )
 
+        log.debug("face_detection_complete", faces=len(results), elapsed_ms=round(elapsed * 1000))
         return results

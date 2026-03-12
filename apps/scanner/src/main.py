@@ -74,6 +74,15 @@ async def lifespan(app: FastAPI):
 
     # Start scheduler in background
     job_store = PostgresJobStore()
+    if settings.scan_dry_run:
+        from src.jobs.dry_run_store import DryRunJobStore
+        job_store = DryRunJobStore(job_store)
+        log.warning(
+            "dry_run_mode_active",
+            message="DRY RUN MODE — scheduling writes suppressed. "
+            "Data inserts: YES (results inspectable in DB). "
+            "Schedule mutations: NO (cursors, last_crawl_at, next_crawl_at untouched).",
+        )
     _scheduler_task = asyncio.create_task(run_scheduler(job_store))
     log.info("scheduler_task_started")
 

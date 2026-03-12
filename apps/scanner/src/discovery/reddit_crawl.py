@@ -83,22 +83,25 @@ class RedditCrawl(BaseDiscoverySource):
         headers = {"User-Agent": USER_AGENT}
         timeout = aiohttp.ClientTimeout(total=20)
 
-        async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
-            for sub in subreddits:
-                sub_key = f"r/{sub}"
+        concurrency_sem = asyncio.Semaphore(settings.reddit_concurrency)
 
-                # In backfill mode, skip exhausted subreddits
-                if backfill and effective_cursors.get(sub_key) == "exhausted":
-                    updated_cursors[sub_key] = "exhausted"
-                    tags_exhausted += 1
-                    continue
+        async def _crawl_one_sub(sub: str) -> None:
+            nonlocal tags_exhausted
+            sub_key = f"r/{sub}"
 
-                cursor_val = effective_cursors.get(sub_key)
-                after = cursor_val if cursor_val and cursor_val != "exhausted" else None
+            # In backfill mode, skip exhausted subreddits
+            if backfill and effective_cursors.get(sub_key) == "exhausted":
+                updated_cursors[sub_key] = "exhausted"
+                tags_exhausted += 1
+                return
 
+            cursor_val = effective_cursors.get(sub_key)
+            after = cursor_val if cursor_val and cursor_val != "exhausted" else None
+
+            async with concurrency_sem:
                 try:
                     sub_images, new_after, exhausted = await self._crawl_subreddit(
-                        session, limiter, sub, after, max_pages, backfill,
+                        http_session, limiter, sub, after, max_pages, backfill,
                     )
                     results.extend(sub_images)
 
@@ -122,6 +125,17 @@ class RedditCrawl(BaseDiscoverySource):
                         cursor_preserved=cursor_val,
                     )
                     updated_cursors[sub_key] = cursor_val
+
+        _managed_session = context.http_session_override is None
+        if _managed_session:
+            http_session = aiohttp.ClientSession(headers=headers, timeout=timeout)
+        else:
+            http_session = context.http_session_override
+        try:
+            await asyncio.gather(*[_crawl_one_sub(sub) for sub in subreddits])
+        finally:
+            if _managed_session:
+                await http_session.close()
 
         log.info(
             "reddit_crawl_complete",
@@ -216,15 +230,25 @@ class RedditCrawl(BaseDiscoverySource):
                     log.warning("reddit_subreddit_not_found", subreddit=subreddit)
                     return None
                 if resp.status == 429:
-                    log.warning("reddit_rate_limited", subreddit=subreddit)
+                    retry_after = int(resp.headers.get("Retry-After", "30"))
+                    retry_after = min(retry_after, 120)
+                    log.warning("reddit_rate_limited", subreddit=subreddit, retry_after=retry_after)
+                    await asyncio.sleep(retry_after)
                     return None
+                if resp.status >= 500:
+                    log.warning("reddit_server_error", method="_fetch_page", subreddit=subreddit, status=resp.status)
+                    return None  # Transient; will be retried on next tick
                 if resp.status != 200:
                     log.warning(
                         "reddit_page_error",
                         subreddit=subreddit, status=resp.status,
                     )
+                    return None  # Client error; don't retry
+                try:
+                    return await resp.json()
+                except (aiohttp.ContentTypeError, ValueError) as e:
+                    log.warning("reddit_json_decode_error", subreddit=subreddit, error=repr(e))
                     return None
-                return await resp.json()
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             log.warning("reddit_fetch_error", subreddit=subreddit, error=str(e))
             return None

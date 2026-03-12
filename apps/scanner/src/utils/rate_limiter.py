@@ -23,6 +23,9 @@ class RateLimiter:
     _tokens: float = field(init=False)
     _last_refill: float = field(init=False)
     _lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
+    _total_waits: int = field(init=False, default=0)
+    _total_wait_time: float = field(init=False, default=0.0)
+    _total_acquires: int = field(init=False, default=0)
 
     def __post_init__(self):
         self._tokens = self.max_tokens
@@ -41,16 +44,22 @@ class RateLimiter:
             tokens: Number of tokens to acquire.
             max_wait: Maximum seconds to wait before raising RateLimiterTimeout.
         """
+        self._total_acquires += 1
         if self.rate <= 0:
             raise RateLimiterTimeout(
                 f"Rate is {self.rate} — tokens will never refill"
             )
-        deadline = time.monotonic() + max_wait
+        start = time.monotonic()
+        deadline = start + max_wait
         while True:
             async with self._lock:
                 self._refill()
                 if self._tokens >= tokens:
                     self._tokens -= tokens
+                    waited = time.monotonic() - start
+                    if waited > 0.01:
+                        self._total_waits += 1
+                        self._total_wait_time += waited
                     return
                 # Calculate wait time
                 deficit = tokens - self._tokens
@@ -61,6 +70,14 @@ class RateLimiter:
                     f"Could not acquire {tokens} tokens within {max_wait}s"
                 )
             await asyncio.sleep(min(wait_time, remaining))
+
+    def get_stats(self) -> dict:
+        """Return instrumentation stats for this rate limiter."""
+        return {
+            "total_acquires": self._total_acquires,
+            "total_waits": self._total_waits,
+            "total_wait_time_s": round(self._total_wait_time, 2),
+        }
 
 
 # Pre-configured limiters for external services

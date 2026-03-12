@@ -45,7 +45,7 @@ class HiveAIDetection(AIDetectionProvider):
         data = aiohttp.FormData()
         data.add_field("url", image_url)
 
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60, connect=10)) as session:
             async with session.post(
                 HIVE_API_URL, headers=headers, data=data
             ) as resp:

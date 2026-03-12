@@ -12,6 +12,15 @@ from src.utils.logging import get_logger
 
 log = get_logger("db.queries")
 
+
+def _validate_embedding(embedding: list | np.ndarray) -> bool:
+    """Check that embedding contains no NaN/Inf values and is non-empty."""
+    arr = np.asarray(embedding)
+    if arr.size == 0:
+        return False
+    return bool(np.all(np.isfinite(arr)))
+
+
 from src.db.models import (
     Contributor,
     ContributorEmbedding,
@@ -983,52 +992,77 @@ async def batch_insert_inline_detected_images(
                 )
                 inserted_rows = result.fetchall()
 
+                # Commit Phase 1 immediately — image rows are safe even if
+                # Phase 2 (embeddings) fails.  They can be reprocessed later
+                # by process_faces.py.
+                await session.commit()
+                total_inserted += len(inserted_rows)
+
                 if not inserted_rows:
-                    await session.commit()
                     continue
 
                 # Phase 2: Batch insert discovered_face_embeddings
-                # Build source_url → id mapping
-                url_to_id = {row[1]: row[0] for row in inserted_rows}
+                # Runs in a separate transaction so a failure here does NOT
+                # roll back the image rows committed above.
+                try:
+                    # Build source_url → id mapping
+                    url_to_id = {row[1]: row[0] for row in inserted_rows}
 
-                emb_clauses = []
-                emb_params: dict = {}
-                emb_idx = 0
-                for img in chunk:
-                    image_id = url_to_id.get(img["source_url"])
-                    if image_id is None:
-                        continue  # Was a conflict (already existed)
-                    for face in img.get("faces", []):
-                        embedding = face["embedding"]
-                        if hasattr(embedding, "tolist"):
-                            embedding = embedding.tolist()
-                        emb_str = "[" + ",".join(str(x) for x in embedding) + "]"
-                        emb_clauses.append(
-                            f"(:img_id_{emb_idx}, :face_idx_{emb_idx},"
-                            f" CAST(:emb_{emb_idx} AS vector(512)),"
-                            f" :score_{emb_idx})"
+                    emb_clauses = []
+                    emb_params: dict = {}
+                    emb_idx = 0
+                    for img in chunk:
+                        image_id = url_to_id.get(img["source_url"])
+                        if image_id is None:
+                            continue  # Was a conflict (already existed)
+                        for face in img.get("faces", []):
+                            embedding = face["embedding"]
+                            if hasattr(embedding, "tolist"):
+                                embedding = embedding.tolist()
+                            if not _validate_embedding(embedding):
+                                log.warning(
+                                    "invalid_embedding_skipped",
+                                    image_id=str(image_id),
+                                    face_index=face["face_index"],
+                                )
+                                continue
+                            emb_str = "[" + ",".join(str(x) for x in embedding) + "]"
+                            emb_clauses.append(
+                                f"(:img_id_{emb_idx}, :face_idx_{emb_idx},"
+                                f" CAST(:emb_{emb_idx} AS vector(512)),"
+                                f" :score_{emb_idx})"
+                            )
+                            emb_params[f"img_id_{emb_idx}"] = image_id
+                            emb_params[f"face_idx_{emb_idx}"] = face["face_index"]
+                            emb_params[f"emb_{emb_idx}"] = emb_str
+                            emb_params[f"score_{emb_idx}"] = face.get("detection_score")
+                            emb_idx += 1
+
+                    if emb_clauses:
+                        emb_values_sql = ", ".join(emb_clauses)
+                        await session.execute(
+                            text(f"""
+                                INSERT INTO discovered_face_embeddings
+                                    (discovered_image_id, face_index, embedding,
+                                     detection_score)
+                                VALUES {emb_values_sql}
+                                ON CONFLICT (discovered_image_id, face_index) DO NOTHING
+                            """),
+                            emb_params,
                         )
-                        emb_params[f"img_id_{emb_idx}"] = image_id
-                        emb_params[f"face_idx_{emb_idx}"] = face["face_index"]
-                        emb_params[f"emb_{emb_idx}"] = emb_str
-                        emb_params[f"score_{emb_idx}"] = face.get("detection_score")
-                        emb_idx += 1
+                        await session.commit()
 
-                if emb_clauses:
-                    emb_values_sql = ", ".join(emb_clauses)
-                    await session.execute(
-                        text(f"""
-                            INSERT INTO discovered_face_embeddings
-                                (discovered_image_id, face_index, embedding,
-                                 detection_score)
-                            VALUES {emb_values_sql}
-                            ON CONFLICT (discovered_image_id, face_index) DO NOTHING
-                        """),
-                        emb_params,
+                except Exception as emb_err:
+                    log.error(
+                        "batch_insert_embeddings_error",
+                        chunk_start=i,
+                        chunk_size=len(chunk),
+                        images_saved=len(inserted_rows),
+                        error=repr(emb_err),
                     )
-
-                await session.commit()
-                total_inserted += len(inserted_rows)
+                    await session.rollback()
+                    # Image rows already committed — embeddings can be
+                    # reprocessed later by process_faces.py.
 
         except Exception as e:
             log.error(
@@ -1053,12 +1087,20 @@ async def insert_discovered_face_embedding(
     detection_score: float | None = None,
 ) -> DiscoveredFaceEmbedding | None:
     """Insert a discovered face embedding (dedup via unique index). Returns None on conflict."""
+    embedding_list = embedding.tolist()
+    if not _validate_embedding(embedding_list):
+        log.warning(
+            "invalid_embedding_skipped",
+            image_id=str(discovered_image_id),
+            face_index=face_index,
+        )
+        return None
     stmt = (
         insert(DiscoveredFaceEmbedding)
         .values(
             discovered_image_id=discovered_image_id,
             face_index=face_index,
-            embedding=embedding.tolist(),
+            embedding=embedding_list,
             detection_score=detection_score,
         )
         .on_conflict_do_nothing(index_elements=["discovered_image_id", "face_index"])
@@ -1077,6 +1119,8 @@ async def backfill_contributor_against_discovered(
     limit: int = 100,
 ) -> list[dict]:
     """Find discovered face embeddings similar to a contributor's embedding for backfill."""
+    if session.new or session.dirty or session.deleted:
+        await session.flush()
     embedding_str = "[" + ",".join(str(x) for x in embedding.tolist()) + "]"
     cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
 
@@ -1163,7 +1207,7 @@ async def get_unmatched_face_embeddings(
 ) -> list[dict]:
     """Get discovered face embeddings that haven't been matched yet.
 
-    Parses pgvector string format '[0.1,0.2,...]' into Python float lists.
+    Uses float8[] cast so asyncpg decodes directly to Python lists (no string parsing).
     """
     result = await session.execute(
         text("""
@@ -1178,22 +1222,16 @@ async def get_unmatched_face_embeddings(
         {"limit": limit},
     )
     rows = result.fetchall()
-    results = []
-    for row in rows:
-        # Parse pgvector string "[0.1,0.2,...]" into list of floats
-        emb_str = row[1]
-        if isinstance(emb_str, str):
-            embedding = [float(x) for x in emb_str.strip("[]").split(",")]
-        else:
-            embedding = list(emb_str)
-        results.append({
+    return [
+        {
             "id": row[0],
-            "embedding": embedding,
+            "embedding": np.fromstring(row[1].strip("[]"), sep=",", dtype=np.float32),
             "discovered_image_id": row[2],
             "face_index": row[3],
             "page_url": row[4],
-        })
-    return results
+        }
+        for row in rows
+    ]
 
 
 async def mark_face_embeddings_matched(
@@ -1203,7 +1241,7 @@ async def mark_face_embeddings_matched(
     """Mark discovered face embeddings as matched (batched to avoid statement timeout)."""
     if not ids:
         return
-    batch_size = 100
+    batch_size = 500
     for i in range(0, len(ids), batch_size):
         batch = ids[i : i + batch_size]
         await session.execute(
@@ -1364,6 +1402,7 @@ async def load_matching_registry(session: AsyncSession) -> list[dict]:
 
     Returns list of dicts with id, contributor_id, embedding (numpy float32),
     is_primary, and source ('contributor' or 'registry').
+    Uses float8[] cast so asyncpg decodes directly (no string parsing).
     """
     result = await session.execute(
         text("""
@@ -1384,24 +1423,16 @@ async def load_matching_registry(session: AsyncSession) -> list[dict]:
         """)
     )
     rows = result.fetchall()
-    entries = []
-    for row in rows:
-        emb_str = row[2]
-        if isinstance(emb_str, str):
-            embedding = np.array(
-                [float(x) for x in emb_str.strip("[]").split(",")],
-                dtype=np.float32,
-            )
-        else:
-            embedding = np.array(list(emb_str), dtype=np.float32)
-        entries.append({
+    return [
+        {
             "id": row[0],
             "contributor_id": row[1],
-            "embedding": embedding,
+            "embedding": np.fromstring(row[2].strip("[]"), sep=",", dtype=np.float32),
             "is_primary": row[3],
             "source": row[4],
-        })
-    return entries
+        }
+        for row in rows
+    ]
 
 
 async def find_all_similar_embeddings(
@@ -1475,173 +1506,61 @@ async def find_all_similar_embeddings(
 
 
 async def get_scanner_metrics(session: AsyncSession) -> dict:
-    """Get operational metrics for the health endpoint."""
+    """Get operational metrics for the health endpoint.
+
+    Consolidated into 3 queries (1 scalar subquery block + 2 GROUP BY) instead of ~20 round-trips.
+    """
     now = datetime.now(timezone.utc)
     day_ago = now - timedelta(hours=24)
 
-    metrics = {}
-
-    # Pending embeddings (from all three tables)
+    # Query 1: All scalar metrics in a single statement with subqueries
     r = await session.execute(
         text("""
             SELECT
-              (SELECT count(*) FROM contributor_images WHERE embedding_status = 'pending') +
-              (SELECT count(*) FROM uploads WHERE embedding_status = 'pending') +
-              (SELECT count(*) FROM registry_identities WHERE embedding_status = 'pending')
-        """)
-    )
-    metrics["embeddings_pending"] = r.scalar_one()
-
-    # Processed embeddings in 24h
-    r = await session.execute(
-        text("""
-            SELECT count(*) FROM contributor_embeddings WHERE created_at > :since
+              -- Pending embeddings
+              (SELECT count(*) FROM contributor_images WHERE embedding_status = 'pending')
+                + (SELECT count(*) FROM uploads WHERE embedding_status = 'pending')
+                + (SELECT count(*) FROM registry_identities WHERE embedding_status = 'pending')
+                AS embeddings_pending,
+              -- Processed embeddings 24h
+              (SELECT count(*) FROM contributor_embeddings WHERE created_at > :since) AS embeddings_processed_24h,
+              -- Failed embeddings 24h
+              (SELECT count(*) FROM contributor_images WHERE embedding_status = 'failed' AND created_at > :since)
+                + (SELECT count(*) FROM uploads WHERE embedding_status = 'failed' AND created_at > :since)
+                AS embeddings_failed_24h,
+              -- Scans 24h
+              (SELECT count(*) FROM scan_jobs WHERE status = 'completed' AND completed_at > :since) AS scans_completed_24h,
+              (SELECT count(*) FROM scan_jobs WHERE status = 'failed' AND completed_at > :since) AS scans_failed_24h,
+              -- Discovery 24h
+              (SELECT count(*) FROM discovered_images WHERE discovered_at > :since) AS images_discovered_24h,
+              (SELECT count(*) FROM discovered_images WHERE has_face = true AND discovered_at > :since) AS images_with_faces_24h,
+              -- Matches 24h
+              (SELECT count(*) FROM matches WHERE created_at > :since) AS matches_found_24h,
+              (SELECT count(*) FROM matches WHERE is_known_account = true AND created_at > :since) AS matches_known_account_24h,
+              (SELECT count(*) FROM matches WHERE is_known_account = false AND created_at > :since) AS matches_unauthorized_24h,
+              -- Evidence 24h
+              (SELECT count(*) FROM evidence WHERE captured_at > :since) AS evidence_captured_24h,
+              -- Registry size
+              (SELECT count(DISTINCT contributor_id) FROM contributor_embeddings) AS contributors_in_registry,
+              (SELECT count(*) FROM contributor_embeddings) AS total_embeddings,
+              -- Registry claim stats
+              (SELECT count(*) FROM registry_identities WHERE embedding_status = 'pending' AND selfie_bucket IS NOT NULL) AS registry_selfies_pending,
+              (SELECT count(*) FROM registry_identities WHERE face_embedding IS NOT NULL) AS registry_identities_with_embedding,
+              (SELECT count(*) FROM registry_matches WHERE discovered_at > :since) AS registry_matches_24h,
+              -- Pipeline visibility
+              (SELECT count(*) FROM discovered_images WHERE has_face IS NULL) AS images_pending_detection,
+              (SELECT count(*) FROM discovered_images WHERE has_face = false) AS images_no_face,
+              (SELECT count(*) FROM discovered_face_embeddings WHERE matched_at IS NULL) AS faces_pending_matching,
+              (SELECT count(*) FROM discovered_face_embeddings WHERE created_at > :since) AS faces_detected_24h,
+              (SELECT count(*) FROM discovered_face_embeddings WHERE matched_at IS NOT NULL AND matched_at > :since) AS faces_matched_24h,
+              (SELECT count(*) FROM matches WHERE status = 'new') AS matches_pending_review
         """),
         {"since": day_ago},
     )
-    metrics["embeddings_processed_24h"] = r.scalar_one()
+    row = r.mappings().first()
+    metrics = dict(row)
 
-    # Failed embeddings in 24h
-    r = await session.execute(
-        text("""
-            SELECT
-              (SELECT count(*) FROM contributor_images
-               WHERE embedding_status = 'failed' AND created_at > :since) +
-              (SELECT count(*) FROM uploads
-               WHERE embedding_status = 'failed' AND created_at > :since)
-        """),
-        {"since": day_ago},
-    )
-    metrics["embeddings_failed_24h"] = r.scalar_one()
-
-    # Scans in 24h
-    r = await session.execute(
-        text("SELECT count(*) FROM scan_jobs WHERE status = 'completed' AND completed_at > :since"),
-        {"since": day_ago},
-    )
-    metrics["scans_completed_24h"] = r.scalar_one()
-
-    r = await session.execute(
-        text("SELECT count(*) FROM scan_jobs WHERE status = 'failed' AND completed_at > :since"),
-        {"since": day_ago},
-    )
-    metrics["scans_failed_24h"] = r.scalar_one()
-
-    # Discovery stats
-    r = await session.execute(
-        text("SELECT count(*) FROM discovered_images WHERE discovered_at > :since"),
-        {"since": day_ago},
-    )
-    metrics["images_discovered_24h"] = r.scalar_one()
-
-    r = await session.execute(
-        text("SELECT count(*) FROM discovered_images WHERE has_face = true AND discovered_at > :since"),
-        {"since": day_ago},
-    )
-    metrics["images_with_faces_24h"] = r.scalar_one()
-
-    # Match stats
-    r = await session.execute(
-        text("SELECT count(*) FROM matches WHERE created_at > :since"),
-        {"since": day_ago},
-    )
-    metrics["matches_found_24h"] = r.scalar_one()
-
-    r = await session.execute(
-        text("SELECT count(*) FROM matches WHERE is_known_account = true AND created_at > :since"),
-        {"since": day_ago},
-    )
-    metrics["matches_known_account_24h"] = r.scalar_one()
-
-    r = await session.execute(
-        text("SELECT count(*) FROM matches WHERE is_known_account = false AND created_at > :since"),
-        {"since": day_ago},
-    )
-    metrics["matches_unauthorized_24h"] = r.scalar_one()
-
-    # Evidence
-    r = await session.execute(
-        text("SELECT count(*) FROM evidence WHERE captured_at > :since"),
-        {"since": day_ago},
-    )
-    metrics["evidence_captured_24h"] = r.scalar_one()
-
-    # Registry size
-    r = await session.execute(
-        text("""
-            SELECT
-              (SELECT count(DISTINCT contributor_id) FROM contributor_embeddings),
-              (SELECT count(*) FROM contributor_embeddings)
-        """)
-    )
-    row = r.first()
-    metrics["contributors_in_registry"] = row[0]
-    metrics["total_embeddings"] = row[1]
-
-    # Registry (claim user) stats
-    r = await session.execute(
-        text("""
-            SELECT count(*) FROM registry_identities
-            WHERE embedding_status = 'pending' AND selfie_bucket IS NOT NULL
-        """)
-    )
-    metrics["registry_selfies_pending"] = r.scalar_one()
-
-    r = await session.execute(
-        text("SELECT count(*) FROM registry_identities WHERE face_embedding IS NOT NULL")
-    )
-    metrics["registry_identities_with_embedding"] = r.scalar_one()
-
-    r = await session.execute(
-        text("SELECT count(*) FROM registry_matches WHERE discovered_at > :since"),
-        {"since": day_ago},
-    )
-    metrics["registry_matches_24h"] = r.scalar_one()
-
-    # --- Pipeline visibility metrics ---
-
-    # Images pending face detection
-    r = await session.execute(
-        text("SELECT count(*) FROM discovered_images WHERE has_face IS NULL")
-    )
-    metrics["images_pending_detection"] = r.scalar_one()
-
-    # Images with no face detected
-    r = await session.execute(
-        text("SELECT count(*) FROM discovered_images WHERE has_face = false")
-    )
-    metrics["images_no_face"] = r.scalar_one()
-
-    # Face embeddings pending matching
-    r = await session.execute(
-        text("SELECT count(*) FROM discovered_face_embeddings WHERE matched_at IS NULL")
-    )
-    metrics["faces_pending_matching"] = r.scalar_one()
-
-    # Faces detected in 24h
-    r = await session.execute(
-        text("SELECT count(*) FROM discovered_face_embeddings WHERE created_at > :since"),
-        {"since": day_ago},
-    )
-    metrics["faces_detected_24h"] = r.scalar_one()
-
-    # Faces matched in 24h
-    r = await session.execute(
-        text(
-            "SELECT count(*) FROM discovered_face_embeddings"
-            " WHERE matched_at IS NOT NULL AND matched_at > :since"
-        ),
-        {"since": day_ago},
-    )
-    metrics["faces_matched_24h"] = r.scalar_one()
-
-    # Matches pending review
-    r = await session.execute(
-        text("SELECT count(*) FROM matches WHERE status = 'new'")
-    )
-    metrics["matches_pending_review"] = r.scalar_one()
-
-    # Per-platform pipeline breakdown
+    # Query 2: Per-platform pipeline breakdown (GROUP BY returns row set)
     r = await session.execute(
         text("""
             SELECT
@@ -1667,7 +1586,7 @@ async def get_scanner_metrics(session: AsyncSession) -> dict:
         for row in r.fetchall()
     ]
 
-    # Per-platform match counts
+    # Query 3: Per-platform match counts (GROUP BY returns row set)
     r = await session.execute(
         text("""
             SELECT

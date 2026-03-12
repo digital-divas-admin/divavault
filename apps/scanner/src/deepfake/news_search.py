@@ -57,7 +57,7 @@ async def run_news_search(
         "num": 20,
     }
 
-    async with aiohttp.ClientSession() as http:
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60, connect=10)) as http:
         async with http.get("https://serpapi.com/search", params=params) as resp:
             if resp.status != 200:
                 body = await resp.text()

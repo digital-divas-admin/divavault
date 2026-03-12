@@ -15,7 +15,7 @@ async def _post_to_ntfy(title: str, body: str, priority: str = "default", tags: 
     """Post a notification to ntfy.sh. No-op if NTFY_TOPIC is not configured."""
     if not settings.ntfy_topic:
         return
-    async with aiohttp.ClientSession() as http:
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30, connect=10)) as http:
         await http.post(
             f"https://ntfy.sh/{settings.ntfy_topic}",
             data=body,

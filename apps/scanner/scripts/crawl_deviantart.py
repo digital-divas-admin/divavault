@@ -48,7 +48,28 @@ async def main():
         "--backfill", action="store_true",
         help="Run in backfill mode: deeper pages, persistent exhausted cursors",
     )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Suppress scheduling writes (cursors, last_crawl_at, next_crawl_at)",
+    )
+    parser.add_argument(
+        "--capture", type=str, default=None,
+        help="Directory to save HTTP responses for replay",
+    )
+    parser.add_argument(
+        "--replay", type=str, default=None,
+        help="Directory to replay HTTP responses from (no network)",
+    )
     args = parser.parse_args()
+    dry_run = args.dry_run
+
+    if dry_run:
+        print("=" * 60)
+        print("DRY RUN MODE — scheduling writes suppressed")
+        print("  Data inserts: YES (results inspectable in DB)")
+        print("  Schedule mutations: NO (cursors, last_crawl_at, next_crawl_at untouched)")
+        print("=" * 60)
+        print()
 
     start = time.monotonic()
 
@@ -100,6 +121,11 @@ async def main():
     else:
         saved_cursors = search_terms_data.get("search_cursors", {})
 
+    # Validate cursor types
+    from src.utils.cursors import validate_cursor_dict
+    if saved_cursors:
+        saved_cursors = validate_cursor_dict(saved_cursors)
+
     # Print run header
     cursor_count = sum(1 for t in effective_tags if saved_cursors.get(t))
     mode_label = "BACKFILL" if backfill_mode else "SWEEP"
@@ -115,6 +141,29 @@ async def main():
     print(f"Resuming from cursors: {cursor_count}/{len(effective_tags)} tags")
     print()
 
+    # Set up HTTP session override for recording/replay
+    http_session_override = None
+    _real_session = None
+    if args.capture:
+        import aiohttp
+        from pathlib import Path
+        from src.utils.http_recorder import RecordingSession
+        _real_session = aiohttp.ClientSession(
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+                "Referer": "https://www.deviantart.com/",
+            },
+            auto_decompress=True,
+            timeout=aiohttp.ClientTimeout(total=120, connect=15),
+        )
+        http_session_override = RecordingSession(_real_session, Path(args.capture))
+        print(f"  Recording HTTP responses to: {args.capture}")
+    elif args.replay:
+        from pathlib import Path
+        from src.utils.http_recorder import ReplaySession
+        http_session_override = ReplaySession(Path(args.replay))
+        print(f"  Replaying HTTP responses from: {args.replay}")
+
     # Build context for the provider
     context = DiscoveryContext(
         platform="deviantart",
@@ -123,6 +172,7 @@ async def main():
         tag_depths=tag_depths if tag_depths else None,
         backfill=backfill_mode,
         backfill_cursors=saved_cursors if backfill_mode else None,
+        http_session_override=http_session_override,
     )
 
     # Call the provider's inline crawl+detection
@@ -160,7 +210,6 @@ async def main():
         if result.search_cursors:
             bf["cursors"] = dict(result.search_cursors)
         if not bf.get("started_at"):
-            from datetime import datetime, timezone
             bf["started_at"] = datetime.now(timezone.utc).isoformat()
         all_c = bf.get("cursors", {})
         bf["terms_total"] = len(all_c)
@@ -179,20 +228,26 @@ async def main():
         elif "search_cursors" in new_search_terms:
             del new_search_terms["search_cursors"]
 
-    async with async_session() as session:
-        await session.execute(text(
-            "UPDATE platform_crawl_schedule "
-            "SET search_terms = CAST(:terms AS jsonb), last_crawl_at = now() "
-            "WHERE platform = 'deviantart'"
-        ), {"terms": json.dumps(new_search_terms)})
-        await session.commit()
+    if not dry_run:
+        async with async_session() as session:
+            await session.execute(text(
+                "UPDATE platform_crawl_schedule "
+                "SET search_terms = CAST(:terms AS jsonb), last_crawl_at = now() "
+                "WHERE platform = 'deviantart'"
+            ), {"terms": json.dumps(new_search_terms)})
+            await session.commit()
+    else:
+        print("[dry-run] Skipped cursor persistence")
 
     # Record crawl telemetry for daily report / resilience monitoring
     face_images = sum(1 for img in result.images if img.has_face)
     total_faces = sum(img.face_count for img in result.images)
+    crawl_type = "backfill" if backfill_mode else "sweep"
+    if dry_run:
+        crawl_type = f"[dry-run] {crawl_type}"
     await collector.record_crawl(
         platform="deviantart",
-        crawl_type="backfill" if backfill_mode else "sweep",
+        crawl_type=crawl_type,
         started_at=crawl_start,
         finished_at=datetime.now(timezone.utc),
         images_discovered=len(result.images),
@@ -219,8 +274,20 @@ async def main():
     if result.images_downloaded > 0:
         fr = face_images / result.images_downloaded * 100
         print(f"  Face rate:           {fr:.1f}%")
+    # Clean up HTTP session override
+    if _real_session is not None:
+        await _real_session.close()
+
     print(f"\nCursors persisted. Embeddings are ready for matching.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.")
+    except Exception as e:
+        log.error("fatal_error", error=repr(e))
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

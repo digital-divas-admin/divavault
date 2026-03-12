@@ -99,36 +99,39 @@ class FourChanCrawl(BaseDiscoverySource):
         headers = {"User-Agent": USER_AGENT}
         timeout = aiohttp.ClientTimeout(total=15)
 
-        async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
-            for board in boards_to_crawl:
-                board_key = f"/{board}/"
+        concurrency_sem = asyncio.Semaphore(settings.fourchan_concurrency)
+        deadline_hit = False
 
-                # In backfill mode, skip exhausted boards
-                if backfill and effective_cursors.get(board_key) == "exhausted":
-                    updated_cursors[board_key] = "exhausted"
-                    tags_exhausted += 1
-                    continue
+        async def _crawl_one_board(board: str) -> None:
+            nonlocal tags_exhausted, deadline_hit
+            board_key = f"/{board}/"
 
-                # Graceful timeout check
-                if time.monotonic() > crawl_deadline:
+            # In backfill mode, skip exhausted boards
+            if backfill and effective_cursors.get(board_key) == "exhausted":
+                updated_cursors[board_key] = "exhausted"
+                tags_exhausted += 1
+                return
+
+            # Graceful timeout check
+            if time.monotonic() > crawl_deadline:
+                if not deadline_hit:
+                    deadline_hit = True
                     log.warning(
                         "fourchan_graceful_timeout",
-                        boards_remaining=len(boards_to_crawl) - len(updated_cursors),
                         images_so_far=len(results),
                     )
-                    # Preserve cursor for boards we didn't reach
-                    for remaining in boards_to_crawl:
-                        rkey = f"/{remaining}/"
-                        if rkey not in updated_cursors:
-                            updated_cursors[rkey] = effective_cursors.get(rkey)
-                    break
+                # Preserve cursor for boards we didn't reach
+                if board_key not in updated_cursors:
+                    updated_cursors[board_key] = effective_cursors.get(board_key)
+                return
 
-                cursor_val = effective_cursors.get(board_key)
-                last_seen_no = int(cursor_val) if cursor_val and cursor_val != "exhausted" else 0
+            cursor_val = effective_cursors.get(board_key)
+            last_seen_no = int(cursor_val) if cursor_val and cursor_val != "exhausted" else 0
 
+            async with concurrency_sem:
                 try:
                     board_images, new_cursor, exhausted = await self._crawl_board(
-                        session, limiter, board, last_seen_no,
+                        http_session, limiter, board, last_seen_no,
                         threads_per_board, backfill,
                     )
                     results.extend(board_images)
@@ -150,6 +153,17 @@ class FourChanCrawl(BaseDiscoverySource):
                 except Exception as e:
                     log.error("fourchan_board_error", board=board, error=str(e))
                     updated_cursors[board_key] = cursor_val
+
+        _managed_session = context.http_session_override is None
+        if _managed_session:
+            http_session = aiohttp.ClientSession(headers=headers, timeout=timeout)
+        else:
+            http_session = context.http_session_override
+        try:
+            await asyncio.gather(*[_crawl_one_board(board) for board in boards_to_crawl])
+        finally:
+            if _managed_session:
+                await http_session.close()
 
         log.info(
             "fourchan_crawl_complete",
@@ -279,10 +293,21 @@ class FourChanCrawl(BaseDiscoverySource):
                 if resp.status == 404:
                     log.warning("fourchan_board_not_found", board=board)
                     return None
+                if resp.status == 429:
+                    log.warning("fourchan_rate_limited", method="_fetch_catalog", board=board)
+                    await asyncio.sleep(30)
+                    return None
+                if resp.status >= 500:
+                    log.warning("fourchan_server_error", method="_fetch_catalog", board=board, status=resp.status)
+                    return None  # Transient; will be retried on next tick
                 if resp.status != 200:
                     log.warning("fourchan_catalog_error", board=board, status=resp.status)
                     return None
-                return await resp.json()
+                try:
+                    return await resp.json()
+                except (aiohttp.ContentTypeError, ValueError) as e:
+                    log.warning("fourchan_json_decode_error", method="_fetch_catalog", board=board, error=repr(e))
+                    return None
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             log.warning("fourchan_catalog_fetch_error", board=board, error=str(e))
             return None
@@ -301,13 +326,24 @@ class FourChanCrawl(BaseDiscoverySource):
             async with session.get(url) as resp:
                 if resp.status == 404:
                     return None  # thread was deleted/archived
+                if resp.status == 429:
+                    log.warning("fourchan_rate_limited", method="_fetch_thread", board=board, thread=thread_no)
+                    await asyncio.sleep(30)
+                    return None
+                if resp.status >= 500:
+                    log.warning("fourchan_server_error", method="_fetch_thread", board=board, thread=thread_no, status=resp.status)
+                    return None  # Transient; will be retried on next tick
                 if resp.status != 200:
                     log.warning(
                         "fourchan_thread_fetch_error",
                         board=board, thread=thread_no, status=resp.status,
                     )
                     return None
-                data = await resp.json()
+                try:
+                    data = await resp.json()
+                except (aiohttp.ContentTypeError, ValueError) as e:
+                    log.warning("fourchan_json_decode_error", method="_fetch_thread", board=board, thread=thread_no, error=repr(e))
+                    return None
                 return data.get("posts", [])
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             log.warning(

@@ -88,6 +88,7 @@ async def _check_platform(platform: str, tick_number: int) -> None:
         if undiagnosed and settings.resilience_claude_enabled:
             from src.resilience.diagnosis import diagnosis_engine
             await diagnosis_engine.diagnose(undiagnosed.id)
+            log.info("resilience_diagnosis_completed", platform=platform, event_id=str(undiagnosed.id))
     except Exception as e:
         log.error("diagnosis_tick_error", platform=platform, error=str(e))
 
@@ -121,6 +122,7 @@ async def _check_platform(platform: str, tick_number: int) -> None:
                     except (json.JSONDecodeError, TypeError):
                         diagnosis_data = {"root_cause": needs_patch.root_cause or "UNKNOWN"}
                 await patch_generator.generate(needs_patch, diagnosis_data)
+                log.info("resilience_patch_generated", platform=platform, event_id=str(needs_patch.id))
         except Exception as e:
             log.error("patch_gen_tick_error", platform=platform, error=str(e))
 
@@ -139,5 +141,6 @@ async def _check_platform(platform: str, tick_number: int) -> None:
         if promotable:
             from src.resilience.promoter import patch_promoter
             await patch_promoter.promote(promotable)
+            log.info("resilience_patch_promoted", platform=platform, patch_id=str(promotable.id))
     except Exception as e:
         log.error("promote_tick_error", platform=platform, error=str(e))

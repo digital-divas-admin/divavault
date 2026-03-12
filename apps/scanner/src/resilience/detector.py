@@ -39,6 +39,7 @@ class DegradationDetector:
                     snapshot_id=latest_snapshot.id,
                 )
                 if event:
+                    log.info("degradation_detected", platform=platform, type="total_failure", severity="critical")
                     events.append(event)
 
             # 2. Yield collapse -- new images well below baseline
@@ -64,6 +65,7 @@ class DegradationDetector:
                         snapshot_id=latest_snapshot.id,
                     )
                     if event:
+                        log.info("degradation_detected", platform=platform, type="yield_collapse", severity=severity)
                         events.append(event)
 
             # 3. Download failure spike
@@ -84,6 +86,7 @@ class DegradationDetector:
                     snapshot_id=latest_snapshot.id,
                 )
                 if event:
+                    log.info("degradation_detected", platform=platform, type="download_failure_spike", severity="warning")
                     events.append(event)
 
             # 4. Error message present
@@ -99,6 +102,7 @@ class DegradationDetector:
                     snapshot_id=latest_snapshot.id,
                 )
                 if event:
+                    log.info("degradation_detected", platform=platform, type="crawl_error", severity="warning")
                     events.append(event)
 
         except Exception as e:

@@ -38,6 +38,31 @@ The scanner targets **high-risk platforms** where AI-generated face content conc
 
 Scripts run **standalone** — they don't need the FastAPI service. They connect directly to the database.
 
+### Test Harness (Dry-Run, Capture/Replay, Stage Fixtures)
+
+```bash
+# Dry-run: full pipeline but no scheduling writes (cursors, last_crawl_at untouched)
+SCAN_DRY_RUN=true .venv/Scripts/python.exe -m src.main
+.venv/Scripts/python.exe scripts/crawl_reddit.py --pages 1 --dry-run
+
+# Capture HTTP responses for later replay
+.venv/Scripts/python.exe scripts/crawl_reddit.py --pages 1 --capture cache/reddit/test1
+
+# Replay cached responses (no network) + dry-run (no schedule writes) — fastest iteration
+.venv/Scripts/python.exe scripts/crawl_reddit.py --replay cache/reddit/test1 --dry-run
+
+# Dump fetch stage output as a fixture
+.venv/Scripts/python.exe scripts/crawl_reddit.py --pages 1 --dry-run --dump-stage fetch --dump-dir fixtures/reddit_sample/
+
+# Run detection in isolation on a fixture
+.venv/Scripts/python.exe scripts/run_stage.py detect --input fixtures/reddit_sample/fetch.json --output fixtures/reddit_sample/detect.json
+
+# Run matching in isolation on detection output
+.venv/Scripts/python.exe scripts/run_stage.py match --input fixtures/reddit_sample/detect.json --output fixtures/reddit_sample/match.json
+```
+
+All flags compose: `--replay cache/dir --dry-run --dump-stage fetch --dump-dir fixtures/out/`.
+
 ### Production Operations (PowerShell)
 
 ```powershell
@@ -47,11 +72,20 @@ powershell -ExecutionPolicy Bypass -File scripts/stop_scanner.ps1     # Graceful
 powershell -ExecutionPolicy Bypass -File scripts/check_health.ps1     # Health check: status, uptime, GPU, metrics
 ```
 
-**Supervisor** (`run_production.ps1`): Runs scanner + Cloudflare tunnel in a loop, restarts with 30s delay on crash, monitors tunnel health every 60s, rotates logs (keeps 7), writes PID to `logs/scanner.pid`. Clean exit (code 0) stops the supervisor.
+**Supervisor** (`run_production.ps1`): Runs scanner + Cloudflare tunnel in a loop with self-healing:
+- Restarts scanner with 30s delay on crash; monitors tunnel health every 60s
+- **Sentinel file** (`logs/stop_requested`): Only stops restarting if this file exists (created by `stop_scanner.ps1`). Unexpected crashes always restart.
+- **Supervisor PID file** (`logs/supervisor.pid`): Prevents duplicate supervisors — a new instance exits immediately if one is already running.
+- **Orphan process cleanup** (`Clear-Port`): Before each scanner start, kills any process holding port 8000 via `taskkill /F /T`. Prevents infinite restart loops when an orphan from a prior session blocks the port.
+- **Stale cloudflared cleanup**: Kills any leftover `cloudflared` processes before starting a fresh tunnel.
+- Rotates logs (keeps 7), writes scanner PID to `logs/scanner.pid`.
+- **Heartbeat file** (`HEARTBEAT_FILE` env var): Scanner writes JSON heartbeat each tick for external monitoring.
 
-**Install scheduled task** (`install_scheduled_task.ps1`): Registers a Windows Scheduled Task (`ConsentedAI Scanner`) that runs `run_production.ps1` at system startup. Must be run as Administrator. See Deployment section for details.
+**Watchdog** (`watchdog.ps1`): Scheduled task (`ConsentedAI Scanner Watchdog`) that runs every 5 minutes. Checks if the supervisor is alive via `logs/supervisor.pid`. If the supervisor is dead and no `logs/stop_requested` file exists (i.e., not a deliberate shutdown), restarts the scheduled task. This catches cases where the supervisor itself crashes.
 
-**Shutdown** (`stop_scanner.ps1`): Reads PID from `logs/scanner.pid`, sends terminate signal, waits 30s for graceful exit, force-kills if needed.
+**Install scheduled task** (`install_scheduled_task.ps1`): Registers the main `ConsentedAI Scanner` Windows Scheduled Task. **Install watchdog** (`install_watchdog_task.ps1`): Registers the watchdog task. Both must be run as Administrator.
+
+**Shutdown** (`stop_scanner.ps1`): Creates `logs/stop_requested` sentinel file, kills the scanner process and cloudflared, then lets the supervisor exit gracefully. The sentinel file prevents the watchdog from restarting it.
 
 **Health check** (`check_health.ps1`): Hits `localhost:8000/health`, displays status/uptime/GPU/metrics. Exit code 0 = healthy, 1 = unreachable.
 
@@ -74,6 +108,9 @@ apps/scanner/
 ├── scripts/
 │   ├── crawl_and_backfill.py        # CivitAI: 4-phase pipeline (crawl → two-pass thumbnail detect → match)
 │   ├── crawl_deviantart.py          # DeviantArt: crawl with inline face detection (wixmp tokens expire)
+│   ├── crawl_reddit.py             # Reddit: crawl subreddits (DEFERRED detection)
+│   ├── crawl_fourchan.py           # 4chan: crawl boards (DEFERRED detection)
+│   ├── run_stage.py                # Run individual pipeline stages on fixture files (detect, match)
 │   ├── process_faces.py             # Backfill face detection (two-pass for CivitAI, single-pass for others)
 │   ├── test_resilience.py           # End-to-end resilience pipeline test
 │   ├── instrumented_test_crawl.py   # Debug instrumentation for CivitAI pipeline
@@ -164,9 +201,14 @@ apps/scanner/
 │   ├── enforcement/
 │   │   ├── takedown.py              # DMCA notice generation
 │   │   └── templates.py             # Legal template library
+│   ├── fixtures/
+│   │   ├── __init__.py              # Package init
+│   │   ├── dumper.py                # Serialize stage outputs (fetch/detect/match) to JSON + base64 embeddings
+│   │   └── loader.py                # Deserialize stage fixtures back to runtime objects
 │   ├── jobs/
 │   │   ├── scheduler.py             # Main scheduler (sweep + backfill + resilience, priority: detection > matching > crawl)
 │   │   ├── store.py                 # PostgreSQL job store + stale job recovery
+│   │   ├── dry_run_store.py         # DryRunJobStore — wraps JobStore, suppresses scheduling writes
 │   │   └── cleanup.py               # Periodic cleanup routines
 │   ├── detection/
 │   │   └── ai_classifier.py         # AI-generated image detection
@@ -178,12 +220,15 @@ apps/scanner/
 │       ├── rate_limiter.py          # Token bucket rate limiter (per platform)
 │       ├── retry.py                 # Exponential backoff + circuit breaker
 │       ├── image_download.py        # HTTP image download + validation + thumbnail helpers
+│       ├── http_recorder.py         # RecordingSession + ReplaySession for cached HTTP replay
 │       └── url_parser.py            # Domain parsing + allowlist matching
 ├── tests/
 │   ├── conftest.py                  # Shared pytest fixtures (embeddings, mocks)
 │   ├── unit/                        # 70+ unit tests
 │   ├── integration/                 # 4 integration tests
 │   └── smoke/                       # 2 smoke tests
+├── cache/                           # HTTP response cache for replay (gitignored)
+├── fixtures/                        # Large stage fixture dumps (gitignored)
 ├── migrations/                      # SQL DDL files
 ├── pyproject.toml                   # pytest + ruff config
 ├── requirements.txt                 # Core deps
@@ -409,6 +454,57 @@ CivitAI API responses are filtered for `type: "video"` and tiny images (`<100px`
 
 Crawl state persists in `platform_crawl_schedule.search_terms` JSONB column so crawls resume where they left off after crashes or restarts. Sweep cursors live at the top level (`search_cursors`, `model_cursors`). Backfill cursors live under a `backfill` sub-key with separate `cursors` and `model_cursors`. The `"exhausted"` sentinel in backfill mode permanently marks a term as fully crawled — it is never reset.
 
+### Test Harness (Dry-Run, Cached Replay, Stage Fixtures)
+
+Three features for iterating on crawling/detection/matching logic without polluting production state or waiting for live crawls.
+
+**1. Dry-Run Mode** — Runs the full pipeline but suppresses all scheduling metadata writes.
+
+| What | Behavior |
+|------|----------|
+| Data inserts (`discovered_images`, `discovered_face_embeddings`, `matches`) | **YES** — results are inspectable in DB |
+| Schedule mutations (`last_crawl_at`, `next_crawl_at`, cursors in `search_terms` JSONB) | **NO** — production state untouched |
+| Telemetry (`collector.record_crawl()`) | **YES** — prefixed with `[dry-run]` for filterability |
+
+**Scheduler:** `SCAN_DRY_RUN=true` env var. Wraps `PostgresJobStore` with `DryRunJobStore` (decorator pattern — suppresses `mark_scan_complete`, `mark_crawl_complete`, `update_crawl_phase`). Four raw SQL sites in `scheduler.py` are also guarded (`_cleanup_crawl_state`, `_crawl_deferred`, `_persist_crawl_state`, `_run_backfill_pass`).
+
+**Scripts:** `--dry-run` flag on all 4 crawl scripts. Guards the `UPDATE platform_crawl_schedule` SQL.
+
+**2. Cached Replay** — Record live HTTP responses to disk, replay them later with no network.
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `RecordingSession` | `src/utils/http_recorder.py` | Wraps real `aiohttp.ClientSession`, saves responses to `cache/<platform>/<timestamp>/` |
+| `ReplaySession` | `src/utils/http_recorder.py` | Reads from cache dir, returns saved responses in sequence order |
+| `http_session_override` | `src/discovery/base.py` | Field on `DiscoveryContext` — crawlers use this instead of creating their own session |
+
+Cache directory structure:
+```
+cache/reddit/2026-03-11T14-30/
+├── manifest.json        # metadata
+├── request_log.jsonl    # {seq, url, params, status, content_type, file}
+└── responses/
+    ├── 0001.bin         # raw response body
+    ├── 0002.bin
+    └── ...
+```
+
+**Scripts:** `--capture <dir>` and `--replay <dir>` flags on all 4 crawl scripts. **Scheduler:** `SCAN_CAPTURE_DIR` / `SCAN_REPLAY_DIR` env vars.
+
+**3. Stage Fixtures** — Dump/load intermediate pipeline data at stage boundaries for isolated testing.
+
+| Stage | Input | Output | File |
+|-------|-------|--------|------|
+| **fetch** | DiscoveryContext | DiscoveryResult (image URLs, cursors) | `fixtures/*/fetch.json` |
+| **detect** | Image URLs | `[{source_url, has_face, face_count, faces}]` | `fixtures/*/detect.json` |
+| **match** | Face embeddings + registry | `[{image_id, contributor_id, similarity, tier}]` | `fixtures/*/match.json` |
+
+Embeddings serialized as `base64(float32 bytes)` — compact and portable. Dumper: `src/fixtures/dumper.py`. Loader: `src/fixtures/loader.py`.
+
+**Scripts:** `--dump-stage fetch --dump-dir <dir>` on crawl scripts. `scripts/run_stage.py detect|match --input <file> --output <file>` for isolated stage execution.
+
+**Composition:** `--replay cache/dir --dry-run --dump-stage fetch --dump-dir fixtures/out/` = replay cached HTTP, no schedule writes, dump fetch output. Fastest possible iteration loop.
+
 ## Database Tables
 
 ### Read-Only (shared with web app)
@@ -479,6 +575,11 @@ RESILIENCE_CLAUDE_ENABLED=false      # Enable Claude CLI diagnosis/patching (req
 RESILIENCE_AUTO_PATCH=false          # Auto-generate patches for diagnosed events
 RESILIENCE_AUTO_PROMOTE=false        # Auto-promote patches through sandbox → canary → production
 NTFY_TOPIC=                          # ntfy.sh topic for push alerts (optional)
+
+# Test harness (all optional — disabled by default)
+SCAN_DRY_RUN=false                   # Suppress scheduling writes (cursors, last_crawl_at, next_crawl_at)
+SCAN_CAPTURE_DIR=                    # Save HTTP responses to this dir during crawl
+SCAN_REPLAY_DIR=                     # Replay HTTP responses from this dir (no network)
 ```
 
 ## Common Pitfalls
@@ -574,10 +675,12 @@ schtasks /delete /tn "ConsentedAI Scanner" /f          # Remove
 ```
 
 **What `run_production.ps1` handles:**
-- Starts `cloudflared tunnel run scanner` before the scanner loop
+- Kills stale `cloudflared` processes, then starts `cloudflared tunnel run scanner`
+- Kills orphan processes on port 8000 (`Clear-Port`) at startup and before each scanner start
 - Health-checks the tunnel every 60s (verifies `scanner.consentedai.com/health`)
 - Auto-restarts the tunnel if it dies or stops routing
-- Auto-restarts the scanner on crash (30s delay)
+- Auto-restarts the scanner on crash (30s delay), unless `logs/stop_requested` sentinel exists
+- Prevents duplicate supervisors via `logs/supervisor.pid`
 - Rotates logs (keeps 7 most recent)
 - Cleans up both processes on supervisor exit
 

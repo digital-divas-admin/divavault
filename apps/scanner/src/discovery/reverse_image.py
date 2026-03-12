@@ -41,7 +41,7 @@ class TinEyeDiscovery(BaseDiscoverySource):
         max_photos = tier_config.get("reverse_image_max_photos", 3)
         images_to_search = context.images[:max_photos]
 
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60, connect=10)) as session:
             for bucket, file_path in images_to_search:
                 try:
                     image_results = await self._search_image(session, bucket, file_path, limiter)

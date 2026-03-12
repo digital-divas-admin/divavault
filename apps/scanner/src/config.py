@@ -166,8 +166,24 @@ class Settings(BaseSettings):
     circuit_breaker_base_delay_minutes: int = 30
     circuit_breaker_max_delay_minutes: int = 1440  # 24h cap
 
+    # Connection pool
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+
+    # Download concurrency
+    download_max_concurrent: int = 20
+
+    # Crawler concurrency (parallel subreddit/board fetches)
+    reddit_concurrency: int = 3
+    fourchan_concurrency: int = 2
+
     # Logging
     log_level: str = "INFO"
+
+    # Test harness
+    scan_dry_run: bool = False
+    scan_capture_dir: str = ""   # Directory to save HTTP responses during crawl
+    scan_replay_dir: str = ""    # Directory to replay HTTP responses from
 
     # Temp directory
     temp_dir: str = _DEFAULT_TEMP_DIR

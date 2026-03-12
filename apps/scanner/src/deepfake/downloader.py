@@ -74,7 +74,13 @@ async def _download_with_ytdlp(url: str, output_dir: str) -> dict:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = await proc.communicate()
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        log.error("ytdlp_timeout", url=url, timeout=300)
+        raise RuntimeError(f"yt-dlp timed out after 300s for {url}")
 
     if proc.returncode != 0:
         error_msg = stderr.decode(errors="replace")[-500:]
