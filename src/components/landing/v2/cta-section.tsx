@@ -25,7 +25,16 @@ export function CTASection() {
             Read the Legal Landscape
           </Link>
         </div>
-        <p className="mt-8 text-[14px] text-white/40">
+        <p className="mt-6 text-[14px] text-white/40">
+          Or explore our{" "}
+          <Link
+            href="/investigations"
+            className="text-white/60 hover:text-white transition-colors underline underline-offset-2"
+          >
+            published investigations
+          </Link>
+        </p>
+        <p className="mt-4 text-[14px] text-white/40">
           Contact:{" "}
           <a
             href="mailto:hello@consentedai.com"

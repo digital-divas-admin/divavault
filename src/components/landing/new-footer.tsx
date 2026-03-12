@@ -9,6 +9,9 @@ export function NewFooter() {
           <img src="/logo.png" alt="Consented AI" className="h-7 w-auto" />
         </Link>
         <div className="flex items-center gap-6">
+          <Link href="/claim" className="text-sm text-[#6A80A0] hover:text-[#0C1424] transition-colors">
+            Claim Your Face
+          </Link>
           <Link href="/developers" className="text-sm text-[#6A80A0] hover:text-[#0C1424] transition-colors">
             Developers
           </Link>
